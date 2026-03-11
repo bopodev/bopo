@@ -272,6 +272,9 @@ function resolveRunType(
   if (normalizedMessage.includes("budget hard-stop")) {
     return "budget_skip";
   }
+  if (isNoAssignedWorkMessage(run.message)) {
+    return "no_assigned_work";
+  }
   if (isNoAssignedWorkOutcome(outcome)) {
     return "no_assigned_work";
   }
@@ -279,6 +282,10 @@ function resolveRunType(
     return "other_skip";
   }
   return "work";
+}
+
+function isNoAssignedWorkMessage(message: string | null) {
+  return /\bno assigned work found\b/i.test(message ?? "");
 }
 
 function isNoAssignedWorkOutcome(outcome: unknown) {

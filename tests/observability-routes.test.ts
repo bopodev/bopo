@@ -14,6 +14,7 @@ import {
   createCompany,
   createIssue,
   createProject,
+  heartbeatRuns,
   listCostEntries,
   listHeartbeatRuns
 } from "../packages/db/src/index";
@@ -202,6 +203,45 @@ describe("observability routes", { timeout: 30_000 }, () => {
 
     const runId = await runHeartbeatForAgent(db, companyId, agent.id, { trigger: "manual" });
     expect(runId).toBeTruthy();
+
+    const heartbeatsResponse = await request(app).get("/observability/heartbeats").set("x-company-id", companyId);
+    expect(heartbeatsResponse.status).toBe(200);
+    const runRow = heartbeatsResponse.body.data.find((row: { id: string }) => row.id === runId);
+    expect(runRow).toBeTruthy();
+    expect(runRow.runType).toBe("no_assigned_work");
+  });
+
+  it("classifies adapter-prefixed no-assigned-work messages as no_assigned_work", async () => {
+    const project = await createProject(db, {
+      companyId,
+      name: "Message Classification",
+      workspaceLocalPath: tempDir
+    });
+    const agent = await createAgent(db, {
+      companyId,
+      role: "Worker",
+      name: "Codex Message Agent",
+      providerType: "shell",
+      heartbeatCron: "* * * * *",
+      monthlyBudgetUsd: "25.0000",
+      canHireAgents: false,
+      runtimeCommand: "echo",
+      runtimeArgsJson: '["{\\"summary\\":\\"work-run\\",\\"tokenInput\\":1,\\"tokenOutput\\":1,\\"usdCost\\":0.0001}"]',
+      runtimeCwd: tempDir
+    });
+    await createIssue(db, {
+      companyId,
+      projectId: project.id,
+      title: "Generate a normal completed run",
+      assigneeAgentId: agent.id
+    });
+
+    const runId = await runHeartbeatForAgent(db, companyId, agent.id, { trigger: "manual" });
+    expect(runId).toBeTruthy();
+
+    await db
+      .update(heartbeatRuns)
+      .set({ message: "Codex adapter: No assigned work found." });
 
     const heartbeatsResponse = await request(app).get("/observability/heartbeats").set("x-company-id", companyId);
     expect(heartbeatsResponse.status).toBe(200);

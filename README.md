@@ -10,7 +10,6 @@ Manage goals, projects, issues, agents, approvals, runs, and costs from one plac
 
 ## Supported CLIs
 
-| CLI | Icon |
 | --- | --- |
 | Claude Code | <img src="./assets/icon_claude.svg" alt="Claude Code icon" width="28" /> |
 | Codex | <img src="./assets/icon_codex.svg" alt="Codex icon" width="28" /> |
