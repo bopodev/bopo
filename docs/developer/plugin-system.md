@@ -21,6 +21,13 @@ tracing, queue publishing, etc.) without editing core heartbeat orchestration.
 - Plugin runs are persisted and exposed in observability APIs/UI.
 - High-risk capabilities are approval-gated.
 
+## Where Plugins Live
+
+- Built-ins are defined in `apps/api/src/services/plugin-runtime.ts`.
+- Filesystem plugins are discovered from `plugins/*/plugin.json` by default.
+- Set `BOPO_PLUGIN_MANIFESTS_DIR` to override the scan root.
+- Discovered manifests are synced into the `plugins` DB catalog at API startup.
+
 ## Core Contracts
 
 Shared schemas live in `packages/contracts/src/index.ts`.
@@ -97,6 +104,38 @@ MVP built-ins are registered on API startup:
 - `heartbeat-tagger` (installed, disabled by default)
 
 Defaults are ensured per company at creation/startup.
+
+## File-Based Install (Low Friction)
+
+Drop a manifest JSON in a plugin folder and restart API:
+
+`plugins/my-plugin/plugin.json`
+
+Example:
+
+```json
+{
+  "id": "my-plugin",
+  "version": "0.1.0",
+  "displayName": "My Plugin",
+  "description": "Example file-based plugin manifest.",
+  "kind": "lifecycle",
+  "hooks": ["afterPersist"],
+  "capabilities": ["emit_audit"],
+  "runtime": {
+    "type": "builtin",
+    "entrypoint": "builtin:my-plugin",
+    "timeoutMs": 5000,
+    "retryCount": 0
+  }
+}
+```
+
+Notes:
+
+- Manifests are validated with `PluginManifestSchema`.
+- Invalid files are skipped (startup continues, warning logged).
+- File-based manifest registration does not bypass company install/enable/governance controls.
 
 ## Data Model
 

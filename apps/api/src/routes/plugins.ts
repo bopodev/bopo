@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
+import { PluginManifestSchema } from "bopodev-contracts";
 import {
   createApprovalRequest,
   listCompanyPluginConfigs,
@@ -11,6 +12,8 @@ import {
 import type { AppContext } from "../context";
 import { sendError, sendOk } from "../http";
 import { requireCompanyScope } from "../middleware/company-scope";
+import { writePluginManifestToFilesystem } from "../services/plugin-manifest-loader";
+import { registerPluginManifest } from "../services/plugin-runtime";
 
 const pluginConfigSchema = z.object({
   enabled: z.boolean().optional(),
@@ -18,6 +21,10 @@ const pluginConfigSchema = z.object({
   config: z.record(z.string(), z.unknown()).default({}),
   grantedCapabilities: z.array(z.string().min(1)).default([]),
   requestApproval: z.boolean().default(true)
+});
+const pluginManifestCreateSchema = z.object({
+  manifestJson: z.string().min(2),
+  install: z.boolean().default(true)
 });
 
 const HIGH_RISK_CAPABILITIES = new Set(["network", "queue_publish", "issue_write", "write_memory"]);
@@ -97,6 +104,43 @@ export function createPluginsRouter(ctx: AppContext) {
       grantedCapabilitiesJson: JSON.stringify(parsed.data.grantedCapabilities)
     });
     return sendOk(res, { ok: true });
+  });
+
+  router.post("/install-from-json", async (req, res) => {
+    const parsed = pluginManifestCreateSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return sendError(res, parsed.error.message, 422);
+    }
+    let rawManifest: unknown;
+    try {
+      rawManifest = JSON.parse(parsed.data.manifestJson);
+    } catch {
+      return sendError(res, "manifestJson must be valid JSON.", 422);
+    }
+    const manifestParsed = PluginManifestSchema.safeParse(rawManifest);
+    if (!manifestParsed.success) {
+      return sendError(res, manifestParsed.error.message, 422);
+    }
+    const manifest = manifestParsed.data;
+    const [companies] = await Promise.all([listCompanies(ctx.db)]);
+    const companyExists = companies.some((company) => company.id === req.companyId);
+    if (!companyExists) {
+      return sendError(res, `Company '${req.companyId}' does not exist.`, 404);
+    }
+
+    const manifestPath = await writePluginManifestToFilesystem(manifest);
+    await registerPluginManifest(ctx.db, manifest);
+    if (parsed.data.install) {
+      await updatePluginConfig(ctx.db, {
+        companyId: req.companyId!,
+        pluginId: manifest.id,
+        enabled: false,
+        priority: 100,
+        configJson: "{}",
+        grantedCapabilitiesJson: "[]"
+      });
+    }
+    return sendOk(res, { ok: true, pluginId: manifest.id, manifestPath, installed: parsed.data.install });
   });
 
   router.post("/:pluginId/install", async (req, res) => {

@@ -56,6 +56,7 @@ Give contributors and operators one reference for key environment variables and 
 | `BOPO_HEARTBEAT_EXECUTION_TIMEOUT_MS` | computed by service | Execution timeout fallback when runtime config omits explicit timeout. |
 | `BOPO_PLUGIN_SYSTEM_DISABLED` | `0` (plugin system enabled) | Global emergency kill switch for plugin hook execution when `1`/`true`. |
 | `BOPO_PLUGIN_SYSTEM_ENABLED` | legacy compatibility | If explicitly set to `0`/`false`, plugin hooks are disabled. |
+| `BOPO_PLUGIN_MANIFESTS_DIR` | `<repo>/plugins` | Filesystem directory scanned at API startup for `*/plugin.json` manifests. |
 
 ## Communication Preflight Controls
 

@@ -32,6 +32,7 @@ import { DataTable } from "@/components/ui/data-table";
 import { DataTableColumnHeader } from "@/components/ui/data-table-column-header";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import styles from "./workspace-client.module.scss";
 import {
@@ -468,6 +469,8 @@ export function WorkspaceClient({
   const [pluginsQuery, setPluginsQuery] = useState("");
   const [pluginsStatusFilter, setPluginsStatusFilter] = useState<"all" | "active" | "installed" | "not_installed">("all");
   const [pluginsKindFilter, setPluginsKindFilter] = useState<string>("all");
+  const [installPluginDialogOpen, setInstallPluginDialogOpen] = useState(false);
+  const [pluginManifestDraft, setPluginManifestDraft] = useState("");
   const [selectedPluginPreviewId, setSelectedPluginPreviewId] = useState<string | null>(null);
   const onboardingRuntimeFallback = useMemo(() => {
     const ceo = agents.find((entry) => entry.role === "CEO" || entry.name === "CEO");
@@ -2008,23 +2011,19 @@ export function WorkspaceClient({
           return (
             <div className={styles.workspaceSectionCellStack}>
               <div className={styles.workspaceSectionCellPrimary}>{plugin.name}</div>
-              <div className={styles.workspaceSectionCellMeta}>
-                {plugin.id} · {plugin.version} · {plugin.kind}
-              </div>
             </div>
           );
         }
       },
       {
-        id: "status",
-        header: "Status",
-        cell: ({ row }) => {
-          const plugin = row.original;
-          if (!plugin.companyConfig) {
-            return <Badge variant="outline">Not installed</Badge>;
-          }
-          return plugin.companyConfig.enabled ? <Badge>Active</Badge> : <Badge variant="secondary">Installed</Badge>;
-        }
+        accessorKey: "version",
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Version" />,
+        cell: ({ row }) => <div className={styles.formatDurationContainer5}>{row.original.version}</div>
+      },
+      {
+        accessorKey: "kind",
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Kind" />,
+        cell: ({ row }) => <div className={styles.formatDurationContainer5}>{row.original.kind}</div>
       },
       {
         accessorKey: "capabilities",
@@ -2044,6 +2043,17 @@ export function WorkspaceClient({
               )}
             </div>
           );
+        }
+      },
+      {
+        id: "status",
+        header: "Status",
+        cell: ({ row }) => {
+          const plugin = row.original;
+          if (!plugin.companyConfig) {
+            return <Badge variant="outline">Not installed</Badge>;
+          }
+          return plugin.companyConfig.enabled ? <Badge>Active</Badge> : <Badge variant="secondary">Installed</Badge>;
         }
       },
       {
@@ -3105,6 +3115,17 @@ export function WorkspaceClient({
             <SectionHeading
               title="Plugins"
               description="Install plugins, activate or deactivate them, and preview recent plugin runs."
+              actions={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setInstallPluginDialogOpen(true);
+                  }}
+                >
+                  Install Plugin
+                </Button>
+              }
             />
             <div className="ui-stats">
               <MetricCard label="Plugins in scope" value={pluginsSummary.total} />
@@ -3151,6 +3172,68 @@ export function WorkspaceClient({
                 </div>
               }
             />
+            <Dialog
+              open={installPluginDialogOpen}
+              onOpenChange={setInstallPluginDialogOpen}
+            >
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Install Plugin</DialogTitle>
+                  <DialogDescription>
+                    Paste plugin manifest JSON to save it as a file and install it for this company.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-2">
+                  <div className="text-sm font-medium">Plugin JSON</div>
+                  <Textarea
+                    value={pluginManifestDraft}
+                    onChange={(event) => setPluginManifestDraft(event.target.value)}
+                    className="min-h-[220px] font-mono text-xs"
+                    placeholder={`{
+  "id": "my-plugin",
+  "version": "0.1.0",
+  "displayName": "My Plugin",
+  "description": "Describe what this plugin does.",
+  "kind": "lifecycle",
+  "hooks": ["afterPersist"],
+  "capabilities": ["emit_audit"],
+  "runtime": {
+    "type": "builtin",
+    "entrypoint": "builtin:my-plugin",
+    "timeoutMs": 5000,
+    "retryCount": 0
+  }
+}`}
+                  />
+                  <div className="text-xs text-muted-foreground">
+                    The API validates with Zod, writes `plugin.json` to your manifests directory, and installs it for this company.
+                  </div>
+                </div>
+                <div className={styles.formatDurationContainer3}>
+                  <Button variant="outline" onClick={() => setInstallPluginDialogOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    disabled={!pluginManifestDraft.trim() || isActionPending("plugin:install-from-json")}
+                    onClick={() =>
+                      runCrudAction(
+                        async () => {
+                          await apiPost("/plugins/install-from-json", companyId!, {
+                            manifestJson: pluginManifestDraft,
+                            install: true
+                          });
+                          setInstallPluginDialogOpen(false);
+                        },
+                        "Failed to save plugin manifest JSON.",
+                        "plugin:install-from-json"
+                      )
+                    }
+                  >
+                    Save
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
             <Dialog
               open={Boolean(selectedPlugin)}
               onOpenChange={(open) => {

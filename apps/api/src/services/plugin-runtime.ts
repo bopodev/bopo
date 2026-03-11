@@ -1,4 +1,4 @@
-import type { PluginHook, PluginInvocationResult } from "bopodev-contracts";
+import type { PluginHook, PluginInvocationResult, PluginManifest } from "bopodev-contracts";
 import {
   PluginHookSchema,
   PluginInvocationResultSchema,
@@ -12,6 +12,7 @@ import {
   upsertPlugin,
   updatePluginConfig
 } from "bopodev-db";
+import { loadFilesystemPluginManifests } from "./plugin-manifest-loader";
 
 type HookContext = {
   companyId: string;
@@ -153,23 +154,43 @@ export function pluginSystemEnabled() {
 }
 
 export async function ensureBuiltinPluginsRegistered(db: BopoDb, companyIds: string[] = []) {
-  for (const definition of builtinPluginDefinitions) {
-    const manifest = PluginManifestSchema.parse(definition);
-    await upsertPlugin(db, {
-      id: manifest.id,
-      name: manifest.displayName,
-      version: manifest.version,
-      kind: manifest.kind,
-      runtimeType: manifest.runtime.type,
-      runtimeEntrypoint: manifest.runtime.entrypoint,
-      hooksJson: JSON.stringify(manifest.hooks),
-      capabilitiesJson: JSON.stringify(manifest.capabilities),
-      manifestJson: JSON.stringify(manifest)
-    });
+  const manifests = builtinPluginDefinitions.map((definition) => PluginManifestSchema.parse(definition));
+  const manifestIds = new Set(manifests.map((manifest) => manifest.id));
+  const fileManifestResult = await loadFilesystemPluginManifests();
+  for (const warning of fileManifestResult.warnings) {
+    // eslint-disable-next-line no-console
+    console.warn(`[plugins] ${warning}`);
+  }
+  for (const fileManifest of fileManifestResult.manifests) {
+    if (manifestIds.has(fileManifest.id)) {
+      // eslint-disable-next-line no-console
+      console.warn(`[plugins] Skipping filesystem plugin '${fileManifest.id}' because id already exists.`);
+      continue;
+    }
+    manifests.push(fileManifest);
+    manifestIds.add(fileManifest.id);
+  }
+
+  for (const manifest of manifests) {
+    await registerPluginManifest(db, manifest);
   }
   for (const companyId of companyIds) {
     await ensureCompanyBuiltinPluginDefaults(db, companyId);
   }
+}
+
+export async function registerPluginManifest(db: BopoDb, manifest: PluginManifest) {
+  await upsertPlugin(db, {
+    id: manifest.id,
+    name: manifest.displayName,
+    version: manifest.version,
+    kind: manifest.kind,
+    runtimeType: manifest.runtime.type,
+    runtimeEntrypoint: manifest.runtime.entrypoint,
+    hooksJson: JSON.stringify(manifest.hooks),
+    capabilitiesJson: JSON.stringify(manifest.capabilities),
+    manifestJson: JSON.stringify(manifest)
+  });
 }
 
 export async function ensureCompanyBuiltinPluginDefaults(db: BopoDb, companyId: string) {
