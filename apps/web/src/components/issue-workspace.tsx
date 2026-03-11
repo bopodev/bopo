@@ -231,9 +231,6 @@ export function IssueWorkspace({
         cell: ({ row }) => (
           <div className={styles.savedViewContainer2}>
             <div className={styles.savedViewContainer3}>{row.original.title}</div>
-            <div className={styles.savedViewContainer4}>
-              {selectedProjectNameFor(row.original.projectId, projects)} · {row.original.body ? "Has description" : "No description"}
-            </div>
           </div>
         )
       },
