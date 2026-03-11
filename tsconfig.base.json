@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "forceConsistentCasingInFileNames": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "noUncheckedIndexedAccess": true,
+    "allowSyntheticDefaultImports": true,
+    "baseUrl": ".",
+    "paths": {
+      "bopodev-contracts": ["packages/contracts/src/index.ts"],
+      "bopodev-db": ["packages/db/src/index.ts"],
+      "bopodev-agent-sdk": ["packages/agent-sdk/src/index.ts"],
+      "bopodev-ui/*": ["packages/ui/src/*"],
+      "bopodev-config/*": ["packages/config/*"]
+    }
+  }
+}

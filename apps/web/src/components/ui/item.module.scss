@@ -1,0 +1,53 @@
+@reference "../../app/globals.css";
+
+.itemRoot {
+  @apply flex items-start gap-4 rounded-lg;
+}
+
+.itemRoot[data-size="default"] {
+  @apply p-3;
+}
+
+.itemRoot[data-size="sm"] {
+  @apply p-2.5;
+}
+
+.itemRoot[data-size="xs"] {
+  @apply p-2;
+}
+
+.itemRoot[data-variant="default"] {
+  @apply bg-transparent;
+}
+
+.itemRoot[data-variant="outline"] {
+  @apply border bg-card;
+}
+
+.itemRoot[data-variant="muted"] {
+  @apply bg-muted/30;
+}
+
+.itemGroup {
+  @apply flex flex-col gap-6 mb-8;
+}
+
+.itemSeparator {
+  @apply h-px w-full bg-border;
+}
+
+.itemContent {
+  @apply min-w-0 flex-1;
+}
+
+.itemTitle {
+  @apply text-sm font-medium text-foreground;
+}
+
+.itemDescription {
+  @apply mt-1 text-xs text-muted-foreground;
+}
+
+.itemActions {
+  @apply ml-auto flex items-center gap-2;
+}

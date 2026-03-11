@@ -1,0 +1,32 @@
+{
+  "name": "bopodev",
+  "version": "0.1.12",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "bopodev": "./dist/index.js",
+    "bopo": "./dist/index.js"
+  },
+  "files": ["dist"],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "cli:dev": "tsx src/index.ts",
+    "build": "tsup src/index.ts --format esm --platform node --target node20 --out-dir dist",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@clack/prompts": "^0.10.0",
+    "commander": "^13.1.0",
+    "dotenv": "^17.0.1",
+    "picocolors": "^1.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "tsup": "^8.5.0",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2"
+  }
+}

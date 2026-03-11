@@ -1,0 +1,64 @@
+@reference "../app/globals.css";
+
+.emptyState {
+  @apply text-sm text-muted-foreground;
+}
+
+.viewport {
+  @apply relative overflow-hidden rounded-2xl border border-dashed border-border bg-muted/20 h-[calc(100dvh-8.5rem)];
+  cursor: grab;
+}
+
+.viewport:active {
+  cursor: grabbing;
+}
+
+.controls {
+  @apply absolute right-3 top-3 z-20 flex gap-2;
+}
+
+.controlButton {
+  @apply rounded-md border bg-background px-3 py-1 text-xs font-medium text-foreground hover:bg-muted;
+}
+
+.chartLayer {
+  @apply absolute left-0 top-0 origin-top-left;
+}
+
+.edgeLayer {
+  @apply absolute left-0 top-0 z-0;
+}
+
+.edgePath {
+  fill: none;
+  stroke: hsl(var(--border));
+  stroke-width: 1.5;
+}
+
+.orgCard {
+  @apply absolute z-10 rounded-lg border bg-card px-5 py-4;
+}
+
+.orgCardHeader {
+  @apply flex items-start gap-4;
+}
+
+.orgCardAvatar {
+  @apply mt-0.5 size-7 shrink-0 rounded-full bg-background bg-cover bg-center bg-no-repeat;
+}
+
+.orgCardText {
+  @apply min-w-0 flex-1 space-y-0.5;
+}
+
+.orgCardName {
+  @apply truncate text-sm font-semibold leading-tight text-foreground;
+}
+
+.orgCardMeta {
+  @apply truncate text-xs text-muted-foreground mt-2;
+}
+
+.orgCardDetails {
+  @apply truncate text-xs text-muted-foreground;
+}

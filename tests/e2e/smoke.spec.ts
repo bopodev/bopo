@@ -1,0 +1,94 @@
+import { expect, test, type APIRequestContext } from "@playwright/test";
+
+const apiUrl = process.env.E2E_API_URL ?? "http://127.0.0.1:4020";
+
+test.describe("workspace smoke journeys", () => {
+  test("issues page renders seeded issue", async ({ page, request }) => {
+    const companyId = await createCompany(request, "E2E Issues Company");
+    const projectId = await createProject(request, companyId, "E2E Project");
+    await createIssue(request, companyId, projectId, "E2E Smoke Issue");
+
+    await page.goto(`/issues?companyId=${companyId}`);
+
+    await expect(page.getByRole("heading", { name: "Issues" })).toBeVisible();
+    await expect(page.getByText("E2E Smoke Issue")).toBeVisible();
+  });
+
+  test("projects page renders seeded project", async ({ page, request }) => {
+    const companyId = await createCompany(request, "E2E Projects Company");
+    await createProject(request, companyId, "Open Source Beta Prep");
+
+    await page.goto(`/projects?companyId=${companyId}`);
+
+    await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
+    await expect(page.getByText("Open Source Beta Prep")).toBeVisible();
+  });
+
+  test("governance page renders pending approval", async ({ page, request }) => {
+    const companyId = await createCompany(request, "E2E Governance Company");
+
+    await apiPost(request, "/agents", companyId, {
+      role: "Engineer",
+      name: "Needs Approval",
+      providerType: "shell",
+      heartbeatCron: "*/5 * * * *",
+      monthlyBudgetUsd: 25,
+      canHireAgents: false,
+      requestApproval: true,
+      runtimeCommand: "echo",
+      runtimeCwd: "/tmp",
+      runtimeArgs: ['{"summary":"noop","tokenInput":0,"tokenOutput":0,"usdCost":0}']
+    });
+
+    await page.goto(`/governance?companyId=${companyId}`);
+
+    await expect(page.getByRole("heading", { name: "Governance" })).toBeVisible();
+    await expect(page.getByText("hire_agent")).toBeVisible();
+    await expect(page.getByText("Needs Approval · Engineer")).toBeVisible();
+  });
+});
+
+async function createCompany(request: APIRequestContext, name: string): Promise<string> {
+  const response = await request.post(`${apiUrl}/companies`, {
+    data: { name, mission: "E2E smoke validation" }
+  });
+  expect(response.ok()).toBeTruthy();
+  const body = (await response.json()) as { data: { id: string } };
+  return body.data.id;
+}
+
+async function createProject(
+  request: APIRequestContext,
+  companyId: string,
+  name: string
+): Promise<string> {
+  const response = await apiPost(request, "/projects", companyId, { name });
+  const body = (await response.json()) as { data: { id: string } };
+  return body.data.id;
+}
+
+async function createIssue(
+  request: APIRequestContext,
+  companyId: string,
+  projectId: string,
+  title: string
+) {
+  const response = await apiPost(request, "/issues", companyId, { projectId, title, priority: "medium" });
+  expect(response.ok()).toBeTruthy();
+}
+
+async function apiPost(
+  request: APIRequestContext,
+  path: string,
+  companyId: string,
+  data: Record<string, unknown>
+) {
+  const response = await request.post(`${apiUrl}${path}`, {
+    headers: {
+      "x-company-id": companyId
+    },
+    data
+  });
+  expect(response.ok()).toBeTruthy();
+  return response;
+}

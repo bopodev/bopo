@@ -1,0 +1,164 @@
+import { access, constants, mkdir } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join, resolve } from "node:path";
+import { commandExists, runCommandCapture } from "./process";
+
+export interface DoctorCheck {
+  label: string;
+  ok: boolean;
+  details: string;
+}
+
+export async function runDoctorChecks(options?: { workspaceRoot?: string }): Promise<DoctorCheck[]> {
+  const checks: DoctorCheck[] = [];
+  const nodeMajor = Number.parseInt(process.versions.node.split(".")[0] ?? "0", 10);
+  checks.push({
+    label: "Node.js",
+    ok: nodeMajor >= 20,
+    details: `Detected ${process.versions.node}; requires >= 20`
+  });
+
+  const pnpmAvailable = await commandExists("pnpm");
+  checks.push({
+    label: "pnpm",
+    ok: pnpmAvailable,
+    details: pnpmAvailable ? "pnpm is available" : "pnpm is not installed or not in PATH"
+  });
+
+  const codexCommand = process.env.BOPO_CODEX_COMMAND?.trim() || "codex";
+  const codex = await checkRuntimeCommandHealth(codexCommand, options?.workspaceRoot);
+  checks.push({
+    label: "Codex runtime",
+    ok: codex.available && codex.exitCode === 0,
+    details:
+      codex.available && codex.exitCode === 0
+        ? `Command '${codexCommand}' is available`
+        : codex.error ?? `Command '${codexCommand}' exited with ${String(codex.exitCode)}`
+  });
+
+  const instanceRoot = resolveInstanceRoot();
+  const storageRoot = join(instanceRoot, "data", "storage");
+  const workspaceRoot = join(instanceRoot, "workspaces");
+  checks.push({
+    label: "Instance root writable",
+    ok: await ensureWritableDirectory(instanceRoot),
+    details: instanceRoot
+  });
+  checks.push({
+    label: "Workspace root writable",
+    ok: await ensureWritableDirectory(workspaceRoot),
+    details: workspaceRoot
+  });
+  checks.push({
+    label: "Storage root writable",
+    ok: await ensureWritableDirectory(storageRoot),
+    details: storageRoot
+  });
+
+  if (options?.workspaceRoot) {
+    const backfillCheck = await runWorkspaceBackfillDryRunCheck(options.workspaceRoot);
+    checks.push(backfillCheck);
+  }
+
+  return checks;
+}
+
+async function checkRuntimeCommandHealth(command: string, cwd?: string) {
+  const result = await runCommandCapture(command, ["--version"], { cwd });
+  return {
+    available: result.code !== null,
+    exitCode: result.code,
+    error: result.ok ? undefined : result.stderr || `Command '${command}' is not available`
+  };
+}
+
+export async function detectPnpmVersion(): Promise<string | null> {
+  const result = await runCommandCapture("pnpm", ["--version"]);
+  if (!result.ok) {
+    return null;
+  }
+  return result.stdout.trim() || null;
+}
+
+async function ensureWritableDirectory(path: string) {
+  try {
+    await mkdir(path, { recursive: true });
+    await access(path, constants.W_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function resolveInstanceRoot() {
+  const explicit = process.env.BOPO_INSTANCE_ROOT?.trim();
+  if (explicit) {
+    return resolve(expandHomePrefix(explicit));
+  }
+  const home = process.env.BOPO_HOME?.trim() ? expandHomePrefix(process.env.BOPO_HOME.trim()) : join(homedir(), ".bopodev");
+  const instanceId = process.env.BOPO_INSTANCE_ID?.trim() || "default";
+  return resolve(home, "instances", instanceId);
+}
+
+function expandHomePrefix(value: string) {
+  if (value === "~") {
+    return homedir();
+  }
+  if (value.startsWith("~/")) {
+    return resolve(homedir(), value.slice(2));
+  }
+  return value;
+}
+
+async function runWorkspaceBackfillDryRunCheck(workspaceRoot: string): Promise<DoctorCheck> {
+  const result = await runCommandCapture("pnpm", ["--filter", "bopodev-api", "workspaces:backfill"], {
+    cwd: workspaceRoot,
+    env: {
+      ...process.env,
+      BOPO_BACKFILL_DRY_RUN: "1"
+    }
+  });
+  if (!result.ok) {
+    return {
+      label: "Project workspace coverage",
+      ok: false,
+      details: result.stderr.trim() || "Failed to run workspace coverage check."
+    };
+  }
+  const lines = result.stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  const lastLine = lines[lines.length - 1];
+  if (!lastLine) {
+    return {
+      label: "Project workspace coverage",
+      ok: false,
+      details: "Workspace coverage check produced no output."
+    };
+  }
+  try {
+    const parsed = JSON.parse(lastLine) as {
+      missingWorkspaceLocalPath?: number;
+      relativeWorkspaceLocalPath?: number;
+      scannedProjects?: number;
+    };
+    const missing = Number(parsed.missingWorkspaceLocalPath ?? 0);
+    const relative = Number(parsed.relativeWorkspaceLocalPath ?? 0);
+    const scanned = Number(parsed.scannedProjects ?? 0);
+    const ok = missing === 0 && relative === 0;
+    return {
+      label: "Project workspace coverage",
+      ok,
+      details: ok
+        ? `${scanned} projects scanned; all have absolute workspace paths`
+        : `${scanned} projects scanned; ${missing} missing and ${relative} relative workspace path(s)`
+    };
+  } catch {
+    return {
+      label: "Project workspace coverage",
+      ok: false,
+      details: "Workspace coverage check returned invalid JSON."
+    };
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "name": "bopodev-api",
+  "version": "0.1.12",
+  "license": "MIT",
+  "type": "module",
+  "files": [
+    "src",
+    "tsconfig.json"
+  ],
+  "scripts": {
+    "dev": "PORT=${API_PORT:-4020} tsx watch src/server.ts",
+    "start": "PORT=${API_PORT:-4020} tsx src/server.ts",
+    "db:init": "tsx src/scripts/db-init.ts",
+    "onboard:seed": "tsx src/scripts/onboard-seed.ts",
+    "workspaces:backfill": "tsx src/scripts/backfill-project-workspaces.ts",
+    "build": "tsc -p tsconfig.json",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "bopodev-agent-sdk": "workspace:*",
+    "bopodev-contracts": "workspace:*",
+    "bopodev-db": "workspace:*",
+    "cors": "^2.8.5",
+    "cron-parser": "^5.3.1",
+    "dotenv": "^17.0.1",
+    "drizzle-orm": "^0.44.5",
+    "express": "^5.1.0",
+    "multer": "^2.1.1",
+    "nanoid": "^5.1.5",
+    "ws": "^8.19.0",
+    "zod": "^4.1.5"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.3",
+    "@types/multer": "^2.1.0",
+    "@types/ws": "^8.18.1",
+    "tsx": "^4.20.5"
+  }
+}

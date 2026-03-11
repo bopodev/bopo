@@ -1,0 +1,758 @@
+import { Router } from "express";
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { basename, extname, join, resolve } from "node:path";
+import { and, eq } from "drizzle-orm";
+import multer from "multer";
+import { z } from "zod";
+import {
+  addIssueAttachment,
+  addIssueComment,
+  agents,
+  appendActivity,
+  appendAuditEvent,
+  createIssue,
+  deleteIssueAttachment,
+  deleteIssueComment,
+  deleteIssue,
+  getIssueAttachment,
+  issues,
+  listIssueAttachments,
+  listIssueActivity,
+  listIssueComments,
+  listIssues,
+  projects,
+  updateIssueComment,
+  updateIssue
+} from "bopodev-db";
+import { nanoid } from "nanoid";
+import type { AppContext } from "../context";
+import { sendError, sendOk } from "../http";
+import { isInsidePath, normalizeAbsolutePath, resolveProjectWorkspacePath } from "../lib/instance-paths";
+import { requireCompanyScope } from "../middleware/company-scope";
+import { requirePermission } from "../middleware/request-actor";
+
+const createIssueSchema = z.object({
+  projectId: z.string().min(1),
+  parentIssueId: z.string().optional(),
+  title: z.string().min(1),
+  body: z.string().optional(),
+  status: z.enum(["todo", "in_progress", "blocked", "in_review", "done", "canceled"]).default("todo"),
+  priority: z.enum(["none", "low", "medium", "high", "urgent"]).default("none"),
+  assigneeAgentId: z.string().nullable().optional(),
+  labels: z.array(z.string()).default([]),
+  tags: z.array(z.string()).default([])
+});
+
+const createIssueCommentSchema = z.object({
+  body: z.string().min(1),
+  authorType: z.enum(["human", "agent", "system"]).optional(),
+  authorId: z.string().optional()
+});
+
+const createIssueCommentLegacySchema = z.object({
+  issueId: z.string().min(1),
+  body: z.string().min(1),
+  authorType: z.enum(["human", "agent", "system"]).optional(),
+  authorId: z.string().optional()
+});
+
+const updateIssueCommentSchema = z.object({
+  body: z.string().min(1)
+});
+
+const MAX_ATTACHMENTS_PER_REQUEST = parsePositiveIntEnv("BOPO_ISSUE_ATTACHMENTS_MAX_FILES", 10);
+const MAX_ATTACHMENT_SIZE_BYTES = parsePositiveIntEnv("BOPO_ISSUE_ATTACHMENTS_MAX_BYTES", 20 * 1024 * 1024);
+const ALLOWED_ATTACHMENT_MIME_TYPES = parseCsvSet(
+  process.env.BOPO_ISSUE_ATTACHMENTS_ALLOWED_MIME_TYPES,
+  [
+    "image/png",
+    "image/jpeg",
+    "image/webp",
+    "image/gif",
+    "application/pdf",
+    "text/plain",
+    "text/markdown",
+    "application/json",
+    "text/csv",
+    "application/zip",
+    "application/x-zip-compressed"
+  ]
+);
+const ALLOWED_ATTACHMENT_EXTENSIONS = parseCsvSet(
+  process.env.BOPO_ISSUE_ATTACHMENTS_ALLOWED_EXTENSIONS,
+  ["png", "jpg", "jpeg", "webp", "gif", "pdf", "txt", "md", "json", "csv", "zip"]
+);
+
+type IssueAttachmentResponse = Record<string, unknown> & { id: string; downloadPath: string };
+
+function parseStringArray(value: unknown) {
+  if (Array.isArray(value)) {
+    return value.map((entry) => String(entry));
+  }
+  if (typeof value !== "string") {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.map((entry) => String(entry)) : [];
+  } catch {
+    return [];
+  }
+}
+
+function toIssueResponse(issue: Record<string, unknown>) {
+  const labels = parseStringArray(issue.labelsJson);
+  const tags = parseStringArray(issue.tagsJson);
+  const { labelsJson: _labelsJson, tagsJson: _tagsJson, ...rest } = issue;
+  return {
+    ...rest,
+    labels,
+    tags
+  };
+}
+
+const updateIssueSchema = z
+  .object({
+    projectId: z.string().min(1).optional(),
+    title: z.string().min(1).optional(),
+    body: z.string().nullable().optional(),
+    status: z.enum(["todo", "in_progress", "blocked", "in_review", "done", "canceled"]).optional(),
+    priority: z.enum(["none", "low", "medium", "high", "urgent"]).optional(),
+    assigneeAgentId: z.string().nullable().optional(),
+    labels: z.array(z.string()).optional(),
+    tags: z.array(z.string()).optional()
+  })
+  .refine((payload) => Object.keys(payload).length > 0, "At least one field must be provided.");
+
+export function createIssuesRouter(ctx: AppContext) {
+  const router = Router();
+  const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+      fileSize: MAX_ATTACHMENT_SIZE_BYTES,
+      files: MAX_ATTACHMENTS_PER_REQUEST
+    }
+  });
+  router.use(requireCompanyScope);
+
+  router.get("/", async (req, res) => {
+    const projectId = req.query.projectId?.toString();
+    const rows = await listIssues(ctx.db, req.companyId!, projectId);
+    return sendOk(
+      res,
+      rows.map((row) => toIssueResponse(row as unknown as Record<string, unknown>))
+    );
+  });
+
+  router.post("/", async (req, res) => {
+    requirePermission("issues:write")(req, res, () => {});
+    if (res.headersSent) {
+      return;
+    }
+    const parsed = createIssueSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return sendError(res, parsed.error.message, 422);
+    }
+    if (parsed.data.assigneeAgentId) {
+      const assignmentValidation = await validateIssueAssignmentScope(
+        ctx,
+        req.companyId!,
+        parsed.data.projectId,
+        parsed.data.assigneeAgentId
+      );
+      if (assignmentValidation) {
+        return sendError(res, assignmentValidation, 422);
+      }
+    }
+    const issue = await createIssue(ctx.db, { companyId: req.companyId!, ...parsed.data });
+    await appendActivity(ctx.db, {
+      companyId: req.companyId!,
+      issueId: issue.id,
+      actorType: "human",
+      eventType: "issue.created",
+      payload: { issue }
+    });
+    await appendAuditEvent(ctx.db, {
+      companyId: req.companyId!,
+      actorType: "human",
+      eventType: "issue.created",
+      entityType: "issue",
+      entityId: issue.id,
+      payload: issue
+    });
+    return sendOk(res, toIssueResponse(issue as unknown as Record<string, unknown>));
+  });
+
+  router.post("/:issueId/attachments", async (req, res) => {
+    requirePermission("issues:write")(req, res, () => {});
+    if (res.headersSent) {
+      return;
+    }
+
+    upload.array("files", MAX_ATTACHMENTS_PER_REQUEST)(req, res, async (uploadError) => {
+      if (uploadError) {
+        if (uploadError instanceof multer.MulterError) {
+          if (uploadError.code === "LIMIT_FILE_SIZE") {
+            return sendError(
+              res,
+              `Attachment exceeds max file size of ${MAX_ATTACHMENT_SIZE_BYTES} bytes.`,
+              422
+            );
+          }
+          if (uploadError.code === "LIMIT_FILE_COUNT") {
+            return sendError(
+              res,
+              `Too many files. Max ${MAX_ATTACHMENTS_PER_REQUEST} attachment(s) per request.`,
+              422
+            );
+          }
+          return sendError(res, uploadError.message, 422);
+        }
+        return sendError(res, "Failed to parse multipart attachment payload.", 422);
+      }
+
+      try {
+        const files = (req.files as Express.Multer.File[] | undefined) ?? [];
+        if (files.length === 0) {
+          return sendError(res, "At least one attachment file is required.", 422);
+        }
+        const issueContext = await getIssueContextForAttachment(ctx, req.companyId!, req.params.issueId);
+        if (!issueContext) {
+          return sendError(res, "Issue not found.", 404);
+        }
+        const workspacePath = resolveWorkspacePath(issueContext.companyId, issueContext.projectId, issueContext.workspaceLocalPath);
+        const attachmentDir = join(workspacePath, ".bopo", "issues", issueContext.issueId, "attachments");
+        await mkdir(attachmentDir, { recursive: true });
+
+        const uploaded: IssueAttachmentResponse[] = [];
+        for (const file of files) {
+          if (!isAllowedAttachmentFile(file)) {
+            return sendError(
+              res,
+              `Unsupported attachment type for '${file.originalname}'. Allowed extensions: ${Array.from(ALLOWED_ATTACHMENT_EXTENSIONS).join(", ")}`,
+              422
+            );
+          }
+
+          const attachmentId = nanoid(14);
+          const safeFileName = sanitizeAttachmentFileName(file.originalname);
+          const storedFileName = `${attachmentId}-${safeFileName}`;
+          const relativePath = join(".bopo", "issues", issueContext.issueId, "attachments", storedFileName);
+          const absolutePath = resolve(workspacePath, relativePath);
+          if (!isInsidePath(workspacePath, absolutePath)) {
+            return sendError(res, "Invalid attachment destination path.", 422);
+          }
+
+          await writeFile(absolutePath, file.buffer);
+          try {
+            const attachment = await addIssueAttachment(ctx.db, {
+              id: attachmentId,
+              companyId: req.companyId!,
+              issueId: issueContext.issueId,
+              projectId: issueContext.projectId,
+              fileName: file.originalname,
+              mimeType: file.mimetype || null,
+              fileSizeBytes: file.size,
+              relativePath,
+              uploadedByActorType: req.actor?.type === "agent" ? "agent" : "human",
+              uploadedByActorId: req.actor?.id
+            });
+            uploaded.push(toIssueAttachmentResponse(attachment as unknown as Record<string, unknown>, issueContext.issueId));
+          } catch (error) {
+            await rm(absolutePath, { force: true }).catch(() => undefined);
+            throw error;
+          }
+        }
+
+        await appendActivity(ctx.db, {
+          companyId: req.companyId!,
+          issueId: issueContext.issueId,
+          actorType: req.actor?.type === "agent" ? "agent" : "human",
+          actorId: req.actor?.id,
+          eventType: "issue.attachments_added",
+          payload: { count: uploaded.length, attachmentIds: uploaded.map((entry) => entry.id) }
+        });
+        await appendAuditEvent(ctx.db, {
+          companyId: req.companyId!,
+          actorType: req.actor?.type === "agent" ? "agent" : "human",
+          actorId: req.actor?.id,
+          eventType: "issue.attachments_added",
+          entityType: "issue",
+          entityId: issueContext.issueId,
+          payload: { attachments: uploaded }
+        });
+        return sendOk(res, uploaded);
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error(error);
+        return sendError(res, "Failed to upload attachments.", 500);
+      }
+    });
+  });
+
+  router.get("/:issueId/attachments", async (req, res) => {
+    const issueContext = await getIssueContextForAttachment(ctx, req.companyId!, req.params.issueId);
+    if (!issueContext) {
+      return sendError(res, "Issue not found.", 404);
+    }
+    const attachments = await listIssueAttachments(ctx.db, req.companyId!, req.params.issueId);
+    return sendOk(
+      res,
+      attachments.map((attachment) =>
+        toIssueAttachmentResponse(attachment as unknown as Record<string, unknown>, req.params.issueId)
+      )
+    );
+  });
+
+  router.get("/:issueId/attachments/:attachmentId/download", async (req, res) => {
+    const issueContext = await getIssueContextForAttachment(ctx, req.companyId!, req.params.issueId);
+    if (!issueContext) {
+      return sendError(res, "Issue not found.", 404);
+    }
+    const attachment = await getIssueAttachment(ctx.db, req.companyId!, req.params.issueId, req.params.attachmentId);
+    if (!attachment) {
+      return sendError(res, "Attachment not found.", 404);
+    }
+    const workspacePath = resolveWorkspacePath(issueContext.companyId, issueContext.projectId, issueContext.workspaceLocalPath);
+    const absolutePath = resolve(workspacePath, attachment.relativePath);
+    if (!isInsidePath(workspacePath, absolutePath)) {
+      return sendError(res, "Invalid attachment path.", 422);
+    }
+    try {
+      await stat(absolutePath);
+    } catch {
+      return sendError(res, "Attachment file is missing on disk.", 404);
+    }
+    const fileBuffer = await readFile(absolutePath);
+    if (attachment.mimeType) {
+      res.setHeader("content-type", attachment.mimeType);
+    } else {
+      res.setHeader("content-type", "application/octet-stream");
+    }
+    res.setHeader("content-disposition", `attachment; filename="${encodeURIComponent(attachment.fileName)}"`);
+    return res.send(fileBuffer);
+  });
+
+  router.delete("/:issueId/attachments/:attachmentId", async (req, res) => {
+    requirePermission("issues:write")(req, res, () => {});
+    if (res.headersSent) {
+      return;
+    }
+    const issueContext = await getIssueContextForAttachment(ctx, req.companyId!, req.params.issueId);
+    if (!issueContext) {
+      return sendError(res, "Issue not found.", 404);
+    }
+    const attachment = await getIssueAttachment(ctx.db, req.companyId!, req.params.issueId, req.params.attachmentId);
+    if (!attachment) {
+      return sendError(res, "Attachment not found.", 404);
+    }
+    const workspacePath = resolveWorkspacePath(issueContext.companyId, issueContext.projectId, issueContext.workspaceLocalPath);
+    const absolutePath = resolve(workspacePath, attachment.relativePath);
+    if (!isInsidePath(workspacePath, absolutePath)) {
+      return sendError(res, "Invalid attachment path.", 422);
+    }
+    await rm(absolutePath, { force: true }).catch(() => undefined);
+    const deleted = await deleteIssueAttachment(ctx.db, req.companyId!, req.params.issueId, req.params.attachmentId);
+    if (!deleted) {
+      return sendError(res, "Attachment not found.", 404);
+    }
+    await appendActivity(ctx.db, {
+      companyId: req.companyId!,
+      issueId: issueContext.issueId,
+      actorType: req.actor?.type === "agent" ? "agent" : "human",
+      actorId: req.actor?.id,
+      eventType: "issue.attachment_deleted",
+      payload: { attachmentId: req.params.attachmentId }
+    });
+    await appendAuditEvent(ctx.db, {
+      companyId: req.companyId!,
+      actorType: req.actor?.type === "agent" ? "agent" : "human",
+      actorId: req.actor?.id,
+      eventType: "issue.attachment_deleted",
+      entityType: "issue_attachment",
+      entityId: req.params.attachmentId,
+      payload: deleted as unknown as Record<string, unknown>
+    });
+    return sendOk(res, { deleted: true });
+  });
+
+  router.get("/:issueId/comments", async (req, res) => {
+    const comments = await listIssueComments(ctx.db, req.companyId!, req.params.issueId);
+    return sendOk(res, comments);
+  });
+
+  router.get("/:issueId/activity", async (req, res) => {
+    const activity = await listIssueActivity(ctx.db, req.companyId!, req.params.issueId);
+    return sendOk(
+      res,
+      activity.map((row) => ({
+        ...row,
+        payload: parsePayload(row.payloadJson)
+      }))
+    );
+  });
+
+  router.post("/:issueId/comments", async (req, res) => {
+    requirePermission("issues:write")(req, res, () => {});
+    if (res.headersSent) {
+      return;
+    }
+    const parsed = createIssueCommentSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return sendError(res, parsed.error.message, 422);
+    }
+    const author = resolveIssueCommentAuthor(req.actor?.type, req.actor?.id, parsed.data);
+    const comment = await addIssueComment(ctx.db, {
+      companyId: req.companyId!,
+      issueId: req.params.issueId,
+      body: parsed.data.body,
+      authorType: author.authorType,
+      authorId: author.authorId
+    });
+    await appendActivity(ctx.db, {
+      companyId: req.companyId!,
+      issueId: comment.issueId,
+      actorType: comment.authorType,
+      actorId: comment.authorId,
+      eventType: "issue.comment_added",
+      payload: { commentId: comment.id }
+    });
+    await appendAuditEvent(ctx.db, {
+      companyId: req.companyId!,
+      actorType: comment.authorType,
+      actorId: comment.authorId,
+      eventType: "issue.comment_added",
+      entityType: "issue_comment",
+      entityId: comment.id,
+      payload: comment
+    });
+    return sendOk(res, comment);
+  });
+
+  // Backward-compatible endpoint used by older clients.
+  router.post("/comment", async (req, res) => {
+    requirePermission("issues:write")(req, res, () => {});
+    if (res.headersSent) {
+      return;
+    }
+    const parsed = createIssueCommentLegacySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return sendError(res, parsed.error.message, 422);
+    }
+    const author = resolveIssueCommentAuthor(req.actor?.type, req.actor?.id, parsed.data);
+    const comment = await addIssueComment(ctx.db, {
+      companyId: req.companyId!,
+      issueId: parsed.data.issueId,
+      body: parsed.data.body,
+      authorType: author.authorType,
+      authorId: author.authorId
+    });
+    await appendActivity(ctx.db, {
+      companyId: req.companyId!,
+      issueId: comment.issueId,
+      actorType: comment.authorType,
+      actorId: comment.authorId,
+      eventType: "issue.comment_added",
+      payload: { commentId: comment.id }
+    });
+    await appendAuditEvent(ctx.db, {
+      companyId: req.companyId!,
+      actorType: comment.authorType,
+      actorId: comment.authorId,
+      eventType: "issue.comment_added",
+      entityType: "issue_comment",
+      entityId: comment.id,
+      payload: comment
+    });
+    return sendOk(res, comment);
+  });
+
+  router.put("/:issueId/comments/:commentId", async (req, res) => {
+    requirePermission("issues:write")(req, res, () => {});
+    if (res.headersSent) {
+      return;
+    }
+    const parsed = updateIssueCommentSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return sendError(res, parsed.error.message, 422);
+    }
+
+    const comment = await updateIssueComment(ctx.db, {
+      companyId: req.companyId!,
+      issueId: req.params.issueId,
+      id: req.params.commentId,
+      body: parsed.data.body
+    });
+    if (!comment) {
+      return sendError(res, "Comment not found.", 404);
+    }
+
+    await appendActivity(ctx.db, {
+      companyId: req.companyId!,
+      issueId: req.params.issueId,
+      actorType: "human",
+      eventType: "issue.comment_updated",
+      payload: { commentId: comment.id }
+    });
+    await appendAuditEvent(ctx.db, {
+      companyId: req.companyId!,
+      actorType: "human",
+      eventType: "issue.comment_updated",
+      entityType: "issue_comment",
+      entityId: comment.id,
+      payload: comment
+    });
+    return sendOk(res, comment);
+  });
+
+  router.delete("/:issueId/comments/:commentId", async (req, res) => {
+    requirePermission("issues:write")(req, res, () => {});
+    if (res.headersSent) {
+      return;
+    }
+    const deleted = await deleteIssueComment(ctx.db, req.companyId!, req.params.issueId, req.params.commentId);
+    if (!deleted) {
+      return sendError(res, "Comment not found.", 404);
+    }
+
+    await appendActivity(ctx.db, {
+      companyId: req.companyId!,
+      issueId: req.params.issueId,
+      actorType: "human",
+      eventType: "issue.comment_deleted",
+      payload: { commentId: req.params.commentId }
+    });
+    await appendAuditEvent(ctx.db, {
+      companyId: req.companyId!,
+      actorType: "human",
+      eventType: "issue.comment_deleted",
+      entityType: "issue_comment",
+      entityId: req.params.commentId,
+      payload: { id: req.params.commentId, issueId: req.params.issueId }
+    });
+    return sendOk(res, { deleted: true });
+  });
+
+  router.put("/:issueId", async (req, res) => {
+    requirePermission("issues:write")(req, res, () => {});
+    if (res.headersSent) {
+      return;
+    }
+    const parsed = updateIssueSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return sendError(res, parsed.error.message, 422);
+    }
+    if (parsed.data.assigneeAgentId !== undefined || parsed.data.projectId !== undefined) {
+      const [existingIssue] = await ctx.db
+        .select({
+          id: issues.id,
+          projectId: issues.projectId,
+          assigneeAgentId: issues.assigneeAgentId
+        })
+        .from(issues)
+        .where(and(eq(issues.companyId, req.companyId!), eq(issues.id, req.params.issueId)))
+        .limit(1);
+      if (!existingIssue) {
+        return sendError(res, "Issue not found.", 404);
+      }
+      const effectiveProjectId = parsed.data.projectId ?? existingIssue.projectId;
+      const effectiveAssigneeAgentId =
+        parsed.data.assigneeAgentId === undefined ? existingIssue.assigneeAgentId : parsed.data.assigneeAgentId;
+      if (effectiveAssigneeAgentId) {
+        const assignmentValidation = await validateIssueAssignmentScope(
+          ctx,
+          req.companyId!,
+          effectiveProjectId,
+          effectiveAssigneeAgentId
+        );
+        if (assignmentValidation) {
+          return sendError(res, assignmentValidation, 422);
+        }
+      }
+    }
+
+    const issue = await updateIssue(ctx.db, { companyId: req.companyId!, id: req.params.issueId, ...parsed.data });
+    if (!issue) {
+      return sendError(res, "Issue not found.", 404);
+    }
+
+    await appendActivity(ctx.db, {
+      companyId: req.companyId!,
+      issueId: issue.id,
+      actorType: "human",
+      eventType: "issue.updated",
+      payload: { issue }
+    });
+    await appendAuditEvent(ctx.db, {
+      companyId: req.companyId!,
+      actorType: "human",
+      eventType: "issue.updated",
+      entityType: "issue",
+      entityId: issue.id,
+      payload: issue
+    });
+    return sendOk(res, toIssueResponse(issue as unknown as Record<string, unknown>));
+  });
+
+  router.delete("/:issueId", async (req, res) => {
+    requirePermission("issues:write")(req, res, () => {});
+    if (res.headersSent) {
+      return;
+    }
+    const deleted = await deleteIssue(ctx.db, req.companyId!, req.params.issueId);
+    if (!deleted) {
+      return sendError(res, "Issue not found.", 404);
+    }
+    await appendAuditEvent(ctx.db, {
+      companyId: req.companyId!,
+      actorType: "human",
+      eventType: "issue.deleted",
+      entityType: "issue",
+      entityId: req.params.issueId,
+      payload: { id: req.params.issueId }
+    });
+    return sendOk(res, { deleted: true });
+  });
+
+  return router;
+}
+
+function parsePayload(payloadJson: string) {
+  try {
+    const parsed = JSON.parse(payloadJson) as unknown;
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function resolveIssueCommentAuthor(
+  actorType: "board" | "member" | "agent" | undefined,
+  actorId: string | undefined,
+  input: { authorType?: "human" | "agent" | "system"; authorId?: string }
+) {
+  const inferredAuthorType = actorType === "agent" ? "agent" : "human";
+  const authorType = input.authorType ?? inferredAuthorType;
+  if (input.authorId) {
+    return { authorType, authorId: input.authorId };
+  }
+  if (authorType === "agent" && actorId) {
+    return { authorType, authorId: actorId };
+  }
+  return { authorType, authorId: undefined };
+}
+
+async function validateIssueAssignmentScope(
+  ctx: AppContext,
+  companyId: string,
+  projectId: string,
+  assigneeAgentId: string
+) {
+  const [project] = await ctx.db
+    .select({ id: projects.id })
+    .from(projects)
+    .where(and(eq(projects.companyId, companyId), eq(projects.id, projectId)))
+    .limit(1);
+  if (!project) {
+    return "Project not found.";
+  }
+
+  const [agent] = await ctx.db
+    .select({ id: agents.id })
+    .from(agents)
+    .where(and(eq(agents.companyId, companyId), eq(agents.id, assigneeAgentId)))
+    .limit(1);
+  if (!agent) {
+    return "Assigned agent not found.";
+  }
+
+  return null;
+}
+
+function parsePositiveIntEnv(name: string, fallback: number) {
+  const raw = process.env[name];
+  if (!raw) {
+    return fallback;
+  }
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return fallback;
+  }
+  return parsed;
+}
+
+function parseCsvSet(raw: string | undefined, fallback: string[]) {
+  if (!raw || raw.trim().length === 0) {
+    return new Set(fallback);
+  }
+  return new Set(
+    raw
+      .split(",")
+      .map((value) => value.trim().toLowerCase())
+      .filter(Boolean)
+  );
+}
+
+function sanitizeAttachmentFileName(input: string) {
+  const original = basename(input || "attachment");
+  const sanitized = original.replace(/[^a-zA-Z0-9._-]/g, "_");
+  return sanitized.length > 0 ? sanitized : "attachment";
+}
+
+function isAllowedAttachmentFile(file: Express.Multer.File) {
+  const extension = extname(file.originalname).slice(1).toLowerCase();
+  const mime = (file.mimetype ?? "").toLowerCase();
+  if (extension && ALLOWED_ATTACHMENT_EXTENSIONS.has(extension)) {
+    return true;
+  }
+  return mime.length > 0 && ALLOWED_ATTACHMENT_MIME_TYPES.has(mime);
+}
+
+function toIssueAttachmentResponse(attachment: Record<string, unknown>, issueId: string) {
+  const id = String(attachment.id ?? "");
+  return {
+    ...attachment,
+    id,
+    downloadPath: `/issues/${issueId}/attachments/${id}/download`
+  };
+}
+
+function resolveWorkspacePath(companyId: string, projectId: string, workspaceLocalPath: string | null) {
+  if (workspaceLocalPath && workspaceLocalPath.trim().length > 0) {
+    return normalizeAbsolutePath(workspaceLocalPath);
+  }
+  return resolveProjectWorkspacePath(companyId, projectId);
+}
+
+async function getIssueContextForAttachment(ctx: AppContext, companyId: string, issueId: string) {
+  const [issue] = await ctx.db
+    .select({
+      issueId: issues.id,
+      companyId: issues.companyId,
+      projectId: issues.projectId
+    })
+    .from(issues)
+    .where(and(eq(issues.companyId, companyId), eq(issues.id, issueId)))
+    .limit(1);
+  if (!issue) {
+    return null;
+  }
+  const [project] = await ctx.db
+    .select({
+      id: projects.id,
+      workspaceLocalPath: projects.workspaceLocalPath
+    })
+    .from(projects)
+    .where(and(eq(projects.companyId, companyId), eq(projects.id, issue.projectId)))
+    .limit(1);
+  if (!project) {
+    return null;
+  }
+  return {
+    issueId: issue.issueId,
+    companyId: issue.companyId,
+    projectId: issue.projectId,
+    workspaceLocalPath: project.workspaceLocalPath
+  };
+}
+

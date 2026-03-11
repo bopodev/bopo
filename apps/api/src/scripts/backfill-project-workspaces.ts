@@ -1,0 +1,118 @@
+import { access, constants, mkdir } from "node:fs/promises";
+import { isAbsolute } from "node:path";
+import { pathToFileURL } from "node:url";
+import { bootstrapDatabase, listCompanies, listProjects, updateProject } from "bopodev-db";
+import { normalizeAbsolutePath, resolveBopoInstanceRoot, resolveProjectWorkspacePath, resolveStorageRoot } from "../lib/instance-paths";
+
+export interface ProjectWorkspaceBackfillSummary {
+  scannedProjects: number;
+  missingWorkspaceLocalPath: number;
+  relativeWorkspaceLocalPath: number;
+  updatedProjects: number;
+  createdDirectories: number;
+  writableInstanceRoot: boolean;
+  writableStorageRoot: boolean;
+  dryRun: boolean;
+}
+
+export async function backfillProjectWorkspaces(input: { dbPath?: string; dryRun: boolean }) {
+  const { db, client } = await bootstrapDatabase(input.dbPath);
+  const instanceRoot = resolveBopoInstanceRoot();
+  const storageRoot = resolveStorageRoot();
+  let scannedProjects = 0;
+  let missingWorkspaceLocalPath = 0;
+  let relativeWorkspaceLocalPath = 0;
+  let updatedProjects = 0;
+  let createdDirectories = 0;
+
+  try {
+    const companies = await listCompanies(db);
+    for (const company of companies) {
+      const projects = await listProjects(db, company.id);
+      for (const project of projects) {
+        scannedProjects += 1;
+        const workspaceLocalPath = project.workspaceLocalPath?.trim() ?? "";
+        if (!workspaceLocalPath) {
+          missingWorkspaceLocalPath += 1;
+          const nextPath = resolveProjectWorkspacePath(company.id, project.id);
+          if (!input.dryRun) {
+            await mkdir(nextPath, { recursive: true });
+            createdDirectories += 1;
+            const updated = await updateProject(db, {
+              companyId: company.id,
+              id: project.id,
+              workspaceLocalPath: nextPath
+            });
+            if (updated) {
+              updatedProjects += 1;
+            }
+          }
+          continue;
+        }
+
+        if (!isAbsolute(workspaceLocalPath)) {
+          relativeWorkspaceLocalPath += 1;
+          const nextPath = normalizeAbsolutePath(workspaceLocalPath);
+          if (!input.dryRun) {
+            await mkdir(nextPath, { recursive: true });
+            createdDirectories += 1;
+            const updated = await updateProject(db, {
+              companyId: company.id,
+              id: project.id,
+              workspaceLocalPath: nextPath
+            });
+            if (updated) {
+              updatedProjects += 1;
+            }
+          }
+        }
+      }
+    }
+
+    if (!input.dryRun) {
+      await mkdir(instanceRoot, { recursive: true });
+      await mkdir(storageRoot, { recursive: true });
+    }
+    const writableInstanceRoot = await isDirectoryWritable(instanceRoot);
+    const writableStorageRoot = await isDirectoryWritable(storageRoot);
+
+    return {
+      scannedProjects,
+      missingWorkspaceLocalPath,
+      relativeWorkspaceLocalPath,
+      updatedProjects,
+      createdDirectories,
+      writableInstanceRoot,
+      writableStorageRoot,
+      dryRun: input.dryRun
+    } satisfies ProjectWorkspaceBackfillSummary;
+  } finally {
+    const maybeClose = (client as { close?: () => Promise<void> }).close;
+    if (maybeClose) {
+      await maybeClose.call(client);
+    }
+  }
+}
+
+async function isDirectoryWritable(path: string) {
+  try {
+    await mkdir(path, { recursive: true });
+    await access(path, constants.W_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function main() {
+  const summary = await backfillProjectWorkspaces({
+    dbPath: process.env.BOPO_DB_PATH,
+    dryRun: process.env.BOPO_BACKFILL_DRY_RUN !== "0"
+  });
+  // eslint-disable-next-line no-console
+  console.log(JSON.stringify(summary));
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  void main();
+}

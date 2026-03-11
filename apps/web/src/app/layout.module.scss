@@ -1,0 +1,11 @@
+@reference "./globals.css";
+
+.viewBody1 {
+  @apply min-h-screen bg-background text-foreground antialiased;
+}
+
+
+:global(.recharts-cartesian-axis-tick-value) {
+  fill: var(--muted-foreground);
+  stroke: transparent;
+}

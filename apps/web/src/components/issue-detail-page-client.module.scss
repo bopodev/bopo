@@ -1,0 +1,131 @@
+@reference "../app/globals.css";
+
+.issueEmptyStateContainer {
+  @apply rounded-lg border border-dashed bg-muted/20 px-4 py-6 mb-8 text-sm text-muted-foreground;
+}
+
+.propertyRowContainer1 {
+  @apply grid grid-cols-[88px_minmax(0,1fr)] gap-3 text-sm;
+}
+
+.propertyRowContainer2 {
+  @apply text-muted-foreground;
+}
+
+.issueDetailContainer1 {
+  @apply flex w-full flex-col gap-6;
+}
+
+.issueDetailContainer2 {
+  @apply space-y-3;
+}
+
+.issueDetailContainer3 {
+  @apply text-sm text-muted-foreground;
+}
+
+.issueDetailLink1 {
+  @apply hover:text-foreground;
+}
+
+.issueDetailLabel1 {
+  @apply text-foreground;
+}
+
+.issueDetailContainer4 {
+  @apply flex flex-wrap items-start justify-between gap-3;
+}
+
+.issueDetailContainer5 {
+  @apply space-y-2;
+}
+
+.issueDetailContainer6 {
+  @apply flex flex-wrap items-center gap-2 text-xs text-muted-foreground;
+}
+
+.issueDetailTitle {
+  @apply text-3xl font-semibold tracking-tight;
+}
+
+.issueDetailText {
+  @apply text-sm leading-6 text-muted-foreground;
+}
+
+.issueDetailCardHeader {
+  @apply flex flex-row items-center justify-between;
+}
+
+.issueDetailCardContent1 {
+  @apply space-y-4;
+}
+
+.issueDetailForm {
+  @apply rounded-xl border bg-card/70 p-4;
+  @apply space-y-3;
+}
+
+.issueDetailContainer15 {
+  @apply flex items-center justify-between gap-2;
+}
+
+.issueDetailCardContent2 {
+  @apply space-y-3;
+}
+
+.issueDetailSelectTrigger {
+  @apply w-full;
+}
+
+.issueDetailLink2 {
+  @apply hover:underline;
+}
+
+.issueDetailTextarea {
+  @apply min-h-24;
+}
+
+.issueHeaderActionsContainer {
+  @apply flex flex-wrap items-center gap-2;
+  @apply items-start justify-end gap-6 sm:ml-auto;
+}
+
+.issueSidebarContainer {
+  @apply space-y-6;
+}
+
+.issueSidebarCardContent {
+  @apply space-y-3;
+}
+
+.issueSidebarStats {
+  @apply grid grid-cols-1 gap-6;
+}
+
+.issueAttachmentActionsRow {
+  @apply flex items-center gap-2;
+}
+
+.issueAttachmentInput {
+  @apply hidden;
+}
+
+.issueAttachmentMedia {
+  @apply h-12 w-12 shrink-0 overflow-hidden rounded-md border bg-muted/30;
+}
+
+.issueAttachmentPreviewImage {
+  @apply h-full w-full object-cover;
+}
+
+.issueAttachmentPlaceholder {
+  @apply flex h-full w-full items-center justify-center text-sm font-semibold text-muted-foreground;
+}
+
+.issueActivityTitleRow {
+  @apply inline-flex items-center gap-2;
+}
+
+.issueActivityTimestamp {
+  @apply text-xs text-muted-foreground;
+}

@@ -1,0 +1,19 @@
+{
+  "name": "bopodev-db",
+  "version": "0.1.12",
+  "license": "MIT",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json --emitDeclarationOnly",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.3.7",
+    "drizzle-orm": "^0.44.5",
+    "drizzle-zod": "^0.8.2",
+    "nanoid": "^5.1.5"
+  }
+}

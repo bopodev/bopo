@@ -1,0 +1,50 @@
+@reference "../../app/globals.css";
+
+.createAgentModalDialogContent {
+  @apply sm:max-w-2xl;
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+.createAgentModalForm {
+  @apply grid gap-6;
+  min-width: 0;
+}
+
+.createAgentModalSection {
+  @apply grid gap-3 rounded-md border border-border/70 bg-card/40 p-6;
+  min-width: 0;
+}
+
+.createAgentModalSectionTitle {
+  @apply text-sm font-semibold;
+}
+
+.createAgentModalSectionDescription {
+  @apply text-xs text-muted-foreground;
+}
+
+.createAgentModalFieldGroup {
+  @apply grid gap-4 md:grid-cols-2;
+}
+
+.createAgentModalFieldGroup > * {
+  min-width: 0;
+}
+
+.createAgentModalSelectTrigger {
+  @apply w-full;
+}
+
+.createAgentModalText {
+  @apply text-sm text-destructive;
+}
+
+.createAgentModalEnvTextarea {
+  field-sizing: fixed;
+  min-width: 0;
+  max-width: 100%;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}

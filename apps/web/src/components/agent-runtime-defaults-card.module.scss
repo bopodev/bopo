@@ -1,0 +1,25 @@
+@reference "../app/globals.css";
+
+.runtimeDefaultsCardContent {
+  @apply space-y-6;
+}
+
+.runtimeDefaultsFieldGroup {
+  @apply grid gap-4 md:grid-cols-2;
+}
+
+.runtimeDefaultsSelectTrigger {
+  @apply w-full;
+}
+
+.runtimeDefaultsCardFooter {
+  @apply justify-between gap-4 border-t pt-6;
+}
+
+.runtimeDefaultsLabel {
+  @apply text-sm text-muted-foreground;
+}
+
+.runtimeDefaultsContainer {
+  @apply flex items-center gap-6;
+}

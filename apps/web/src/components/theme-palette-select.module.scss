@@ -1,0 +1,17 @@
+@reference "../app/globals.css";
+
+.themePaletteTrigger {
+  @apply w-full justify-between gap-2;
+}
+
+.themePaletteLabel1 {
+  @apply flex items-center gap-2;
+}
+
+.themePaletteIcon {
+  @apply size-4;
+}
+
+.themePaletteLabel2 {
+  @apply text-xs text-muted-foreground;
+}

@@ -1,0 +1,604 @@
+import { z } from "zod";
+
+export const EntityIdSchema = z.string().min(1);
+export type EntityId = z.infer<typeof EntityIdSchema>;
+
+export const CompanySchema = z.object({
+  id: EntityIdSchema,
+  name: z.string().min(1),
+  mission: z.string().nullable().optional(),
+  createdAt: z.string()
+});
+
+export const ProjectSchema = z.object({
+  id: EntityIdSchema,
+  companyId: EntityIdSchema,
+  name: z.string().min(1),
+  description: z.string().nullable().optional(),
+  status: z.enum(["planned", "active", "paused", "blocked", "completed", "archived"]),
+  plannedStartAt: z.string().nullable().optional(),
+  workspaceLocalPath: z.string().nullable().optional(),
+  workspaceGithubRepo: z.string().nullable().optional(),
+  createdAt: z.string()
+});
+
+export const IssueStatusSchema = z.enum([
+  "todo",
+  "in_progress",
+  "blocked",
+  "in_review",
+  "done",
+  "canceled"
+]);
+export type IssueStatus = z.infer<typeof IssueStatusSchema>;
+
+export const IssuePrioritySchema = z.enum(["none", "low", "medium", "high", "urgent"]);
+export type IssuePriority = z.infer<typeof IssuePrioritySchema>;
+
+export const IssueSchema = z.object({
+  id: EntityIdSchema,
+  companyId: EntityIdSchema,
+  projectId: EntityIdSchema,
+  parentIssueId: EntityIdSchema.nullable(),
+  title: z.string().min(1),
+  body: z.string().nullable().optional(),
+  status: IssueStatusSchema,
+  priority: IssuePrioritySchema,
+  assigneeAgentId: EntityIdSchema.nullable(),
+  labels: z.array(z.string()).default([]),
+  tags: z.array(z.string()).default([]),
+  createdAt: z.string(),
+  updatedAt: z.string()
+});
+
+export const IssueAttachmentSchema = z.object({
+  id: EntityIdSchema,
+  companyId: EntityIdSchema,
+  issueId: EntityIdSchema,
+  projectId: EntityIdSchema,
+  fileName: z.string().min(1),
+  mimeType: z.string().nullable().optional(),
+  fileSizeBytes: z.number().int().nonnegative(),
+  relativePath: z.string().min(1),
+  uploadedByActorType: z.enum(["human", "agent", "system"]),
+  uploadedByActorId: z.string().nullable().optional(),
+  createdAt: z.string()
+});
+export type IssueAttachment = z.infer<typeof IssueAttachmentSchema>;
+
+export const GoalLevelSchema = z.enum(["company", "project", "agent"]);
+
+export const GoalSchema = z.object({
+  id: EntityIdSchema,
+  companyId: EntityIdSchema,
+  projectId: EntityIdSchema.nullable(),
+  parentGoalId: EntityIdSchema.nullable(),
+  level: GoalLevelSchema,
+  title: z.string().min(1),
+  description: z.string().nullable().optional(),
+  status: z.enum(["draft", "active", "completed", "archived"]),
+  createdAt: z.string(),
+  updatedAt: z.string()
+});
+
+export const AgentStatusSchema = z.enum(["idle", "running", "paused", "terminated"]);
+export const ProviderTypeSchema = z.enum([
+  "claude_code",
+  "codex",
+  "cursor",
+  "opencode",
+  "openai_api",
+  "anthropic_api",
+  "http",
+  "shell"
+]);
+export type ProviderType = z.infer<typeof ProviderTypeSchema>;
+const HeaderValueSchema = z.string().trim().min(1);
+export const RequestActorHeadersSchema = z.object({
+  "x-actor-type": z.enum(["board", "member", "agent"]).optional(),
+  "x-actor-id": HeaderValueSchema.optional(),
+  "x-actor-companies": z.string().optional(),
+  "x-actor-permissions": z.string().optional()
+});
+export type RequestActorHeaders = z.infer<typeof RequestActorHeadersSchema>;
+export const ControlPlaneRequestHeadersSchema = z.object({
+  "x-company-id": HeaderValueSchema,
+  "x-actor-type": z.enum(["board", "member", "agent"]),
+  "x-actor-id": HeaderValueSchema,
+  "x-actor-companies": HeaderValueSchema,
+  "x-actor-permissions": HeaderValueSchema
+});
+export type ControlPlaneRequestHeaders = z.infer<typeof ControlPlaneRequestHeadersSchema>;
+export const ControlPlaneHeadersJsonSchema = ControlPlaneRequestHeadersSchema.strict();
+export const ControlPlaneRuntimeEnvSchema = z
+  .object({
+    BOPODEV_AGENT_ID: HeaderValueSchema.optional(),
+    BOPODEV_COMPANY_ID: HeaderValueSchema.optional(),
+    BOPODEV_RUN_ID: HeaderValueSchema.optional(),
+    BOPODEV_API_BASE_URL: HeaderValueSchema.optional(),
+    BOPODEV_ACTOR_TYPE: z.enum(["board", "member", "agent"]).optional(),
+    BOPODEV_ACTOR_ID: HeaderValueSchema.optional(),
+    BOPODEV_ACTOR_COMPANIES: z.string().optional(),
+    BOPODEV_ACTOR_PERMISSIONS: z.string().optional(),
+    BOPODEV_REQUEST_HEADERS_JSON: z.string().optional()
+  })
+  .superRefine((value, ctx) => {
+    const actorType = value.BOPODEV_ACTOR_TYPE;
+    const actorId = value.BOPODEV_ACTOR_ID;
+    const actorCompanies = value.BOPODEV_ACTOR_COMPANIES;
+    const actorPermissions = value.BOPODEV_ACTOR_PERMISSIONS;
+    const agentId = value.BOPODEV_AGENT_ID;
+    const companyId = value.BOPODEV_COMPANY_ID;
+    const runId = value.BOPODEV_RUN_ID;
+    const apiBaseUrl = value.BOPODEV_API_BASE_URL;
+
+    if (!agentId || !companyId || !runId || !apiBaseUrl) {
+      ctx.addIssue({
+        code: "custom",
+        message:
+          "Control-plane runtime identity is missing. Provide BOPODEV_AGENT_ID/COMPANY_ID/RUN_ID/API_BASE_URL.",
+        path: ["BOPODEV_AGENT_ID"]
+      });
+    }
+    const hasDirectHeaders =
+      actorType && actorId && actorCompanies !== undefined && actorPermissions !== undefined;
+    const jsonHeaders = value.BOPODEV_REQUEST_HEADERS_JSON;
+    const hasJsonHeaders = typeof jsonHeaders === "string" && jsonHeaders.trim().length > 0;
+    if (!hasDirectHeaders && !hasJsonHeaders) {
+      ctx.addIssue({
+        code: "custom",
+        message:
+          "Control-plane actor identity is missing. Provide BOPODEV_ACTOR_* vars or BOPODEV_REQUEST_HEADERS_JSON.",
+        path: ["BOPODEV_REQUEST_HEADERS_JSON"]
+      });
+    }
+  });
+export type ControlPlaneRuntimeEnv = z.infer<typeof ControlPlaneRuntimeEnvSchema>;
+export const ExecutionOutcomeKindSchema = z.enum(["completed", "blocked", "failed", "skipped"]);
+export const ExecutionOutcomeActionSchema = z.object({
+  type: z.string().min(1),
+  targetId: z.string().min(1).optional(),
+  status: z.enum(["ok", "warn", "error"]),
+  detail: z.string().optional()
+});
+export const ExecutionOutcomeArtifactSchema = z.object({
+  path: z.string().min(1),
+  kind: z.string().min(1)
+});
+export const ExecutionOutcomeBlockerSchema = z.object({
+  code: z.string().min(1),
+  message: z.string().min(1),
+  retryable: z.boolean()
+});
+export const ExecutionOutcomeSchema = z.object({
+  kind: ExecutionOutcomeKindSchema,
+  issueIdsTouched: z.array(z.string().min(1)).default([]),
+  artifacts: z.array(ExecutionOutcomeArtifactSchema).default([]),
+  actions: z.array(ExecutionOutcomeActionSchema).default([]),
+  blockers: z.array(ExecutionOutcomeBlockerSchema).default([]),
+  nextSuggestedState: z.enum(["todo", "in_progress", "blocked", "in_review", "done"]).optional()
+});
+export type ExecutionOutcome = z.infer<typeof ExecutionOutcomeSchema>;
+export const ThinkingEffortSchema = z.enum(["auto", "low", "medium", "high"]);
+export type ThinkingEffort = z.infer<typeof ThinkingEffortSchema>;
+export const SandboxModeSchema = z.enum(["workspace_write", "full_access"]);
+export type SandboxMode = z.infer<typeof SandboxModeSchema>;
+export const RunPolicySchema = z.object({
+  sandboxMode: SandboxModeSchema.default("workspace_write"),
+  allowWebSearch: z.boolean().default(false)
+});
+export type RunPolicy = z.infer<typeof RunPolicySchema>;
+export const AgentRuntimeConfigSchema = z.object({
+  runtimeCommand: z.string().optional(),
+  runtimeArgs: z.array(z.string()).default([]),
+  runtimeCwd: z.string().optional(),
+  runtimeEnv: z.record(z.string(), z.string()).default({}),
+  runtimeModel: z.string().optional(),
+  runtimeThinkingEffort: ThinkingEffortSchema.default("auto"),
+  bootstrapPrompt: z.string().optional(),
+  runtimeTimeoutSec: z.number().int().nonnegative().default(0),
+  interruptGraceSec: z.number().int().nonnegative().default(15),
+  runPolicy: RunPolicySchema.default({
+    sandboxMode: "workspace_write",
+    allowWebSearch: false
+  })
+});
+export type AgentRuntimeConfig = z.infer<typeof AgentRuntimeConfigSchema>;
+
+export const AgentCreateRequestSchema = z.object({
+  managerAgentId: z.string().optional(),
+  role: z.string().min(1),
+  name: z.string().min(1),
+  providerType: ProviderTypeSchema,
+  heartbeatCron: z.string().min(1),
+  monthlyBudgetUsd: z.number().nonnegative(),
+  canHireAgents: z.boolean().default(false),
+  requestApproval: z.boolean().default(true),
+  runtimeConfig: AgentRuntimeConfigSchema.partial().default({})
+});
+export type AgentCreateRequest = z.infer<typeof AgentCreateRequestSchema>;
+
+export const AgentUpdateRequestSchema = z
+  .object({
+    managerAgentId: z.string().nullable().optional(),
+    role: z.string().min(1).optional(),
+    name: z.string().min(1).optional(),
+    providerType: ProviderTypeSchema.optional(),
+    status: AgentStatusSchema.optional(),
+    heartbeatCron: z.string().min(1).optional(),
+    monthlyBudgetUsd: z.number().nonnegative().optional(),
+    canHireAgents: z.boolean().optional(),
+    runtimeConfig: AgentRuntimeConfigSchema.partial().optional()
+  })
+  .refine((payload) => Object.keys(payload).length > 0, "At least one field must be provided.");
+export type AgentUpdateRequest = z.infer<typeof AgentUpdateRequestSchema>;
+
+export const AgentSchema = z.object({
+  id: EntityIdSchema,
+  companyId: EntityIdSchema,
+  managerAgentId: EntityIdSchema.nullable(),
+  role: z.string().min(1),
+  name: z.string().min(1),
+  providerType: ProviderTypeSchema,
+  status: AgentStatusSchema,
+  heartbeatCron: z.string().min(1),
+  monthlyBudgetUsd: z.number().nonnegative(),
+  usedBudgetUsd: z.number().nonnegative().default(0),
+  tokenUsage: z.number().nonnegative().default(0),
+  canHireAgents: z.boolean().default(false),
+  avatarSeed: z.string().optional(),
+  runtimeCommand: z.string().nullable().optional(),
+  runtimeArgsJson: z.string().nullable().optional(),
+  runtimeCwd: z.string().nullable().optional(),
+  runtimeEnvJson: z.string().nullable().optional(),
+  runtimeModel: z.string().nullable().optional(),
+  runtimeThinkingEffort: ThinkingEffortSchema.nullable().optional(),
+  bootstrapPrompt: z.string().nullable().optional(),
+  runtimeTimeoutSec: z.number().int().nonnegative().nullable().optional(),
+  interruptGraceSec: z.number().int().nonnegative().nullable().optional(),
+  runPolicyJson: z.string().nullable().optional(),
+  createdAt: z.string(),
+  updatedAt: z.string()
+});
+
+export const ApprovalActionSchema = z.enum([
+  "hire_agent",
+  "activate_goal",
+  "override_budget",
+  "pause_agent",
+  "terminate_agent"
+]);
+
+export const ApprovalRequestSchema = z.object({
+  id: EntityIdSchema,
+  companyId: EntityIdSchema,
+  requestedByAgentId: EntityIdSchema.nullable(),
+  action: ApprovalActionSchema,
+  payload: z.record(z.string(), z.unknown()),
+  status: z.enum(["pending", "approved", "rejected", "overridden"]),
+  createdAt: z.string(),
+  resolvedAt: z.string().nullable()
+});
+export type ApprovalRequest = z.infer<typeof ApprovalRequestSchema>;
+
+export const ApprovalNotificationEventSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("approvals.snapshot"),
+    approvals: z.array(ApprovalRequestSchema)
+  }),
+  z.object({
+    type: z.literal("approval.created"),
+    approval: ApprovalRequestSchema
+  }),
+  z.object({
+    type: z.literal("approval.resolved"),
+    approval: ApprovalRequestSchema
+  })
+]);
+export type ApprovalNotificationEvent = z.infer<typeof ApprovalNotificationEventSchema>;
+
+export const GovernanceInboxItemSchema = z.object({
+  approval: ApprovalRequestSchema,
+  seenAt: z.string().nullable(),
+  dismissedAt: z.string().nullable(),
+  isPending: z.boolean()
+});
+export type GovernanceInboxItem = z.infer<typeof GovernanceInboxItemSchema>;
+
+export const GovernanceInboxResponseSchema = z.object({
+  actorId: z.string().min(1),
+  resolvedWindowDays: z.number().int().positive(),
+  items: z.array(GovernanceInboxItemSchema)
+});
+export type GovernanceInboxResponse = z.infer<typeof GovernanceInboxResponseSchema>;
+
+export const OfficeRoomSchema = z.enum(["waiting_room", "work_space", "security"]);
+export type OfficeRoom = z.infer<typeof OfficeRoomSchema>;
+
+export const OfficeOccupantKindSchema = z.enum(["agent", "hire_candidate"]);
+export type OfficeOccupantKind = z.infer<typeof OfficeOccupantKindSchema>;
+
+export const OfficeOccupantStatusSchema = z.enum(["idle", "working", "waiting_for_approval", "paused"]);
+export type OfficeOccupantStatus = z.infer<typeof OfficeOccupantStatusSchema>;
+
+export const OfficeOccupantSchema = z.object({
+  id: z.string().min(1),
+  kind: OfficeOccupantKindSchema,
+  companyId: EntityIdSchema,
+  agentId: EntityIdSchema.nullable(),
+  approvalId: EntityIdSchema.nullable(),
+  displayName: z.string().min(1),
+  role: z.string().nullable(),
+  room: OfficeRoomSchema,
+  status: OfficeOccupantStatusSchema,
+  taskLabel: z.string().min(1),
+  providerType: ProviderTypeSchema.nullable(),
+  avatarSeed: z.string().nullable().optional(),
+  focusEntityType: z.enum(["issue", "approval", "agent", "system"]).nullable(),
+  focusEntityId: z.string().nullable(),
+  updatedAt: z.string()
+});
+export type OfficeOccupant = z.infer<typeof OfficeOccupantSchema>;
+
+export const OfficeSpaceEventSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("office.snapshot"),
+    occupants: z.array(OfficeOccupantSchema)
+  }),
+  z.object({
+    type: z.literal("office.occupant.updated"),
+    occupant: OfficeOccupantSchema
+  }),
+  z.object({
+    type: z.literal("office.occupant.left"),
+    occupantId: z.string().min(1)
+  })
+]);
+export type OfficeSpaceEvent = z.infer<typeof OfficeSpaceEventSchema>;
+
+export const HeartbeatRunTranscriptEventKindSchema = z.enum([
+  "system",
+  "assistant",
+  "thinking",
+  "tool_call",
+  "tool_result",
+  "result",
+  "stderr"
+]);
+export type HeartbeatRunTranscriptEventKind = z.infer<typeof HeartbeatRunTranscriptEventKindSchema>;
+export const HeartbeatRunTranscriptSignalLevelSchema = z.enum(["high", "medium", "low", "noise"]);
+export type HeartbeatRunTranscriptSignalLevel = z.infer<typeof HeartbeatRunTranscriptSignalLevelSchema>;
+export const HeartbeatRunTranscriptSourceSchema = z.enum(["stdout", "stderr", "trace_fallback"]);
+export type HeartbeatRunTranscriptSource = z.infer<typeof HeartbeatRunTranscriptSourceSchema>;
+
+export const HeartbeatRunRealtimeEventSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("runs.snapshot"),
+    runs: z.array(
+      z.object({
+        runId: EntityIdSchema,
+        status: z.enum(["started", "completed", "failed", "skipped"]),
+        message: z.string().nullable().optional(),
+        startedAt: z.string(),
+        finishedAt: z.string().nullable().optional()
+      })
+    ),
+    transcripts: z.array(
+      z.object({
+        runId: EntityIdSchema,
+        messages: z.array(
+          z.object({
+            id: EntityIdSchema,
+            runId: EntityIdSchema,
+            sequence: z.number().int().nonnegative(),
+            kind: HeartbeatRunTranscriptEventKindSchema,
+            label: z.string().nullable().optional(),
+            text: z.string().nullable().optional(),
+            payload: z.string().nullable().optional(),
+            signalLevel: HeartbeatRunTranscriptSignalLevelSchema.optional(),
+            groupKey: z.string().nullable().optional(),
+            source: HeartbeatRunTranscriptSourceSchema.optional(),
+            createdAt: z.string()
+          })
+        ),
+        nextCursor: z.string().nullable()
+      })
+    )
+  }),
+  z.object({
+    type: z.literal("run.status.updated"),
+    runId: EntityIdSchema,
+    status: z.enum(["started", "completed", "failed", "skipped"]),
+    message: z.string().nullable().optional(),
+    startedAt: z.string().optional(),
+    finishedAt: z.string().nullable().optional()
+  }),
+  z.object({
+    type: z.literal("run.transcript.append"),
+    runId: EntityIdSchema,
+    messages: z.array(
+      z.object({
+        id: EntityIdSchema,
+        runId: EntityIdSchema,
+        sequence: z.number().int().nonnegative(),
+        kind: HeartbeatRunTranscriptEventKindSchema,
+        label: z.string().nullable().optional(),
+        text: z.string().nullable().optional(),
+        payload: z.string().nullable().optional(),
+        signalLevel: HeartbeatRunTranscriptSignalLevelSchema.optional(),
+        groupKey: z.string().nullable().optional(),
+        source: HeartbeatRunTranscriptSourceSchema.optional(),
+        createdAt: z.string()
+      })
+    )
+  }),
+  z.object({
+    type: z.literal("run.transcript.snapshot"),
+    runId: EntityIdSchema,
+    messages: z.array(
+      z.object({
+        id: EntityIdSchema,
+        runId: EntityIdSchema,
+        sequence: z.number().int().nonnegative(),
+        kind: HeartbeatRunTranscriptEventKindSchema,
+        label: z.string().nullable().optional(),
+        text: z.string().nullable().optional(),
+        payload: z.string().nullable().optional(),
+        signalLevel: HeartbeatRunTranscriptSignalLevelSchema.optional(),
+        groupKey: z.string().nullable().optional(),
+        source: HeartbeatRunTranscriptSourceSchema.optional(),
+        createdAt: z.string()
+      })
+    ),
+    nextCursor: z.string().nullable()
+  })
+]);
+export type HeartbeatRunRealtimeEvent = z.infer<typeof HeartbeatRunRealtimeEventSchema>;
+
+export const RealtimeChannelSchema = z.enum(["governance", "office-space", "heartbeat-runs"]);
+export type RealtimeChannel = z.infer<typeof RealtimeChannelSchema>;
+
+export const RealtimeEventEnvelopeSchema = z.discriminatedUnion("channel", [
+  z.object({
+    channel: z.literal("governance"),
+    event: ApprovalNotificationEventSchema
+  }),
+  z.object({
+    channel: z.literal("office-space"),
+    event: OfficeSpaceEventSchema
+  }),
+  z.object({
+    channel: z.literal("heartbeat-runs"),
+    event: HeartbeatRunRealtimeEventSchema
+  })
+]);
+export type RealtimeEventEnvelope = z.infer<typeof RealtimeEventEnvelopeSchema>;
+
+export const RealtimeSubscribedMessageSchema = z.object({
+  kind: z.literal("subscribed"),
+  companyId: EntityIdSchema,
+  channels: z.array(RealtimeChannelSchema)
+});
+
+export const RealtimeEventMessageSchema = z.discriminatedUnion("channel", [
+  z.object({
+    kind: z.literal("event"),
+    companyId: EntityIdSchema,
+    channel: z.literal("governance"),
+    event: ApprovalNotificationEventSchema
+  }),
+  z.object({
+    kind: z.literal("event"),
+    companyId: EntityIdSchema,
+    channel: z.literal("office-space"),
+    event: OfficeSpaceEventSchema
+  }),
+  z.object({
+    kind: z.literal("event"),
+    companyId: EntityIdSchema,
+    channel: z.literal("heartbeat-runs"),
+    event: HeartbeatRunRealtimeEventSchema
+  })
+]);
+
+export const RealtimeMessageSchema = z.union([
+  RealtimeSubscribedMessageSchema,
+  RealtimeEventMessageSchema
+]);
+export type RealtimeMessage = z.infer<typeof RealtimeMessageSchema>;
+
+export const CostLedgerEntrySchema = z.object({
+  id: EntityIdSchema,
+  companyId: EntityIdSchema,
+  projectId: EntityIdSchema.nullable(),
+  issueId: EntityIdSchema.nullable(),
+  agentId: EntityIdSchema.nullable(),
+  providerType: ProviderTypeSchema,
+  tokenInput: z.number().int().nonnegative(),
+  tokenOutput: z.number().int().nonnegative(),
+  usdCost: z.number().nonnegative(),
+  createdAt: z.string()
+});
+
+export const AuditEventSchema = z.object({
+  id: EntityIdSchema,
+  companyId: EntityIdSchema,
+  actorType: z.enum(["human", "agent", "system"]),
+  actorId: z.string().nullable(),
+  eventType: z.string().min(1),
+  entityType: z.string().min(1),
+  entityId: z.string().min(1),
+  correlationId: z.string().nullable(),
+  payload: z.record(z.string(), z.unknown()),
+  createdAt: z.string()
+});
+
+export const HeartbeatRunSchema = z.object({
+  id: EntityIdSchema,
+  companyId: EntityIdSchema,
+  agentId: EntityIdSchema,
+  status: z.enum(["started", "completed", "failed", "skipped"]),
+  startedAt: z.string(),
+  finishedAt: z.string().nullable(),
+  message: z.string().optional()
+});
+
+export const HeartbeatRunMessageSchema = z.object({
+  id: EntityIdSchema,
+  companyId: EntityIdSchema,
+  runId: EntityIdSchema,
+  sequence: z.number().int().nonnegative(),
+  kind: HeartbeatRunTranscriptEventKindSchema,
+  label: z.string().nullable().optional(),
+  text: z.string().nullable().optional(),
+  payload: z.string().nullable().optional(),
+  signalLevel: HeartbeatRunTranscriptSignalLevelSchema.optional(),
+  groupKey: z.string().nullable().optional(),
+  source: HeartbeatRunTranscriptSourceSchema.optional(),
+  createdAt: z.string()
+});
+export type HeartbeatRunMessage = z.infer<typeof HeartbeatRunMessageSchema>;
+
+export const ListHeartbeatRunMessagesResponseSchema = z.object({
+  runId: EntityIdSchema,
+  items: z.array(HeartbeatRunMessageSchema),
+  nextCursor: z.string().nullable()
+});
+export type ListHeartbeatRunMessagesResponse = z.infer<typeof ListHeartbeatRunMessagesResponseSchema>;
+
+export const HeartbeatRunDetailSchema = z.object({
+  run: HeartbeatRunSchema,
+  details: z
+    .object({
+      status: z.string().nullable().optional(),
+      message: z.string().nullable().optional(),
+      errorMessage: z.string().nullable().optional(),
+      result: z.string().nullable().optional(),
+      issueIds: z.array(EntityIdSchema).optional(),
+      outcome: ExecutionOutcomeSchema.nullable().optional(),
+      usage: z
+        .object({
+          tokenInput: z.number().nonnegative().optional(),
+          tokenOutput: z.number().nonnegative().optional(),
+          usdCost: z.number().nonnegative().optional(),
+          source: z.string().nullable().optional()
+        })
+        .nullable()
+        .optional(),
+      trace: z.record(z.string(), z.unknown()).nullable().optional(),
+      diagnostics: z.record(z.string(), z.unknown()).nullable().optional()
+    })
+    .nullable(),
+  transcript: z.object({
+    hasPersistedMessages: z.boolean(),
+    fallbackFromTrace: z.boolean(),
+    truncated: z.boolean()
+  })
+});
+export type HeartbeatRunDetail = z.infer<typeof HeartbeatRunDetailSchema>;
+
+export const PaginatedSchema = <T extends z.ZodTypeAny>(item: T) =>
+  z.object({
+    items: z.array(item),
+    nextCursor: z.string().nullable()
+  });

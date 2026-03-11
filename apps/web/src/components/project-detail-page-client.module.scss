@@ -1,0 +1,99 @@
+@reference "../app/globals.css";
+
+.projectDetailLink1 {
+  @apply font-medium hover:underline;
+}
+
+.projectDetailContainer1 {
+  @apply text-sm text-muted-foreground;
+}
+
+.projectDetailContainer2 {
+  @apply flex w-full flex-col gap-6;
+}
+
+.projectDetailContainer3 {
+  @apply space-y-2;
+}
+
+.projectDetailLink2 {
+  @apply hover:text-foreground;
+}
+
+.projectDetailLabel1 {
+  @apply text-foreground;
+}
+
+.projectDetailTitle {
+  @apply text-3xl font-semibold tracking-tight;
+}
+
+.projectDetailText {
+  @apply text-sm text-muted-foreground;
+}
+
+.projectDetailContainer5 {
+  @apply text-2xl font-semibold;
+}
+
+.projectDetailContainer6 {
+  @apply space-y-6;
+}
+
+.projectDetailCardContent1 {
+  @apply space-y-3 text-sm;
+}
+
+.projectDetailContainer7 {
+  @apply text-muted-foreground;
+}
+
+.projectDetailContainer8 {
+  @apply rounded-md border p-3;
+}
+
+.projectDetailContainer9 {
+  @apply flex items-center justify-between gap-2;
+}
+
+.projectDetailLabel2 {
+  @apply text-muted-foreground;
+}
+
+.projectDetailContainer10 {
+  @apply mt-1 text-muted-foreground;
+}
+
+.projectDetailCardContent2 {
+  @apply space-y-3 text-sm;
+}
+
+.projectPropertyRow {
+  @apply grid grid-cols-[96px_minmax(0,1fr)] gap-3 text-sm;
+}
+
+.projectPropertyLabel {
+  @apply text-muted-foreground;
+}
+
+.projectPropertyValue {
+  @apply min-w-0;
+  overflow-wrap: anywhere;
+}
+
+.issueFiltersContainer {
+  @apply flex flex-wrap items-center gap-6;
+  @apply flex-nowrap;
+}
+
+.issueFiltersInput {
+  @apply w-80 flex-none;
+}
+
+.issueFiltersSelect {
+  @apply w-40 flex-none;
+}
+
+.projectHeaderActions {
+  @apply flex items-center gap-6;
+}

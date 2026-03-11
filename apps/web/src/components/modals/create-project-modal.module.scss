@@ -1,0 +1,48 @@
+@reference "../../app/globals.css";
+
+.createProjectModalForm {
+  @apply grid gap-4;
+}
+
+.createProjectModalForm :global(.ui-input:focus-visible),
+.createProjectModalForm :global(.ui-textarea:focus-visible),
+.createProjectModalForm :global(.ui-select-trigger:focus-visible),
+.createProjectModalGoalsTrigger:focus-visible {
+  @apply border-input ring-0;
+}
+
+.createProjectModalSection {
+  @apply rounded-lg border border-border p-4;
+}
+
+.createProjectModalSectionTitle {
+  @apply text-sm font-semibold;
+}
+
+.createProjectModalSectionDescription {
+  @apply mt-1 text-xs text-muted-foreground;
+}
+
+.createProjectModalWorkspaceModes {
+  @apply grid gap-4 md:grid-cols-3;
+}
+
+.createProjectModalMetaRow {
+  @apply grid gap-4 md:grid-cols-2;
+}
+
+.createProjectModalFullWidth {
+  @apply w-full;
+}
+
+.createProjectModalText {
+  @apply text-sm text-destructive;
+}
+
+.createProjectModalGoalsTrigger {
+  @apply w-full justify-start;
+}
+
+.createProjectModalGoalsDropdown {
+  @apply max-h-72 min-w-[18rem] overflow-y-auto;
+}

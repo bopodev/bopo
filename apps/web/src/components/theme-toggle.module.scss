@@ -1,0 +1,17 @@
+@reference "../app/globals.css";
+
+.themeToggleButton {
+  @apply w-full justify-between gap-2;
+}
+
+.themeToggleLabel1 {
+  @apply flex items-center gap-2;
+}
+
+.themeToggleSunIcon {
+  @apply size-4;
+}
+
+.themeToggleLabel2 {
+  @apply text-xs text-muted-foreground;
+}

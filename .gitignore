@@ -1,0 +1,16 @@
+node_modules
+.turbo
+.next
+dist
+build
+.env
+.env.local
+.env.*
+!.env.example
+coverage
+playwright-report
+test-results
+*.log
+data
+tmp
+.pnpm-store/*

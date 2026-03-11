@@ -1,0 +1,13 @@
+@reference "../../app/globals.css";
+
+.createIssueModalForm {
+  @apply grid gap-4;
+}
+
+.createIssueModalSelectTrigger {
+  @apply w-full;
+}
+
+.createIssueModalText {
+  @apply text-sm text-destructive;
+}

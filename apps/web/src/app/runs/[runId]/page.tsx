@@ -1,0 +1,143 @@
+import { notFound } from "next/navigation";
+import { RunDetailPageClient } from "@/components/run-detail-page-client";
+import {
+  loadHeartbeatRunDetail,
+  loadHeartbeatRunMessages,
+  loadWorkspaceData
+} from "@/lib/workspace-data";
+import { isNoAssignedWorkRun } from "@/lib/workspace-logic";
+import { ApiError } from "@/lib/api";
+import type { HeartbeatRunMessageRow } from "@/lib/workspace-data";
+
+export default async function RunDetailPage({
+  params,
+  searchParams
+}: {
+  params: Promise<{ runId: string }>;
+  searchParams: Promise<{ companyId?: string; agentId?: string }>;
+}) {
+  const { runId } = await params;
+  const { companyId, agentId } = await searchParams;
+  const workspaceData = await loadWorkspaceData(companyId, {
+    include: {
+      issues: false,
+      goals: false,
+      approvals: false,
+      governanceInbox: false,
+      auditEvents: false,
+      costEntries: false,
+      projects: false,
+      heartbeatRuns: true,
+      agents: true
+    }
+  });
+  if (!workspaceData.companyId) {
+    notFound();
+  }
+  try {
+    const [runDetail, transcript] = await Promise.all([
+      loadHeartbeatRunDetail(workspaceData.companyId, runId),
+      loadHeartbeatRunMessages(workspaceData.companyId, runId, undefined, 200)
+    ]);
+    const fallbackMessages =
+      transcript.items.length === 0 ? extractFallbackMessagesFromTrace(runDetail, workspaceData.companyId) : [];
+    const initialMessages = transcript.items.length > 0 ? transcript.items : fallbackMessages;
+    const agentName =
+      workspaceData.agents.find((agent) => agent.id === runDetail.run.agentId)?.name ?? runDetail.run.agentId;
+    const recentRuns = workspaceData.heartbeatRuns
+      .filter((entry) => !isNoAssignedWorkRun(entry))
+      .filter((entry) => (agentId ? entry.agentId === agentId : true))
+      .slice(0, 25);
+    return (
+      <RunDetailPageClient
+        companyId={workspaceData.companyId}
+        companies={workspaceData.companies}
+        runDetail={runDetail}
+        initialMessages={initialMessages}
+        nextCursor={transcript.nextCursor}
+        agentName={agentName}
+        scopedAgentId={agentId ?? null}
+        recentRuns={recentRuns}
+      />
+    );
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      notFound();
+    }
+    throw error;
+  }
+}
+
+function extractFallbackMessagesFromTrace(
+  runDetail: Awaited<ReturnType<typeof loadHeartbeatRunDetail>>,
+  companyId: string
+): HeartbeatRunMessageRow[] {
+  const details = runDetail.details;
+  if (!details || typeof details !== "object") {
+    return [];
+  }
+  const trace = (details as Record<string, unknown>).trace;
+  if (!trace || typeof trace !== "object") {
+    return [];
+  }
+  const transcript = (trace as Record<string, unknown>).transcript;
+  if (!Array.isArray(transcript)) {
+    return [];
+  }
+  const messages: HeartbeatRunMessageRow[] = [];
+  transcript.forEach((entry, index) => {
+    if (!entry || typeof entry !== "object") {
+      return;
+    }
+    const record = entry as Record<string, unknown>;
+    const kind = typeof record.kind === "string" ? record.kind : "system";
+    messages.push({
+      id: `legacy-${runDetail.run.id}-${index}`,
+      companyId,
+      runId: runDetail.run.id,
+      sequence: index,
+      kind: normalizeKind(kind),
+      label: typeof record.label === "string" ? record.label : null,
+      text: typeof record.text === "string" ? record.text : null,
+      payload: typeof record.payload === "string" ? record.payload : null,
+      signalLevel: normalizeSignalLevel(record.signalLevel, kind),
+      groupKey: typeof record.groupKey === "string" ? record.groupKey : null,
+      source: "trace_fallback",
+      createdAt: runDetail.run.startedAt
+    });
+  });
+  return messages;
+}
+
+function normalizeSignalLevel(value: unknown, kind: string): "high" | "medium" | "low" | "noise" {
+  if (value === "high" || value === "medium" || value === "low" || value === "noise") {
+    return value;
+  }
+  if (kind === "tool_call" || kind === "tool_result" || kind === "result") {
+    return "high";
+  }
+  if (kind === "assistant") {
+    return "medium";
+  }
+  if (kind === "stderr") {
+    return "low";
+  }
+  return "noise";
+}
+
+function normalizeKind(
+  kind: string
+): "system" | "assistant" | "thinking" | "tool_call" | "tool_result" | "result" | "stderr" {
+  if (
+    kind === "system" ||
+    kind === "assistant" ||
+    kind === "thinking" ||
+    kind === "tool_call" ||
+    kind === "tool_result" ||
+    kind === "result" ||
+    kind === "stderr"
+  ) {
+    return kind;
+  }
+  return "system";
+}

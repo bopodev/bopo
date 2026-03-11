@@ -1,0 +1,1081 @@
+import { and, asc, desc, eq, gt, inArray, notInArray, sql } from "drizzle-orm";
+import { nanoid } from "nanoid";
+import type { BopoDb } from "./client";
+import {
+  activityLogs,
+  agents,
+  approvalInboxStates,
+  approvalRequests,
+  auditEvents,
+  companies,
+  costLedger,
+  goals,
+  heartbeatRuns,
+  heartbeatRunMessages,
+  issueAttachments,
+  issueComments,
+  issues,
+  projects,
+  touchUpdatedAtSql
+} from "./schema";
+
+export class RepositoryValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RepositoryValidationError";
+  }
+}
+
+async function assertProjectBelongsToCompany(db: BopoDb, companyId: string, projectId: string) {
+  const [project] = await db
+    .select({ id: projects.id })
+    .from(projects)
+    .where(and(eq(projects.companyId, companyId), eq(projects.id, projectId)))
+    .limit(1);
+  if (!project) {
+    throw new RepositoryValidationError("Project not found for company.");
+  }
+}
+
+async function assertIssueBelongsToCompany(db: BopoDb, companyId: string, issueId: string) {
+  const [issue] = await db
+    .select({ id: issues.id })
+    .from(issues)
+    .where(and(eq(issues.companyId, companyId), eq(issues.id, issueId)))
+    .limit(1);
+  if (!issue) {
+    throw new RepositoryValidationError("Issue not found for company.");
+  }
+}
+
+async function assertGoalBelongsToCompany(db: BopoDb, companyId: string, goalId: string) {
+  const [goal] = await db
+    .select({ id: goals.id })
+    .from(goals)
+    .where(and(eq(goals.companyId, companyId), eq(goals.id, goalId)))
+    .limit(1);
+  if (!goal) {
+    throw new RepositoryValidationError("Parent goal not found for company.");
+  }
+}
+
+async function assertAgentBelongsToCompany(db: BopoDb, companyId: string, agentId: string) {
+  const [agent] = await db
+    .select({ id: agents.id })
+    .from(agents)
+    .where(and(eq(agents.companyId, companyId), eq(agents.id, agentId)))
+    .limit(1);
+  if (!agent) {
+    throw new RepositoryValidationError("Agent not found for company.");
+  }
+}
+
+export async function createCompany(db: BopoDb, input: { name: string; mission?: string | null }) {
+  const id = nanoid(12);
+  await db.insert(companies).values({
+    id,
+    name: input.name,
+    mission: input.mission ?? null
+  });
+  return { id, ...input };
+}
+
+export async function listCompanies(db: BopoDb) {
+  return db.select().from(companies).orderBy(desc(companies.createdAt));
+}
+
+export async function updateCompany(
+  db: BopoDb,
+  input: { id: string; name?: string; mission?: string | null }
+) {
+  const [company] = await db
+    .update(companies)
+    .set(compactUpdate({ name: input.name, mission: input.mission }))
+    .where(eq(companies.id, input.id))
+    .returning();
+  return company ?? null;
+}
+
+export async function deleteCompany(db: BopoDb, id: string) {
+  const [deletedCompany] = await db.delete(companies).where(eq(companies.id, id)).returning({ id: companies.id });
+  return Boolean(deletedCompany);
+}
+
+export async function listProjects(db: BopoDb, companyId: string) {
+  return db.select().from(projects).where(eq(projects.companyId, companyId)).orderBy(desc(projects.createdAt));
+}
+
+export async function createProject(
+  db: BopoDb,
+  input: {
+    id?: string;
+    companyId: string;
+    name: string;
+    description?: string | null;
+    status?: "planned" | "active" | "paused" | "blocked" | "completed" | "archived";
+    plannedStartAt?: Date | null;
+    workspaceLocalPath?: string | null;
+    workspaceGithubRepo?: string | null;
+  }
+) {
+  const id = nanoid(12);
+  await db.insert(projects).values({
+    id,
+    companyId: input.companyId,
+    name: input.name,
+    description: input.description ?? null,
+    status: input.status ?? "planned",
+    plannedStartAt: input.plannedStartAt ?? null,
+    workspaceLocalPath: input.workspaceLocalPath ?? null,
+    workspaceGithubRepo: input.workspaceGithubRepo ?? null
+  });
+  return { id, ...input };
+}
+
+export async function updateProject(
+  db: BopoDb,
+  input: {
+    companyId: string;
+    id: string;
+    name?: string;
+    description?: string | null;
+    status?: "planned" | "active" | "paused" | "blocked" | "completed" | "archived";
+    plannedStartAt?: Date | null;
+    workspaceLocalPath?: string | null;
+    workspaceGithubRepo?: string | null;
+  }
+) {
+  const [project] = await db
+    .update(projects)
+    .set(
+      compactUpdate({
+        name: input.name,
+        description: input.description,
+        status: input.status,
+        plannedStartAt: input.plannedStartAt,
+        workspaceLocalPath: input.workspaceLocalPath,
+        workspaceGithubRepo: input.workspaceGithubRepo
+      })
+    )
+    .where(and(eq(projects.companyId, input.companyId), eq(projects.id, input.id)))
+    .returning();
+  return project ?? null;
+}
+
+export async function syncProjectGoals(
+  db: BopoDb,
+  input: { companyId: string; projectId: string; goalIds: string[] }
+) {
+  const dedupedGoalIds = Array.from(new Set(input.goalIds));
+  if (dedupedGoalIds.length > 0) {
+    const matchingGoals = await db
+      .select({ id: goals.id })
+      .from(goals)
+      .where(and(eq(goals.companyId, input.companyId), inArray(goals.id, dedupedGoalIds)));
+    if (matchingGoals.length !== dedupedGoalIds.length) {
+      throw new RepositoryValidationError("One or more goals do not belong to the company.");
+    }
+  }
+
+  const detachWhere =
+    dedupedGoalIds.length > 0
+      ? and(eq(goals.companyId, input.companyId), eq(goals.projectId, input.projectId), notInArray(goals.id, dedupedGoalIds))
+      : and(eq(goals.companyId, input.companyId), eq(goals.projectId, input.projectId));
+
+  await db
+    .update(goals)
+    .set({
+      projectId: null,
+      updatedAt: touchUpdatedAtSql
+    })
+    .where(detachWhere);
+
+  if (dedupedGoalIds.length > 0) {
+    await db
+      .update(goals)
+      .set({
+        projectId: input.projectId,
+        updatedAt: touchUpdatedAtSql
+      })
+      .where(and(eq(goals.companyId, input.companyId), inArray(goals.id, dedupedGoalIds)));
+  }
+}
+
+export async function deleteProject(db: BopoDb, companyId: string, id: string) {
+  const [deletedProject] = await db
+    .delete(projects)
+    .where(and(eq(projects.companyId, companyId), eq(projects.id, id)))
+    .returning({ id: projects.id });
+  return Boolean(deletedProject);
+}
+
+export async function listIssues(db: BopoDb, companyId: string, projectId?: string) {
+  const where = projectId
+    ? and(eq(issues.companyId, companyId), eq(issues.projectId, projectId))
+    : eq(issues.companyId, companyId);
+
+  return db.select().from(issues).where(where).orderBy(desc(issues.updatedAt));
+}
+
+export async function createIssue(
+  db: BopoDb,
+  input: {
+    companyId: string;
+    projectId: string;
+    parentIssueId?: string | null;
+    title: string;
+    body?: string;
+    status?: string;
+    priority?: string;
+    assigneeAgentId?: string | null;
+    labels?: string[];
+    tags?: string[];
+  }
+) {
+  await assertProjectBelongsToCompany(db, input.companyId, input.projectId);
+  if (input.parentIssueId) {
+    await assertIssueBelongsToCompany(db, input.companyId, input.parentIssueId);
+  }
+  if (input.assigneeAgentId) {
+    await assertAgentBelongsToCompany(db, input.companyId, input.assigneeAgentId);
+  }
+  const id = nanoid(12);
+  await db.insert(issues).values({
+    id,
+    companyId: input.companyId,
+    projectId: input.projectId,
+    parentIssueId: input.parentIssueId ?? null,
+    title: input.title,
+    body: input.body,
+    status: input.status ?? "todo",
+    priority: input.priority ?? "none",
+    assigneeAgentId: input.assigneeAgentId ?? null,
+    labelsJson: JSON.stringify(input.labels ?? []),
+    tagsJson: JSON.stringify(input.tags ?? [])
+  });
+
+  return { id, ...input };
+}
+
+export async function updateIssue(
+  db: BopoDb,
+  input: {
+    companyId: string;
+    id: string;
+    projectId?: string;
+    title?: string;
+    body?: string | null;
+    status?: string;
+    priority?: string;
+    assigneeAgentId?: string | null;
+    labels?: string[];
+    tags?: string[];
+  }
+) {
+  if (input.projectId) {
+    await assertProjectBelongsToCompany(db, input.companyId, input.projectId);
+  }
+  if (input.assigneeAgentId) {
+    await assertAgentBelongsToCompany(db, input.companyId, input.assigneeAgentId);
+  }
+  const [issue] = await db
+    .update(issues)
+    .set(
+      compactUpdate({
+        projectId: input.projectId,
+        title: input.title,
+        body: input.body,
+        status: input.status,
+        priority: input.priority,
+        assigneeAgentId: input.assigneeAgentId,
+        labelsJson: input.labels ? JSON.stringify(input.labels) : undefined,
+        tagsJson: input.tags ? JSON.stringify(input.tags) : undefined,
+        updatedAt: touchUpdatedAtSql
+      })
+    )
+    .where(and(eq(issues.companyId, input.companyId), eq(issues.id, input.id)))
+    .returning();
+  return issue ?? null;
+}
+
+export async function deleteIssue(db: BopoDb, companyId: string, id: string) {
+  const [deletedIssue] = await db
+    .delete(issues)
+    .where(and(eq(issues.companyId, companyId), eq(issues.id, id)))
+    .returning({ id: issues.id });
+  return Boolean(deletedIssue);
+}
+
+export async function addIssueAttachment(
+  db: BopoDb,
+  input: {
+    id?: string;
+    companyId: string;
+    issueId: string;
+    projectId: string;
+    fileName: string;
+    mimeType?: string | null;
+    fileSizeBytes: number;
+    relativePath: string;
+    uploadedByActorType?: "human" | "agent" | "system";
+    uploadedByActorId?: string | null;
+  }
+) {
+  await assertIssueBelongsToCompany(db, input.companyId, input.issueId);
+  await assertProjectBelongsToCompany(db, input.companyId, input.projectId);
+  const id = input.id ?? nanoid(14);
+  await db.insert(issueAttachments).values({
+    id,
+    companyId: input.companyId,
+    issueId: input.issueId,
+    projectId: input.projectId,
+    fileName: input.fileName,
+    mimeType: input.mimeType ?? null,
+    fileSizeBytes: input.fileSizeBytes,
+    relativePath: input.relativePath,
+    uploadedByActorType: input.uploadedByActorType ?? "human",
+    uploadedByActorId: input.uploadedByActorId ?? null
+  });
+  return { id, ...input };
+}
+
+export async function listIssueAttachments(db: BopoDb, companyId: string, issueId: string) {
+  return db
+    .select()
+    .from(issueAttachments)
+    .where(and(eq(issueAttachments.companyId, companyId), eq(issueAttachments.issueId, issueId)))
+    .orderBy(desc(issueAttachments.createdAt));
+}
+
+export async function getIssueAttachment(db: BopoDb, companyId: string, issueId: string, attachmentId: string) {
+  const [attachment] = await db
+    .select()
+    .from(issueAttachments)
+    .where(
+      and(
+        eq(issueAttachments.companyId, companyId),
+        eq(issueAttachments.issueId, issueId),
+        eq(issueAttachments.id, attachmentId)
+      )
+    )
+    .limit(1);
+  return attachment ?? null;
+}
+
+export async function deleteIssueAttachment(db: BopoDb, companyId: string, issueId: string, attachmentId: string) {
+  const [deletedAttachment] = await db
+    .delete(issueAttachments)
+    .where(
+      and(
+        eq(issueAttachments.companyId, companyId),
+        eq(issueAttachments.issueId, issueId),
+        eq(issueAttachments.id, attachmentId)
+      )
+    )
+    .returning();
+  return deletedAttachment ?? null;
+}
+
+export async function addIssueComment(
+  db: BopoDb,
+  input: {
+    companyId: string;
+    issueId: string;
+    authorType: "human" | "agent" | "system";
+    authorId?: string | null;
+    body: string;
+  }
+) {
+  await assertIssueBelongsToCompany(db, input.companyId, input.issueId);
+  const id = nanoid(12);
+  await db.insert(issueComments).values({
+    id,
+    companyId: input.companyId,
+    issueId: input.issueId,
+    authorType: input.authorType,
+    authorId: input.authorId ?? null,
+    body: input.body
+  });
+
+  return { id, ...input };
+}
+
+export async function listIssueComments(db: BopoDb, companyId: string, issueId: string) {
+  return db
+    .select()
+    .from(issueComments)
+    .where(and(eq(issueComments.companyId, companyId), eq(issueComments.issueId, issueId)))
+    .orderBy(desc(issueComments.createdAt));
+}
+
+export async function listIssueActivity(db: BopoDb, companyId: string, issueId: string, limit = 100) {
+  return db
+    .select()
+    .from(activityLogs)
+    .where(and(eq(activityLogs.companyId, companyId), eq(activityLogs.issueId, issueId)))
+    .orderBy(desc(activityLogs.createdAt))
+    .limit(limit);
+}
+
+export async function updateIssueComment(
+  db: BopoDb,
+  input: {
+    companyId: string;
+    issueId: string;
+    id: string;
+    body: string;
+  }
+) {
+  const [comment] = await db
+    .update(issueComments)
+    .set({ body: input.body })
+    .where(
+      and(
+        eq(issueComments.companyId, input.companyId),
+        eq(issueComments.issueId, input.issueId),
+        eq(issueComments.id, input.id)
+      )
+    )
+    .returning();
+  return comment ?? null;
+}
+
+export async function deleteIssueComment(db: BopoDb, companyId: string, issueId: string, id: string) {
+  const [deletedComment] = await db
+    .delete(issueComments)
+    .where(and(eq(issueComments.companyId, companyId), eq(issueComments.issueId, issueId), eq(issueComments.id, id)))
+    .returning({ id: issueComments.id });
+  return Boolean(deletedComment);
+}
+
+export async function createGoal(
+  db: BopoDb,
+  input: {
+    companyId: string;
+    projectId?: string | null;
+    parentGoalId?: string | null;
+    level: "company" | "project" | "agent";
+    title: string;
+    description?: string;
+  }
+) {
+  if (input.projectId) {
+    await assertProjectBelongsToCompany(db, input.companyId, input.projectId);
+  }
+  if (input.parentGoalId) {
+    await assertGoalBelongsToCompany(db, input.companyId, input.parentGoalId);
+  }
+  const id = nanoid(12);
+  await db.insert(goals).values({
+    id,
+    companyId: input.companyId,
+    projectId: input.projectId ?? null,
+    parentGoalId: input.parentGoalId ?? null,
+    level: input.level,
+    title: input.title,
+    description: input.description ?? null
+  });
+  return { id, ...input };
+}
+
+export async function listGoals(db: BopoDb, companyId: string) {
+  return db.select().from(goals).where(eq(goals.companyId, companyId)).orderBy(desc(goals.updatedAt));
+}
+
+export async function updateGoal(
+  db: BopoDb,
+  input: {
+    companyId: string;
+    id: string;
+    projectId?: string | null;
+    parentGoalId?: string | null;
+    level?: "company" | "project" | "agent";
+    title?: string;
+    description?: string | null;
+    status?: string;
+  }
+) {
+  if (input.projectId) {
+    await assertProjectBelongsToCompany(db, input.companyId, input.projectId);
+  }
+  if (input.parentGoalId) {
+    await assertGoalBelongsToCompany(db, input.companyId, input.parentGoalId);
+  }
+  const [goal] = await db
+    .update(goals)
+    .set(
+      compactUpdate({
+        projectId: input.projectId,
+        parentGoalId: input.parentGoalId,
+        level: input.level,
+        title: input.title,
+        description: input.description,
+        status: input.status,
+        updatedAt: touchUpdatedAtSql
+      })
+    )
+    .where(and(eq(goals.companyId, input.companyId), eq(goals.id, input.id)))
+    .returning();
+  return goal ?? null;
+}
+
+export async function deleteGoal(db: BopoDb, companyId: string, id: string) {
+  const [deletedGoal] = await db
+    .delete(goals)
+    .where(and(eq(goals.companyId, companyId), eq(goals.id, id)))
+    .returning({ id: goals.id });
+  return Boolean(deletedGoal);
+}
+
+export async function createAgent(
+  db: BopoDb,
+  input: {
+    companyId: string;
+    managerAgentId?: string | null;
+    role: string;
+    name: string;
+    providerType:
+      | "claude_code"
+      | "codex"
+      | "cursor"
+      | "opencode"
+      | "openai_api"
+      | "anthropic_api"
+      | "http"
+      | "shell";
+    heartbeatCron: string;
+    monthlyBudgetUsd: string;
+    canHireAgents?: boolean;
+    avatarSeed?: string;
+    runtimeCommand?: string | null;
+    runtimeArgsJson?: string;
+    runtimeCwd?: string | null;
+    runtimeEnvJson?: string;
+    runtimeModel?: string | null;
+    runtimeThinkingEffort?: "auto" | "low" | "medium" | "high";
+    bootstrapPrompt?: string | null;
+    runtimeTimeoutSec?: number;
+    interruptGraceSec?: number;
+    runPolicyJson?: string;
+    initialState?: Record<string, unknown>;
+  }
+) {
+  if (input.managerAgentId) {
+    await assertAgentBelongsToCompany(db, input.companyId, input.managerAgentId);
+  }
+  const id = nanoid(12);
+  const avatarSeed = input.avatarSeed ?? nanoid(10);
+  await db.insert(agents).values({
+    id,
+    companyId: input.companyId,
+    managerAgentId: input.managerAgentId ?? null,
+    role: input.role,
+    name: input.name,
+    providerType: input.providerType,
+    heartbeatCron: input.heartbeatCron,
+    monthlyBudgetUsd: input.monthlyBudgetUsd,
+    canHireAgents: input.canHireAgents ?? false,
+    avatarSeed,
+    runtimeCommand: input.runtimeCommand ?? null,
+    runtimeArgsJson: input.runtimeArgsJson ?? "[]",
+    runtimeCwd: input.runtimeCwd ?? null,
+    runtimeEnvJson: input.runtimeEnvJson ?? "{}",
+    runtimeModel: input.runtimeModel ?? null,
+    runtimeThinkingEffort: input.runtimeThinkingEffort ?? "auto",
+    bootstrapPrompt: input.bootstrapPrompt ?? null,
+    runtimeTimeoutSec: input.runtimeTimeoutSec ?? 0,
+    interruptGraceSec: input.interruptGraceSec ?? 15,
+    runPolicyJson: input.runPolicyJson ?? "{}",
+    stateBlob: JSON.stringify(input.initialState ?? {})
+  });
+
+  return { id, ...input, avatarSeed };
+}
+
+export async function listAgents(db: BopoDb, companyId: string) {
+  return db.select().from(agents).where(eq(agents.companyId, companyId)).orderBy(desc(agents.createdAt));
+}
+
+export async function updateAgent(
+  db: BopoDb,
+  input: {
+    companyId: string;
+    id: string;
+    managerAgentId?: string | null;
+    role?: string;
+    name?: string;
+    providerType?:
+      | "claude_code"
+      | "codex"
+      | "cursor"
+      | "opencode"
+      | "openai_api"
+      | "anthropic_api"
+      | "http"
+      | "shell";
+    status?: string;
+    heartbeatCron?: string;
+    monthlyBudgetUsd?: string;
+    canHireAgents?: boolean;
+    runtimeCommand?: string | null;
+    runtimeArgsJson?: string;
+    runtimeCwd?: string | null;
+    runtimeEnvJson?: string;
+    runtimeModel?: string | null;
+    runtimeThinkingEffort?: "auto" | "low" | "medium" | "high";
+    bootstrapPrompt?: string | null;
+    runtimeTimeoutSec?: number;
+    interruptGraceSec?: number;
+    runPolicyJson?: string;
+    stateBlob?: Record<string, unknown>;
+  }
+) {
+  if (input.managerAgentId) {
+    await assertAgentBelongsToCompany(db, input.companyId, input.managerAgentId);
+  }
+  const [agent] = await db
+    .update(agents)
+    .set(
+      compactUpdate({
+        managerAgentId: input.managerAgentId,
+        role: input.role,
+        name: input.name,
+        providerType: input.providerType,
+        status: input.status,
+        heartbeatCron: input.heartbeatCron,
+        monthlyBudgetUsd: input.monthlyBudgetUsd,
+        canHireAgents: input.canHireAgents,
+        runtimeCommand: input.runtimeCommand,
+        runtimeArgsJson: input.runtimeArgsJson,
+        runtimeCwd: input.runtimeCwd,
+        runtimeEnvJson: input.runtimeEnvJson,
+        runtimeModel: input.runtimeModel,
+        runtimeThinkingEffort: input.runtimeThinkingEffort,
+        bootstrapPrompt: input.bootstrapPrompt,
+        runtimeTimeoutSec: input.runtimeTimeoutSec,
+        interruptGraceSec: input.interruptGraceSec,
+        runPolicyJson: input.runPolicyJson,
+        stateBlob: input.stateBlob ? JSON.stringify(input.stateBlob) : undefined,
+        updatedAt: touchUpdatedAtSql
+      })
+    )
+    .where(and(eq(agents.companyId, input.companyId), eq(agents.id, input.id)))
+    .returning();
+  return agent ?? null;
+}
+
+export async function deleteAgent(db: BopoDb, companyId: string, id: string) {
+  const [deletedAgent] = await db
+    .delete(agents)
+    .where(and(eq(agents.companyId, companyId), eq(agents.id, id)))
+    .returning({ id: agents.id });
+  return Boolean(deletedAgent);
+}
+
+export async function appendAuditEvent(
+  db: BopoDb,
+  input: {
+    companyId: string;
+    actorType: "human" | "agent" | "system";
+    actorId?: string | null;
+    eventType: string;
+    entityType: string;
+    entityId: string;
+    correlationId?: string | null;
+    payload: Record<string, unknown>;
+  }
+) {
+  const id = nanoid(14);
+  await db.insert(auditEvents).values({
+    id,
+    companyId: input.companyId,
+    actorType: input.actorType,
+    actorId: input.actorId ?? null,
+    eventType: input.eventType,
+    entityType: input.entityType,
+    entityId: input.entityId,
+    correlationId: input.correlationId ?? null,
+    payloadJson: JSON.stringify(input.payload)
+  });
+  return id;
+}
+
+export async function listAuditEvents(db: BopoDb, companyId: string, limit = 100) {
+  return db
+    .select()
+    .from(auditEvents)
+    .where(eq(auditEvents.companyId, companyId))
+    .orderBy(desc(auditEvents.createdAt))
+    .limit(limit);
+}
+
+export async function createApprovalRequest(
+  db: BopoDb,
+  input: {
+    companyId: string;
+    requestedByAgentId?: string | null;
+    action: string;
+    payload: Record<string, unknown>;
+  }
+) {
+  const id = nanoid(12);
+  await db.insert(approvalRequests).values({
+    id,
+    companyId: input.companyId,
+    requestedByAgentId: input.requestedByAgentId ?? null,
+    action: input.action,
+    payloadJson: JSON.stringify(input.payload),
+    status: "pending"
+  });
+  return id;
+}
+
+export async function getApprovalRequest(db: BopoDb, companyId: string, approvalId: string) {
+  const [approval] = await db
+    .select()
+    .from(approvalRequests)
+    .where(and(eq(approvalRequests.companyId, companyId), eq(approvalRequests.id, approvalId)))
+    .limit(1);
+
+  return approval ?? null;
+}
+
+export async function listApprovalRequests(db: BopoDb, companyId: string) {
+  return db
+    .select()
+    .from(approvalRequests)
+    .where(eq(approvalRequests.companyId, companyId))
+    .orderBy(desc(approvalRequests.createdAt));
+}
+
+export async function listApprovalInboxStates(db: BopoDb, companyId: string, actorId: string) {
+  return db
+    .select()
+    .from(approvalInboxStates)
+    .where(and(eq(approvalInboxStates.companyId, companyId), eq(approvalInboxStates.actorId, actorId)))
+    .orderBy(desc(approvalInboxStates.updatedAt));
+}
+
+export async function markApprovalInboxSeen(
+  db: BopoDb,
+  input: {
+    companyId: string;
+    actorId: string;
+    approvalId: string;
+    seenAt?: Date;
+  }
+) {
+  const seenAt = input.seenAt ?? new Date();
+  await db
+    .insert(approvalInboxStates)
+    .values({
+      companyId: input.companyId,
+      actorId: input.actorId,
+      approvalId: input.approvalId,
+      seenAt
+    })
+    .onConflictDoUpdate({
+      target: [approvalInboxStates.companyId, approvalInboxStates.actorId, approvalInboxStates.approvalId],
+      set: {
+        seenAt,
+        updatedAt: sql`CURRENT_TIMESTAMP`
+      }
+    });
+}
+
+export async function markApprovalInboxDismissed(
+  db: BopoDb,
+  input: {
+    companyId: string;
+    actorId: string;
+    approvalId: string;
+    dismissedAt?: Date;
+  }
+) {
+  const dismissedAt = input.dismissedAt ?? new Date();
+  await db
+    .insert(approvalInboxStates)
+    .values({
+      companyId: input.companyId,
+      actorId: input.actorId,
+      approvalId: input.approvalId,
+      dismissedAt
+    })
+    .onConflictDoUpdate({
+      target: [approvalInboxStates.companyId, approvalInboxStates.actorId, approvalInboxStates.approvalId],
+      set: {
+        dismissedAt,
+        updatedAt: sql`CURRENT_TIMESTAMP`
+      }
+    });
+}
+
+export async function clearApprovalInboxDismissed(
+  db: BopoDb,
+  input: {
+    companyId: string;
+    actorId: string;
+    approvalId: string;
+  }
+) {
+  await db
+    .insert(approvalInboxStates)
+    .values({
+      companyId: input.companyId,
+      actorId: input.actorId,
+      approvalId: input.approvalId,
+      dismissedAt: null
+    })
+    .onConflictDoUpdate({
+      target: [approvalInboxStates.companyId, approvalInboxStates.actorId, approvalInboxStates.approvalId],
+      set: {
+        dismissedAt: null,
+        updatedAt: sql`CURRENT_TIMESTAMP`
+      }
+    });
+}
+
+export async function appendCost(
+  db: BopoDb,
+  input: {
+    companyId: string;
+    providerType: string;
+    tokenInput: number;
+    tokenOutput: number;
+    usdCost: string;
+    projectId?: string | null;
+    issueId?: string | null;
+    agentId?: string | null;
+  }
+) {
+  const id = nanoid(14);
+  await db.insert(costLedger).values({
+    id,
+    companyId: input.companyId,
+    providerType: input.providerType,
+    tokenInput: input.tokenInput,
+    tokenOutput: input.tokenOutput,
+    usdCost: input.usdCost,
+    projectId: input.projectId ?? null,
+    issueId: input.issueId ?? null,
+    agentId: input.agentId ?? null
+  });
+  return id;
+}
+
+export async function listCostEntries(db: BopoDb, companyId: string, limit = 200) {
+  return db
+    .select()
+    .from(costLedger)
+    .where(eq(costLedger.companyId, companyId))
+    .orderBy(desc(costLedger.createdAt))
+    .limit(limit);
+}
+
+export async function listHeartbeatRuns(db: BopoDb, companyId: string, limit = 100) {
+  return db
+    .select()
+    .from(heartbeatRuns)
+    .where(eq(heartbeatRuns.companyId, companyId))
+    .orderBy(desc(heartbeatRuns.startedAt))
+    .limit(limit);
+}
+
+export async function getHeartbeatRun(db: BopoDb, companyId: string, runId: string) {
+  const [run] = await db
+    .select()
+    .from(heartbeatRuns)
+    .where(and(eq(heartbeatRuns.companyId, companyId), eq(heartbeatRuns.id, runId)))
+    .limit(1);
+  return run ?? null;
+}
+
+export async function appendHeartbeatRunMessages(
+  db: BopoDb,
+  input: {
+    companyId: string;
+    runId: string;
+    messages: Array<{
+      id?: string;
+      sequence: number;
+      kind: string;
+      label?: string | null;
+      text?: string | null;
+      payloadJson?: string | null;
+      signalLevel?: "high" | "medium" | "low" | "noise" | null;
+      groupKey?: string | null;
+      source?: "stdout" | "stderr" | "trace_fallback" | null;
+      createdAt?: Date;
+    }>;
+  }
+) {
+  if (input.messages.length === 0) {
+    return [] as string[];
+  }
+  const values = input.messages.map((message) => ({
+    id: message.id ?? nanoid(14),
+    companyId: input.companyId,
+    runId: input.runId,
+    sequence: message.sequence,
+    kind: message.kind,
+    label: message.label ?? null,
+    text: message.text ?? null,
+    payloadJson: message.payloadJson ?? null,
+    signalLevel: message.signalLevel ?? null,
+    groupKey: message.groupKey ?? null,
+    source: message.source ?? null,
+    createdAt: message.createdAt ?? new Date()
+  }));
+  await db.insert(heartbeatRunMessages).values(values);
+  return values.map((message) => message.id);
+}
+
+export async function listHeartbeatRunMessages(
+  db: BopoDb,
+  input: { companyId: string; runId: string; afterSequence?: number; limit?: number }
+) {
+  const limit = Math.min(Math.max(input.limit ?? 200, 1), 500);
+  const whereClause =
+    input.afterSequence !== undefined
+      ? and(
+          eq(heartbeatRunMessages.companyId, input.companyId),
+          eq(heartbeatRunMessages.runId, input.runId),
+          gt(heartbeatRunMessages.sequence, input.afterSequence)
+        )
+      : and(eq(heartbeatRunMessages.companyId, input.companyId), eq(heartbeatRunMessages.runId, input.runId));
+  const rows = await db
+    .select()
+    .from(heartbeatRunMessages)
+    .where(whereClause)
+    .orderBy(asc(heartbeatRunMessages.sequence))
+    .limit(limit + 1);
+  const hasMore = rows.length > limit;
+  const items = hasMore ? rows.slice(0, limit) : rows;
+  return {
+    items,
+    nextCursor: hasMore ? String(items[items.length - 1]?.sequence ?? "") : null
+  };
+}
+
+export async function listHeartbeatRunMessagesForRuns(
+  db: BopoDb,
+  input: { companyId: string; runIds: string[]; perRunLimit?: number }
+) {
+  const runIds = Array.from(new Set(input.runIds.filter((runId) => runId.trim().length > 0)));
+  if (runIds.length === 0) {
+    return new Map<string, { items: Array<(typeof heartbeatRunMessages.$inferSelect)>; nextCursor: string | null }>();
+  }
+  const perRunLimit = Math.min(Math.max(input.perRunLimit ?? 60, 1), 500);
+  const runIdValues = sql.join(runIds.map((runId) => sql`(${runId})`), sql`, `);
+  const rankedRows = await db.execute(sql`
+    WITH requested(run_id) AS (
+      VALUES ${runIdValues}
+    ),
+    ranked AS (
+      SELECT
+        m.id,
+        m.company_id,
+        m.run_id,
+        m.sequence,
+        m.kind,
+        m.label,
+        m.text,
+        m.payload_json,
+        m.signal_level,
+        m.group_key,
+        m.source,
+        m.created_at,
+        ROW_NUMBER() OVER (PARTITION BY m.run_id ORDER BY m.sequence DESC) AS rn,
+        COUNT(*) OVER (PARTITION BY m.run_id) AS total_count
+      FROM heartbeat_run_messages m
+      JOIN requested r ON r.run_id = m.run_id
+      WHERE m.company_id = ${input.companyId}
+    )
+    SELECT
+      id,
+      company_id,
+      run_id,
+      sequence,
+      kind,
+      label,
+      text,
+      payload_json,
+      signal_level,
+      group_key,
+      source,
+      created_at,
+      total_count
+    FROM ranked
+    WHERE rn <= ${perRunLimit}
+    ORDER BY run_id ASC, sequence ASC
+  `);
+  const rows = (rankedRows.rows ?? []) as Array<{
+    id: string;
+    company_id: string;
+    run_id: string;
+    sequence: number;
+    kind: string;
+    label: string | null;
+    text: string | null;
+    payload_json: string | null;
+    signal_level: string | null;
+    group_key: string | null;
+    source: string | null;
+    created_at: Date | string;
+    total_count: number;
+  }>;
+  const grouped = new Map<string, { items: Array<(typeof heartbeatRunMessages.$inferSelect)>; nextCursor: string | null }>();
+  for (const runId of runIds) {
+    grouped.set(runId, { items: [], nextCursor: null });
+  }
+  for (const row of rows) {
+    const bucket = grouped.get(row.run_id) ?? { items: [], nextCursor: null };
+    bucket.items.push({
+      id: row.id,
+      companyId: row.company_id,
+      runId: row.run_id,
+      sequence: row.sequence,
+      kind: row.kind,
+      label: row.label,
+      text: row.text,
+      payloadJson: row.payload_json,
+      signalLevel: row.signal_level,
+      groupKey: row.group_key,
+      source: row.source,
+      createdAt: row.created_at instanceof Date ? row.created_at : new Date(row.created_at)
+    });
+    if (row.total_count > perRunLimit) {
+      bucket.nextCursor = String(row.sequence);
+    }
+    grouped.set(row.run_id, bucket);
+  }
+  return grouped;
+}
+
+export async function appendActivity(
+  db: BopoDb,
+  input: {
+    companyId: string;
+    issueId?: string | null;
+    actorType: "human" | "agent" | "system";
+    actorId?: string | null;
+    eventType: string;
+    payload: Record<string, unknown>;
+  }
+) {
+  const id = nanoid(12);
+  await db.insert(activityLogs).values({
+    id,
+    companyId: input.companyId,
+    issueId: input.issueId ?? null,
+    actorType: input.actorType,
+    actorId: input.actorId ?? null,
+    eventType: input.eventType,
+    payloadJson: JSON.stringify(input.payload)
+  });
+  return id;
+}
+
+function compactUpdate<T extends Record<string, unknown>>(input: T) {
+  return Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined));
+}

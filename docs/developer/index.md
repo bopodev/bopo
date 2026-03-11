@@ -1,0 +1,23 @@
+# Developer Documentation
+
+Use this section to understand internals, APIs, and extension points.
+
+## Audience
+
+- Engineers building features in Bopo apps/packages.
+- Engineers integrating custom runtimes or operating self-hosted instances.
+
+## Pages
+
+- [`architecture.md`](./architecture.md): system layout and runtime data flow.
+- [`domain-model.md`](./domain-model.md): canonical entities and lifecycle semantics.
+- [`api-reference.md`](./api-reference.md): route groups, headers, and behavior contracts.
+- [`configuration-reference.md`](./configuration-reference.md): environment variables and defaults.
+- [`contributing.md`](./contributing.md): workflow and quality standards.
+
+## Related
+
+- Setup guide: [`../getting-started-and-dev.md`](../getting-started-and-dev.md)
+- Adapter overview: [`../adapters/overview.md`](../adapters/overview.md)
+- Adapter authoring: [`../adapter-authoring.md`](../adapter-authoring.md)
+

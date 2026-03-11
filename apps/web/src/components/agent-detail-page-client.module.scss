@@ -1,0 +1,189 @@
+@reference "../app/globals.css";
+
+.agentDetailLeftPaneContainer {
+  @apply flex w-full flex-col gap-6;
+}
+
+.agentHeaderContainer1 {
+  @apply flex flex-col gap-4 md:flex-row md:items-start md:justify-between;
+}
+
+.agentHeaderIdentity {
+  @apply flex items-center gap-6;
+}
+
+.agentHeaderAvatar {
+  @apply size-12 shrink-0 rounded-full bg-background bg-cover bg-center bg-no-repeat shadow-sm;
+}
+
+.agentHeaderContainer2 {
+  @apply space-y-2;
+}
+
+.agentHeaderContainer3 {
+  @apply text-sm text-muted-foreground;
+}
+
+.agentHeaderLink {
+  @apply font-medium hover:underline;
+}
+
+.agentHeaderLabel {
+  @apply text-foreground;
+}
+
+.agentHeaderTitle {
+  @apply text-3xl font-semibold tracking-tight;
+}
+
+.agentHeaderText {
+  @apply text-sm text-muted-foreground;
+}
+
+.agentHeaderContainer4 {
+  @apply flex flex-wrap items-center gap-2;
+}
+
+.agentActionAlert {
+  @apply mb-4;
+}
+
+.latestRunCardContent {
+  @apply space-y-3;
+}
+
+.latestRunHeader {
+  @apply flex flex-col gap-3 md:flex-row md:items-start md:justify-between;
+}
+
+.latestRunHeaderHeading {
+  @apply min-w-0 flex flex-col gap-2;
+}
+
+.latestRunHeaderActions {
+  @apply flex flex-wrap items-center justify-end gap-2;
+}
+
+.latestRunContainer2 {
+  @apply flex flex-col gap-3 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between;
+}
+
+.latestRunSummaryContainer {
+  @apply space-y-3 rounded-md border p-3;
+}
+
+.latestRunMeta {
+  @apply flex items-center gap-2;
+}
+
+.latestRunMetaLabel {
+  @apply text-xs uppercase tracking-[0.12em] text-muted-foreground;
+}
+
+.latestRunSummaryText {
+  @apply text-sm;
+}
+
+.mutedTextContainer {
+  @apply text-sm text-muted-foreground;
+}
+
+.chartGridContainer {
+  @apply grid gap-6 lg:grid-cols-2;
+}
+
+.chartCardContent {
+  @apply pt-2;
+}
+
+.chartContainer {
+  @apply h-44 min-h-44 w-full;
+}
+
+.issueListCardContent {
+  @apply space-y-3;
+}
+
+.issueRowContainer1 {
+  @apply flex flex-col gap-4 rounded-md border px-4 py-3 md:flex-row md:items-center md:justify-between;
+}
+
+.issueRowContainer2 {
+  @apply min-w-0;
+}
+
+.issueRowContainer3 {
+  @apply mt-1 text-sm text-muted-foreground;
+}
+
+.issueRowContainer4 {
+  @apply flex flex-wrap items-center gap-4;
+}
+
+.costGridCardContent {
+  @apply grid gap-6 sm:grid-cols-2 lg:grid-cols-4;
+}
+
+.costSectionContainer {
+  @apply space-y-3;
+}
+
+.costSectionHeadingContainer {
+  @apply space-y-1;
+}
+
+.costSectionTitle {
+  @apply text-xl font-semibold tracking-tight;
+}
+
+.costSectionDescription {
+  @apply text-sm text-muted-foreground;
+}
+
+.costMetricValueContainer {
+  @apply text-2xl font-semibold tracking-tight;
+}
+
+.configGridContainer {
+  @apply grid gap-6 xl:grid-cols-2;
+}
+
+.configCardContent {
+  @apply space-y-2;
+}
+
+.configRowContainer1 {
+  @apply flex items-start justify-between gap-4 border-b pb-2 text-sm last:border-b-0 last:pb-0;
+}
+
+.configRowContainer2 {
+  @apply text-muted-foreground;
+}
+
+.configRowContainer3 {
+  @apply max-w-[60%] wrap-break-word text-right;
+}
+
+.promptCardContent {
+  @apply space-y-4;
+}
+
+.promptPre {
+  @apply max-h-56 overflow-auto rounded-md border bg-muted/20 p-3 text-sm leading-6;
+}
+
+.capabilitiesContainer1 {
+  @apply space-y-1;
+}
+
+.capabilitiesContainer2 {
+  @apply text-xs uppercase tracking-[0.12em] text-muted-foreground;
+}
+
+.capabilitiesContainer3 {
+  @apply text-sm;
+}
+
+.runtimeContainer {
+  @apply text-sm text-muted-foreground;
+}

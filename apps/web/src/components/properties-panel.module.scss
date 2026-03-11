@@ -1,0 +1,17 @@
+@reference "../app/globals.css";
+
+.propertiesPanelContainer {
+  @apply space-y-4;
+}
+
+.row {
+  @apply mb-2 flex items-center justify-between text-sm;
+}
+
+.rowKey {
+  @apply text-muted-foreground;
+}
+
+.rowValue {
+  @apply font-medium;
+}

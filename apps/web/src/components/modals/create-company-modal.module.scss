@@ -1,0 +1,9 @@
+@reference "../../app/globals.css";
+
+.createCompanyModalForm {
+  @apply grid gap-4;
+}
+
+.createCompanyModalText {
+  @apply text-sm text-destructive;
+}

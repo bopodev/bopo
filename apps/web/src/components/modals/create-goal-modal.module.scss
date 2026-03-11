@@ -1,0 +1,13 @@
+@reference "../../app/globals.css";
+
+.createGoalModalForm {
+  @apply grid gap-4;
+}
+
+.createGoalModalSelectTrigger {
+  @apply w-full;
+}
+
+.createGoalModalText {
+  @apply text-sm text-destructive;
+}

@@ -1,0 +1,13 @@
+@reference "../../app/globals.css";
+
+.textActionModalForm {
+  @apply grid gap-4;
+}
+
+.textActionModalFieldLabel {
+  @apply sr-only;
+}
+
+.textActionModalText {
+  @apply text-sm text-destructive;
+}

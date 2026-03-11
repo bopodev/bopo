@@ -1,0 +1,377 @@
+import { and, eq } from "drizzle-orm";
+import { mkdir } from "node:fs/promises";
+import { z } from "zod";
+import { AgentCreateRequestSchema } from "bopodev-contracts";
+import type { BopoDb } from "bopodev-db";
+import {
+  approvalRequests,
+  createAgent,
+  createGoal,
+  createIssue,
+  createProject,
+  goals,
+  listIssues,
+  listProjects,
+  projects
+} from "bopodev-db";
+import {
+  normalizeRuntimeConfig,
+  requiresRuntimeCwd,
+  runtimeConfigToDb,
+  runtimeConfigToStateBlobPatch
+} from "../lib/agent-config";
+import { hasText, resolveDefaultRuntimeCwdForCompany } from "../lib/workspace-policy";
+import { appendDurableFact } from "./memory-file-service";
+
+const approvalGatedActions = new Set([
+  "hire_agent",
+  "activate_goal",
+  "override_budget",
+  "pause_agent",
+  "terminate_agent",
+  "promote_memory_fact"
+]);
+
+const hireAgentPayloadSchema = AgentCreateRequestSchema.extend({
+  runtimeCommand: z.string().optional(),
+  runtimeArgs: z.array(z.string()).optional(),
+  runtimeCwd: z.string().optional(),
+  runtimeTimeoutMs: z.number().int().positive().max(600000).optional(),
+  runtimeModel: z.string().optional(),
+  runtimeThinkingEffort: z.enum(["auto", "low", "medium", "high"]).optional(),
+  bootstrapPrompt: z.string().optional(),
+  runtimeTimeoutSec: z.number().int().nonnegative().optional(),
+  interruptGraceSec: z.number().int().nonnegative().optional(),
+  runtimeEnv: z.record(z.string(), z.string()).optional(),
+  runPolicy: z
+    .object({
+      sandboxMode: z.enum(["workspace_write", "full_access"]).optional(),
+      allowWebSearch: z.boolean().optional()
+    })
+    .optional()
+});
+
+const activateGoalPayloadSchema = z.object({
+  projectId: z.string().optional(),
+  parentGoalId: z.string().optional(),
+  level: z.enum(["company", "project", "agent"]),
+  title: z.string().min(1),
+  description: z.string().optional()
+});
+const promoteMemoryFactPayloadSchema = z.object({
+  agentId: z.string().min(1),
+  fact: z.string().min(1),
+  sourceRunId: z.string().optional()
+});
+const AGENT_STARTUP_PROJECT_NAME = "Agent Onboarding";
+const AGENT_STARTUP_TASK_MARKER = "[bopodev:onboarding:agent-startup:v1]";
+
+export class GovernanceError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "GovernanceError";
+  }
+}
+
+export function isApprovalRequired(action: string) {
+  return approvalGatedActions.has(action);
+}
+
+export async function resolveApproval(
+  db: BopoDb,
+  companyId: string,
+  approvalId: string,
+  status: "approved" | "rejected" | "overridden"
+) {
+  return db.transaction(async (tx) => {
+    const [approval] = await tx
+      .select()
+      .from(approvalRequests)
+      .where(and(eq(approvalRequests.companyId, companyId), eq(approvalRequests.id, approvalId)))
+      .limit(1);
+
+    if (!approval) {
+      throw new GovernanceError("Approval request not found.");
+    }
+    if (approval.status !== "pending") {
+      if (approval.status === status) {
+        // Idempotent retry: requested state already applied.
+        return {
+          approvalId,
+          action: approval.action,
+          status: approval.status,
+          execution: { applied: false }
+        };
+      }
+      throw new GovernanceError("Approval request has already been resolved.");
+    }
+
+    let execution:
+      | {
+          applied: boolean;
+          entityType?: "agent" | "goal" | "memory";
+          entityId?: string;
+          entity?: Record<string, unknown>;
+        }
+      | undefined;
+
+    if (status === "approved") {
+      execution = await applyApprovalAction(tx as unknown as BopoDb, companyId, approval.action, approval.payloadJson);
+    }
+
+    const [updated] = await tx
+      .update(approvalRequests)
+      .set({ status, resolvedAt: new Date() })
+      .where(
+        and(
+          eq(approvalRequests.companyId, companyId),
+          eq(approvalRequests.id, approvalId),
+          eq(approvalRequests.status, "pending")
+        )
+      )
+      .returning({ id: approvalRequests.id });
+
+    if (!updated) {
+      const [latest] = await tx
+        .select()
+        .from(approvalRequests)
+        .where(and(eq(approvalRequests.companyId, companyId), eq(approvalRequests.id, approvalId)))
+        .limit(1);
+      if (latest && latest.status === status) {
+        return {
+          approvalId,
+          action: approval.action,
+          status: latest.status,
+          execution: { applied: false }
+        };
+      }
+      throw new GovernanceError("Approval request could not be resolved due to a concurrent update.");
+    }
+
+    return {
+      approvalId,
+      action: approval.action,
+      status,
+      execution: execution ?? { applied: false }
+    };
+  });
+}
+
+async function applyApprovalAction(db: BopoDb, companyId: string, action: string, payloadJson: string) {
+  const payload = parsePayload(payloadJson);
+
+  if (action === "hire_agent") {
+    const parsed = hireAgentPayloadSchema.safeParse(payload);
+    if (!parsed.success) {
+      throw new GovernanceError("Approval payload for agent hiring is invalid.");
+    }
+    const defaultRuntimeCwd = await resolveDefaultRuntimeCwdForCompany(db, companyId);
+    const runtimeConfig = normalizeRuntimeConfig({
+      runtimeConfig: parsed.data.runtimeConfig,
+      legacy: {
+        runtimeCommand: parsed.data.runtimeCommand,
+        runtimeArgs: parsed.data.runtimeArgs,
+        runtimeCwd: parsed.data.runtimeCwd,
+        runtimeTimeoutMs: parsed.data.runtimeTimeoutMs,
+        runtimeModel: parsed.data.runtimeModel,
+        runtimeThinkingEffort: parsed.data.runtimeThinkingEffort,
+        bootstrapPrompt: parsed.data.bootstrapPrompt,
+        runtimeTimeoutSec: parsed.data.runtimeTimeoutSec,
+        interruptGraceSec: parsed.data.interruptGraceSec,
+        runtimeEnv: parsed.data.runtimeEnv,
+        runPolicy: parsed.data.runPolicy
+      },
+      defaultRuntimeCwd
+    });
+    if (requiresRuntimeCwd(parsed.data.providerType) && !hasText(runtimeConfig.runtimeCwd)) {
+      throw new GovernanceError("Approval payload for agent hiring is missing runtime working directory.");
+    }
+    if (requiresRuntimeCwd(parsed.data.providerType) && hasText(runtimeConfig.runtimeCwd)) {
+      await mkdir(runtimeConfig.runtimeCwd!, { recursive: true });
+    }
+
+    const agent = await createAgent(db, {
+      companyId,
+      managerAgentId: parsed.data.managerAgentId,
+      role: parsed.data.role,
+      name: parsed.data.name,
+      providerType: parsed.data.providerType,
+      heartbeatCron: parsed.data.heartbeatCron,
+      monthlyBudgetUsd: parsed.data.monthlyBudgetUsd.toFixed(4),
+      canHireAgents: parsed.data.canHireAgents,
+      ...runtimeConfigToDb(runtimeConfig),
+      initialState: runtimeConfigToStateBlobPatch(runtimeConfig)
+    });
+    const startupProjectId = await ensureAgentStartupProject(db, companyId);
+    await ensureAgentStartupIssue(db, companyId, startupProjectId, agent.id, agent.role);
+
+    return {
+      applied: true,
+      entityType: "agent" as const,
+      entityId: agent.id,
+      entity: agent as Record<string, unknown>
+    };
+  }
+
+  if (action === "activate_goal") {
+    const parsed = activateGoalPayloadSchema.safeParse(payload);
+    if (!parsed.success) {
+      throw new GovernanceError("Approval payload for goal activation is invalid.");
+    }
+
+    if (parsed.data.parentGoalId) {
+      const [parentGoal] = await db
+        .select({ id: goals.id })
+        .from(goals)
+        .where(and(eq(goals.companyId, companyId), eq(goals.id, parsed.data.parentGoalId)))
+        .limit(1);
+
+      if (!parentGoal) {
+        throw new GovernanceError("Parent goal not found for activation request.");
+      }
+    }
+
+    if (parsed.data.projectId) {
+      const [project] = await db
+        .select({ id: projects.id })
+        .from(projects)
+        .where(and(eq(projects.companyId, companyId), eq(projects.id, parsed.data.projectId)))
+        .limit(1);
+
+      if (!project) {
+        throw new GovernanceError("Project not found for activation request.");
+      }
+    }
+
+    const goal = await createGoal(db, {
+      companyId,
+      projectId: parsed.data.projectId,
+      parentGoalId: parsed.data.parentGoalId,
+      level: parsed.data.level,
+      title: parsed.data.title,
+      description: parsed.data.description
+    });
+
+    await db
+      .update(goals)
+      .set({ status: "active", updatedAt: new Date() })
+      .where(and(eq(goals.companyId, companyId), eq(goals.id, goal.id)));
+
+    return {
+      applied: true,
+      entityType: "goal" as const,
+      entityId: goal.id,
+      entity: { ...goal, status: "active" }
+    };
+  }
+
+  if (action === "pause_agent" || action === "terminate_agent" || action === "override_budget") {
+    return { applied: false };
+  }
+
+  if (action === "promote_memory_fact") {
+    const parsed = promoteMemoryFactPayloadSchema.safeParse(payload);
+    if (!parsed.success) {
+      throw new GovernanceError("Approval payload for memory promotion is invalid.");
+    }
+    const targetFile = await appendDurableFact({
+      companyId,
+      agentId: parsed.data.agentId,
+      fact: parsed.data.fact,
+      sourceRunId: parsed.data.sourceRunId ?? null
+    });
+    return {
+      applied: Boolean(targetFile),
+      entityType: "memory" as const,
+      entityId: parsed.data.agentId,
+      entity: {
+        agentId: parsed.data.agentId,
+        sourceRunId: parsed.data.sourceRunId ?? null,
+        fact: parsed.data.fact,
+        targetFile
+      }
+    };
+  }
+
+  throw new GovernanceError(`Unsupported approval action: ${action}`);
+}
+
+function parsePayload(payloadJson: string) {
+  try {
+    const parsed = JSON.parse(payloadJson) as unknown;
+    return typeof parsed === "object" && parsed !== null ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+async function ensureAgentStartupProject(db: BopoDb, companyId: string) {
+  const projects = await listProjects(db, companyId);
+  const existing = projects.find((project) => project.name === AGENT_STARTUP_PROJECT_NAME);
+  if (existing) {
+    return existing.id;
+  }
+  const created = await createProject(db, {
+    companyId,
+    name: AGENT_STARTUP_PROJECT_NAME,
+    description: "Operating baseline tasks for newly approved hires."
+  });
+  return created.id;
+}
+
+async function ensureAgentStartupIssue(
+  db: BopoDb,
+  companyId: string,
+  projectId: string,
+  agentId: string,
+  role: string
+) {
+  const title = `Set up ${role} operating files`;
+  const body = buildAgentStartupTaskBody(agentId);
+  const existingIssues = await listIssues(db, companyId);
+  const existing = existingIssues.find(
+    (issue) =>
+      issue.assigneeAgentId === agentId &&
+      issue.title === title &&
+      typeof issue.body === "string" &&
+      issue.body.includes(AGENT_STARTUP_TASK_MARKER)
+  );
+  if (existing) {
+    return existing.id;
+  }
+  const created = await createIssue(db, {
+    companyId,
+    projectId,
+    title,
+    body,
+    status: "todo",
+    priority: "high",
+    assigneeAgentId: agentId,
+    labels: ["onboarding", "agent-setup"],
+    tags: ["agent-startup"]
+  });
+  return created.id;
+}
+
+function buildAgentStartupTaskBody(agentId: string) {
+  const agentFolder = `agents/${agentId}`;
+  return [
+    AGENT_STARTUP_TASK_MARKER,
+    "",
+    `Create your operating baseline before starting feature delivery work.`,
+    "",
+    `1. Create the folder \`${agentFolder}/\` in the repository workspace.`,
+    "2. Author these files with your own responsibilities and working style:",
+    `   - \`${agentFolder}/AGENTS.md\``,
+    `   - \`${agentFolder}/HEARTBEAT.md\``,
+    `   - \`${agentFolder}/SOUL.md\``,
+    `   - \`${agentFolder}/TOOLS.md\``,
+    `3. Update your own agent runtime config via \`PUT /agents/:agentId\` and set \`runtimeConfig.bootstrapPrompt\` to reference \`${agentFolder}/AGENTS.md\` as your primary guide.`,
+    "4. Post an issue comment summarizing completed setup artifacts.",
+    "",
+    "Safety checks:",
+    "- Do not overwrite another agent's folder.",
+    "- Keep content original to your role and scope."
+  ].join("\n");
+}
+

@@ -1,0 +1,218 @@
+@reference "../app/globals.css";
+
+.metricCard {
+  @apply gap-3 py-5;
+}
+
+.metricCardHeader {
+  @apply px-5;
+}
+
+.metricCardDescription {
+  @apply text-[0.75rem] uppercase tracking-[0.12em] text-muted-foreground font-semibold;
+}
+
+.metricCardContent {
+  @apply px-5;
+}
+
+.metricCardContainer {
+  @apply text-3xl font-semibold tracking-tight;
+}
+
+.metricCardText {
+  @apply mt-2 text-sm text-muted-foreground;
+}
+
+.emptyStateContainer {
+  @apply rounded-lg border border-dashed bg-muted/20 px-4 py-6 text-sm text-muted-foreground;
+}
+
+.formatDurationContainer1 {
+  @apply font-medium;
+}
+
+.runIdLink {
+  @apply inline-flex w-fit hover:underline;
+}
+
+.formatDurationContainer2 {
+  @apply max-w-xl text-sm text-muted-foreground;
+}
+
+.formatDurationContainer3 {
+  @apply flex flex-wrap justify-end gap-4;
+}
+
+.formatDurationContainer4 {
+  @apply space-y-1;
+}
+
+.formatDurationContainer5 {
+  @apply text-sm text-muted-foreground;
+}
+
+.formatDurationLabel {
+  @apply text-sm text-muted-foreground;
+}
+
+.formatDurationContainer6 {
+  @apply flex justify-end;
+}
+
+.tableHeaderAlignRight {
+  @apply w-full text-right;
+}
+
+.renderSectionActionsContainer1 {
+  @apply flex flex-wrap items-center gap-2;
+}
+
+.renderSectionActionsCardContent1 {
+  @apply space-y-2 text-sm text-muted-foreground;
+}
+
+.renderSectionActionsCardContent2 {
+  @apply grid gap-4 lg:grid-cols-3;
+}
+
+
+.renderSectionActionsCardContent3 {
+  @apply space-y-4;
+}
+
+.renderSectionActionsContainer3 {
+  @apply rounded-lg border bg-card/60 p-4;
+}
+
+.renderSectionActionsContainer4 {
+  @apply text-sm font-medium;
+}
+
+.renderSectionActionsContainer5 {
+  @apply mt-1 text-sm text-muted-foreground;
+}
+
+.renderSectionActionsContainer6 {
+  @apply flex flex-wrap gap-2;
+}
+
+.renderSectionActionsCardContent4 {
+  @apply text-sm text-muted-foreground;
+}
+
+.renderSectionActionsAlert {
+  @apply mb-4;
+}
+
+.renderSectionActionsLink {
+  @apply font-medium hover:underline;
+}
+
+.goalsFiltersCardContent {
+  @apply flex flex-wrap items-center gap-6;
+}
+
+.goalsFiltersInput {
+  @apply min-w-[220px] sm:w-[300px];
+}
+
+.goalsFiltersSelect {
+  @apply w-[170px];
+}
+
+.agentsFiltersCardContent {
+  @apply flex flex-wrap items-center gap-6;
+}
+
+.agentsFiltersInput {
+  @apply min-w-[220px] sm:w-[300px];
+}
+
+.agentsFiltersSelect {
+  @apply w-[170px];
+}
+
+.agentTableIdentity {
+  @apply flex items-center gap-4;
+}
+
+.agentTableAvatar {
+  @apply size-6 shrink-0 rounded-full bg-background bg-cover bg-center bg-no-repeat;
+}
+
+.costLedgerSelectTrigger {
+  @apply w-[220px];
+}
+
+
+.costLedgerChartContainer {
+  @apply h-52 w-full;
+}
+
+.runFiltersCardContent {
+  @apply flex flex-wrap items-center gap-6;
+}
+
+.runFiltersInput {
+  @apply min-w-[220px] sm:w-[300px];
+}
+
+.runFiltersSelect {
+  @apply w-[170px];
+}
+
+
+.runTrendChartContainer {
+  @apply h-52 w-full;
+}
+
+.runMessageCellContainer {
+  @apply max-w-[520px] truncate text-sm text-muted-foreground;
+}
+
+.traceFiltersCardContent {
+  @apply flex flex-wrap items-center gap-6;
+}
+
+.traceFiltersInput {
+  @apply min-w-[220px] sm:w-[300px];
+}
+
+.traceFiltersSelect {
+  @apply w-[180px];
+}
+
+
+.traceTrendChartContainer {
+  @apply h-52 w-full;
+}
+
+.governanceFiltersCardContent {
+  @apply flex flex-wrap items-center gap-6;
+}
+
+.governanceFiltersInput {
+  @apply min-w-[220px] sm:w-[300px];
+}
+
+.governanceFiltersSelect {
+  @apply w-[180px];
+}
+
+
+.dashboardChartsGrid {
+  @apply grid gap-6 xl:grid-cols-3;
+}
+
+.dashboardChartContainer {
+  @apply h-52 w-full;
+}
+
+.dashboardInsightsGrid {
+  @apply grid gap-6 xl:grid-cols-2;
+}
+
+.dashboardInsightsCardContent {
+  @apply space-y-2 text-sm text-muted-foreground;
+}
