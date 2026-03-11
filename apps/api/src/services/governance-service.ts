@@ -10,6 +10,7 @@ import {
   createIssue,
   createProject,
   goals,
+  listAgents,
   listIssues,
   listProjects,
   projects
@@ -20,6 +21,7 @@ import {
   runtimeConfigToDb,
   runtimeConfigToStateBlobPatch
 } from "../lib/agent-config";
+import { resolveOpencodeRuntimeModel } from "../lib/opencode-model";
 import { hasText, resolveDefaultRuntimeCwdForCompany } from "../lib/workspace-policy";
 import { appendDurableFact } from "./memory-file-service";
 
@@ -183,11 +185,27 @@ async function applyApprovalAction(db: BopoDb, companyId: string, action: string
       },
       defaultRuntimeCwd
     });
+    runtimeConfig.runtimeModel = await resolveOpencodeRuntimeModel(parsed.data.providerType, runtimeConfig);
     if (requiresRuntimeCwd(parsed.data.providerType) && !hasText(runtimeConfig.runtimeCwd)) {
       throw new GovernanceError("Approval payload for agent hiring is missing runtime working directory.");
     }
     if (requiresRuntimeCwd(parsed.data.providerType) && hasText(runtimeConfig.runtimeCwd)) {
       await mkdir(runtimeConfig.runtimeCwd!, { recursive: true });
+    }
+    const existingAgents = await listAgents(db, companyId);
+    const duplicate = existingAgents.find(
+      (agent) =>
+        agent.role === parsed.data.role &&
+        (agent.managerAgentId ?? null) === (parsed.data.managerAgentId ?? null) &&
+        agent.status !== "terminated"
+    );
+    if (duplicate) {
+      return {
+        applied: false,
+        entityType: "agent" as const,
+        entityId: duplicate.id,
+        entity: duplicate as unknown as Record<string, unknown>
+      };
     }
 
     const agent = await createAgent(db, {

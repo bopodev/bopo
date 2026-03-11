@@ -54,6 +54,11 @@ const DEFAULT_COMPANY_ID_ENV = "BOPO_DEFAULT_COMPANY_ID";
 const DEFAULT_PUBLIC_COMPANY_ID_ENV = "NEXT_PUBLIC_DEFAULT_COMPANY_ID";
 const DEFAULT_AGENT_PROVIDER_ENV = "BOPO_DEFAULT_AGENT_PROVIDER";
 const DEFAULT_ENV_TEMPLATE = "NEXT_PUBLIC_API_URL=http://localhost:4020\n";
+const CLI_ONBOARD_VISIBLE_PROVIDERS: Array<{ value: AgentProvider; label: string }> = [
+  { value: "codex", label: "Codex" },
+  { value: "claude_code", label: "Claude Code" },
+  { value: "opencode", label: "OpenCode" }
+];
 
 const defaultDeps: OnboardDeps = {
   installDependencies: async (workspaceRoot) => {
@@ -108,14 +113,7 @@ const defaultDeps: OnboardDeps = {
     const answer = await select({
       message: "Primary agent framework",
       initialValue: "codex",
-      options: [
-        { value: "codex", label: "Codex" },
-        { value: "claude_code", label: "Claude Code" },
-        { value: "opencode", label: "OpenCode" },
-        { value: "openai_api", label: "OpenAI API (direct)" },
-        { value: "anthropic_api", label: "Anthropic API (direct)" },
-        { value: "shell", label: "Shell Runtime" }
-      ]
+      options: CLI_ONBOARD_VISIBLE_PROVIDERS
     });
     if (isCancel(answer)) {
       throw new Error("Onboarding cancelled.");

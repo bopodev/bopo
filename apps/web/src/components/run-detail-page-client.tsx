@@ -7,9 +7,14 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { subscribeToRealtime } from "@/lib/realtime";
 import type { HeartbeatRunDetailData, HeartbeatRunMessageRow } from "@/lib/workspace-data";
 import { SectionHeading } from "./workspace/shared";
+
+type TranscriptSignalLevel = NonNullable<HeartbeatRunMessageRow["signalLevel"]>;
+type TranscriptSource = NonNullable<HeartbeatRunMessageRow["source"]>;
 
 export function RunDetailPageClient({
   companyId,
@@ -42,6 +47,10 @@ export function RunDetailPageClient({
   const [messages, setMessages] = useState(initialMessages);
   const [cursor, setCursor] = useState<string | null>(nextCursor);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [kindFilter, setKindFilter] = useState<"all" | HeartbeatRunMessageRow["kind"]>("all");
+  const [signalFilter, setSignalFilter] = useState<"all" | HeartbeatRunMessageRow["signalLevel"]>("all");
+  const [sourceFilter, setSourceFilter] = useState<"all" | HeartbeatRunMessageRow["source"]>("all");
 
   useEffect(() => {
     const unsubscribe = subscribeToRealtime({
@@ -122,6 +131,28 @@ export function RunDetailPageClient({
 
   const sortedMessages = useMemo(() => [...messages].sort((a, b) => a.sequence - b.sequence), [messages]);
   const transcriptRows = useMemo(() => toTranscriptRows(sortedMessages), [sortedMessages]);
+  const availableSources = useMemo(
+    () => Array.from(new Set(transcriptRows.map((row) => row.source))).sort((a, b) => a.localeCompare(b)),
+    [transcriptRows]
+  );
+  const filteredTranscriptRows = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return transcriptRows.filter((row) => {
+      if (kindFilter !== "all" && row.kind !== kindFilter) {
+        return false;
+      }
+      if (signalFilter !== "all" && row.signalLevel !== signalFilter) {
+        return false;
+      }
+      if (sourceFilter !== "all" && row.source !== sourceFilter) {
+        return false;
+      }
+      if (query.length > 0 && !row.searchText.includes(query)) {
+        return false;
+      }
+      return true;
+    });
+  }, [transcriptRows, searchQuery, kindFilter, signalFilter, sourceFilter]);
   const backHref = scopedAgentId
     ? { pathname: `/agents/${scopedAgentId}`, query: { companyId } }
     : { pathname: "/runs", query: { companyId } };
@@ -134,7 +165,7 @@ export function RunDetailPageClient({
       return;
     }
     container.scrollTop = container.scrollHeight;
-  }, [transcriptRows.length]);
+  }, [filteredTranscriptRows.length]);
 
   return (
     <AppShell
@@ -194,8 +225,58 @@ export function RunDetailPageClient({
           ) : null}
           <Card>
             <CardContent className="run-transcript-card-content">
+              <div className="run-transcript-filters">
+                <Input
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder="Search text, payload, action, or label..."
+                  className="run-transcript-filters-search"
+                />
+                <Select value={kindFilter} onValueChange={(value) => setKindFilter(value as typeof kindFilter)}>
+                  <SelectTrigger className="run-transcript-filters-select">
+                    <SelectValue placeholder="Kind" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All kinds</SelectItem>
+                    <SelectItem value="assistant">assistant</SelectItem>
+                    <SelectItem value="tool_call">tool_call</SelectItem>
+                    <SelectItem value="tool_result">tool_result</SelectItem>
+                    <SelectItem value="result">result</SelectItem>
+                    <SelectItem value="thinking">thinking</SelectItem>
+                    <SelectItem value="system">system</SelectItem>
+                    <SelectItem value="stderr">stderr</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={signalFilter} onValueChange={(value) => setSignalFilter(value as typeof signalFilter)}>
+                  <SelectTrigger className="run-transcript-filters-select">
+                    <SelectValue placeholder="Signal" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All signal levels</SelectItem>
+                    <SelectItem value="high">high</SelectItem>
+                    <SelectItem value="medium">medium</SelectItem>
+                    <SelectItem value="low">low</SelectItem>
+                    <SelectItem value="noise">noise</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={sourceFilter} onValueChange={(value) => setSourceFilter(value as typeof sourceFilter)}>
+                  <SelectTrigger className="run-transcript-filters-select">
+                    <SelectValue placeholder="Source" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All sources</SelectItem>
+                    {availableSources.map((source) => (
+                      <SelectItem key={source} value={source}>
+                        {source}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               {transcriptRows.length === 0 ? (
                 <p className="run-transcript-empty">No transcript messages yet.</p>
+              ) : filteredTranscriptRows.length === 0 ? (
+                <p className="run-transcript-empty">No transcript messages match the current filters.</p>
               ) : (
                 <div className="run-transcript-outer">
                   <div className="run-transcript-col-header">
@@ -204,7 +285,7 @@ export function RunDetailPageClient({
                     <span>Result</span>
                   </div>
                   <div className="run-transcript-scroll" ref={transcriptScrollRef}>
-                    {transcriptRows.map((row) => (
+                    {filteredTranscriptRows.map((row) => (
                       <div key={row.id} className="run-transcript-row">
                         <span className="run-transcript-time">{row.time}</span>
                         <span className={row.kindClass}>{row.kindLabel}</span>
@@ -225,8 +306,7 @@ export function RunDetailPageClient({
 }
 
 function toTranscriptRows(messages: HeartbeatRunMessageRow[]) {
-  const visibleMessages = messages.slice(-180);
-  const normalized = visibleMessages
+  const normalized = messages
     .map((entry) => ({
       id: entry.id,
       createdAt: entry.createdAt,
@@ -235,7 +315,9 @@ function toTranscriptRows(messages: HeartbeatRunMessageRow[]) {
       groupKey: entry.groupKey ?? entry.kind,
       kindClass: toKindClass(entry.kind),
       body: formatEventBody(entry),
-      isToolBlock: entry.kind === "tool_call" || entry.kind === "tool_result"
+      isToolBlock: entry.kind === "tool_call" || entry.kind === "tool_result",
+      signalLevel: entry.signalLevel ?? "noise",
+      source: entry.source ?? "trace_fallback"
     }));
 
   const rows: Array<{
@@ -248,6 +330,8 @@ function toTranscriptRows(messages: HeartbeatRunMessageRow[]) {
     kindClass: string;
     body: string;
     isToolBlock: boolean;
+    signalLevel: TranscriptSignalLevel;
+    source: TranscriptSource;
   }> = [];
 
   for (const item of normalized) {
@@ -260,7 +344,9 @@ function toTranscriptRows(messages: HeartbeatRunMessageRow[]) {
       groupKey: item.groupKey,
       kindClass: item.kindClass,
       body: item.body,
-      isToolBlock: item.isToolBlock
+      isToolBlock: item.isToolBlock,
+      signalLevel: item.signalLevel,
+      source: item.source
     });
   }
 
@@ -270,7 +356,11 @@ function toTranscriptRows(messages: HeartbeatRunMessageRow[]) {
     kindLabel: row.kindLabel,
     kindClass: row.kindClass,
     body: row.body,
-    isToolBlock: row.isToolBlock
+    isToolBlock: row.isToolBlock,
+    kind: row.kind,
+    signalLevel: row.signalLevel,
+    source: row.source,
+    searchText: `${row.kindLabel}\n${row.body}`.toLowerCase()
   }));
 }
 

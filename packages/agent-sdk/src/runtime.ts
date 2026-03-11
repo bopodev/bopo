@@ -265,9 +265,9 @@ export async function executeAgentRuntime(
 
 function defaultProviderTimeoutMs(provider: "claude_code" | "codex") {
   if (provider === "claude_code") {
-    return 90 * 1000;
+    return 15 * 60 * 1000;
   }
-  return 5 * 60 * 1000;
+  return 15 * 60 * 1000;
 }
 
 export async function executePromptRuntime(
@@ -280,7 +280,7 @@ export async function executePromptRuntime(
   }
 ): Promise<RuntimeExecutionOutput> {
   const baseArgs = [...(config?.args ?? [])];
-  const timeoutMs = config?.timeoutMs ?? 120_000;
+  const timeoutMs = config?.timeoutMs ?? 15 * 60 * 1000;
   const abortSignal = config?.abortSignal;
   const interruptGraceMs = Math.max(0, config?.interruptGraceSec ?? 2) * 1000;
   const maxAttempts = Math.max(1, Math.min(3, 1 + (config?.retryCount ?? 0)));
@@ -297,7 +297,8 @@ export async function executePromptRuntime(
   const baseWithInjection = [...baseArgs, ...injection.additionalArgs];
   const readsPromptFromStdin =
     (provider === "claude_code" && hasCliFlagValue(baseWithInjection, "--print", "-")) ||
-    (provider === "cursor" && (baseWithInjection.includes("-p") || hasCliFlag(baseWithInjection, "--print")));
+    (provider === "cursor" && (baseWithInjection.includes("-p") || hasCliFlag(baseWithInjection, "--print"))) ||
+    provider === "opencode";
   const args = readsPromptFromStdin ? baseWithInjection : [...baseWithInjection, prompt];
   const attempts: RuntimeAttemptTrace[] = [];
   let streamedEventCount = 0;
@@ -994,6 +995,14 @@ function toStreamingStdoutEvents(
       return parsedClaudeEvents;
     }
   }
+  if (provider === "opencode") {
+    const parsedOpenCodeEvents = parseOpenCodeStreamingTranscriptLine(line).map((event) =>
+      enrichStreamedEvent(event, provider, stream, line),
+    );
+    if (parsedOpenCodeEvents.length > 0) {
+      return parsedOpenCodeEvents;
+    }
+  }
   const parsedJsonEvent = parseGenericTranscriptJsonLine(line);
   if (parsedJsonEvent) {
     return [enrichStreamedEvent(parsedJsonEvent, provider, stream, line)];
@@ -1005,7 +1014,7 @@ function toStreamingStdoutEvents(
   if (stream === "stderr") {
     return [];
   }
-  if (provider === "claude_code" || provider === "cursor") {
+  if (provider === "claude_code" || provider === "cursor" || provider === "opencode") {
     const assistantEvent = enrichStreamedEvent(
       {
         kind: "assistant",
@@ -1859,9 +1868,129 @@ function parseRuntimeTranscript(
   const claudeEvents = provider === "claude_code" ? parseClaudeTranscript(stdout, stderr) : undefined;
   const codexEvents = provider === "codex" ? parseCodexTranscript(stdout, stderr) : undefined;
   const cursorEvents = provider === "cursor" ? parseCursorTranscript(stdout, stderr) : undefined;
+  const openCodeEvents = provider === "opencode" ? parseOpenCodeTranscript(stdout, stderr) : undefined;
   const genericEvents = parseGenericTranscript(stdout, stderr);
-  const providerEvents = claudeEvents ?? codexEvents ?? cursorEvents;
+  const providerEvents = claudeEvents ?? codexEvents ?? cursorEvents ?? openCodeEvents;
   return providerEvents ?? genericEvents;
+}
+
+function parseOpenCodeTranscript(stdout: string, stderr: string): RuntimeTranscriptEvent[] | undefined {
+  const events: RuntimeTranscriptEvent[] = [];
+  for (const rawLine of stdout.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line) {
+      continue;
+    }
+    events.push(...parseOpenCodeStreamingTranscriptLine(line));
+  }
+  const stderrEvents = parseStderrTranscript(stderr);
+  if (stderrEvents) {
+    events.push(...stderrEvents.slice(0, 10));
+  }
+  if (events.length === 0) {
+    return undefined;
+  }
+  return events.slice(0, 140);
+}
+
+function parseOpenCodeStreamingTranscriptLine(line: string): RuntimeTranscriptEvent[] {
+  const parsed = parseJsonRecord(line);
+  if (!parsed) {
+    return [];
+  }
+  const type = codexAsString(parsed.type).trim().toLowerCase();
+  if (!type) {
+    return [];
+  }
+  if (type === "text") {
+    const part = codexAsRecord(parsed.part);
+    const text = codexAsString(part?.text).trim();
+    return text ? [{ kind: "assistant", text: clipText(text, 1200) }] : [];
+  }
+  if (type === "reasoning") {
+    const part = codexAsRecord(parsed.part);
+    const text = codexAsString(part?.text).trim();
+    return text ? [{ kind: "thinking", text: clipText(text, 500) }] : [];
+  }
+  if (type === "tool_use") {
+    const part = codexAsRecord(parsed.part);
+    if (!part) {
+      return [{ kind: "tool_call", label: "tool", text: "tool event" }];
+    }
+    const toolName = codexAsString(part.tool, "tool");
+    const state = codexAsRecord(part.state);
+    const inputPayload = safeJson(state?.input ?? part.input ?? {});
+    const events: RuntimeTranscriptEvent[] = [
+      {
+        kind: "tool_call",
+        label: toolName,
+        text: toolName,
+        ...(inputPayload ? { payload: clipText(inputPayload, 2000) } : {})
+      }
+    ];
+    const status = codexAsString(state?.status).trim().toLowerCase();
+    if (status === "completed" || status === "error") {
+      const metadata = codexAsRecord(state?.metadata);
+      const metadataLines: string[] = [];
+      if (metadata) {
+        for (const [key, value] of Object.entries(metadata)) {
+          if (value !== undefined && value !== null) {
+            metadataLines.push(`${key}: ${String(value)}`);
+          }
+        }
+      }
+      const outputText =
+        firstNonEmptyString(state?.output, state?.error, part.title) ?? `${toolName} ${status}`;
+      const content = [
+        `status: ${status}`,
+        ...metadataLines,
+        "",
+        outputText
+      ]
+        .join("\n")
+        .trim();
+      events.push({
+        kind: "tool_result",
+        label: codexAsString(part.callID, codexAsString(part.id, toolName)),
+        text: clipText(content, 2000)
+      });
+    }
+    return events;
+  }
+  if (type === "step_start") {
+    const sessionId = codexAsString(parsed.sessionID).trim();
+    return [
+      {
+        kind: "system",
+        text: sessionId ? `step started (${sessionId})` : "step started"
+      }
+    ];
+  }
+  if (type === "step_finish") {
+    const part = codexAsRecord(parsed.part);
+    const reason = codexAsString(part?.reason, "step");
+    const tokens = codexAsRecord(part?.tokens);
+    const cache = codexAsRecord(tokens?.cache);
+    const inputTokens = codexAsNumber(tokens?.input, 0);
+    const outputTokens = codexAsNumber(tokens?.output, 0) + codexAsNumber(tokens?.reasoning, 0);
+    const cachedTokens = codexAsNumber(cache?.read, 0);
+    const cost = codexAsNumber(part?.cost, 0);
+    return [
+      {
+        kind: "result",
+        label: reason,
+        text: clipText(
+          `${reason}\ntokens in=${inputTokens} out=${outputTokens} cached=${cachedTokens} cost=$${cost.toFixed(6)}`,
+          1200
+        )
+      }
+    ];
+  }
+  if (type === "error") {
+    const message = codexErrorText(parsed.error ?? parsed.message ?? parsed);
+    return message ? [{ kind: "stderr", text: clipText(message, 800) }] : [];
+  }
+  return [];
 }
 
 function parseCodexTranscript(stdout: string, stderr: string): RuntimeTranscriptEvent[] | undefined {
@@ -2240,18 +2369,24 @@ function parseGenericTranscriptJsonLine(line: string): RuntimeTranscriptEvent | 
   if (!kind) {
     return undefined;
   }
-  const label = pickString(parsed.subtype, parsed.name, parsed.tool, parsed.tool_name, parsed.status);
-  const text =
-    pickString(
-      parsed.message,
-      parsed.text,
-      parsed.result,
-      parsed.summary,
-      parsed.content,
-      parsed.detail,
-      parsed.command
-    ) ?? `${kind} event`;
-  const payload = safeJson(parsed.input ?? parsed.arguments ?? parsed.params ?? parsed.output ?? parsed.data);
+  const label = pickString(
+    parsed.subtype,
+    parsed.name,
+    parsed.tool,
+    parsed.tool_name,
+    parsed.status,
+    parsed.command
+  );
+  const text = resolveTranscriptTextFromRecord(parsed, kind) ?? `${kind} event`;
+  const payload = safeJson(
+    parsed.input ??
+      parsed.arguments ??
+      parsed.params ??
+      parsed.output ??
+      parsed.data ??
+      parsed.tool_call ??
+      parsed.call
+  );
   return {
     kind,
     ...(label ? { label: clipText(label, 100) } : {}),
@@ -2297,6 +2432,24 @@ function normalizeTranscriptKind(value: unknown): RuntimeTranscriptEvent["kind"]
   ) {
     return normalized;
   }
+  if (normalized === "error" || normalized === "fatal") {
+    return "stderr";
+  }
+  if (
+    normalized === "message" ||
+    normalized === "text" ||
+    normalized === "output_text" ||
+    normalized === "assistant_text" ||
+    normalized === "assistant_message"
+  ) {
+    return "assistant";
+  }
+  if (normalized === "tool_use" || normalized === "tool" || normalized === "call") {
+    return "tool_call";
+  }
+  if (normalized === "tool_output" || normalized === "tool_response") {
+    return "tool_result";
+  }
   return undefined;
 }
 
@@ -2305,6 +2458,59 @@ function pickString(...values: unknown[]) {
     if (typeof value === "string" && value.trim().length > 0) {
       return value.trim();
     }
+  }
+  return undefined;
+}
+
+function resolveTranscriptTextFromRecord(
+  record: Record<string, unknown>,
+  kind: RuntimeTranscriptEvent["kind"]
+) {
+  const messageText = extractTranscriptText(record.message);
+  const contentText = extractTranscriptText(record.content);
+  const detailText = pickString(record.text, record.result, record.summary, record.detail, record.command);
+  if (kind === "tool_call" && !messageText && !contentText && !detailText) {
+    return pickString(record.tool, record.tool_name, record.name, record.command);
+  }
+  return firstNonEmptyString(messageText, contentText, detailText);
+}
+
+function extractTranscriptText(value: unknown): string | undefined {
+  if (typeof value === "string" && value.trim().length > 0) {
+    return value.trim();
+  }
+  if (Array.isArray(value)) {
+    const parts = value
+      .map((entry) => extractTranscriptText(entry))
+      .filter((entry): entry is string => Boolean(entry && entry.trim().length > 0));
+    if (parts.length > 0) {
+      return parts.join("\n");
+    }
+    return undefined;
+  }
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+  const record = value as Record<string, unknown>;
+  if (typeof record.text === "string" && record.text.trim().length > 0) {
+    return record.text.trim();
+  }
+  if (typeof record.content === "string" && record.content.trim().length > 0) {
+    return record.content.trim();
+  }
+  if (Array.isArray(record.content)) {
+    const parts = record.content
+      .map((entry) => extractTranscriptText(entry))
+      .filter((entry): entry is string => Boolean(entry && entry.trim().length > 0));
+    if (parts.length > 0) {
+      return parts.join("\n");
+    }
+  }
+  if (typeof record.result === "string" && record.result.trim().length > 0) {
+    return record.result.trim();
+  }
+  if (typeof record.message === "string" && record.message.trim().length > 0) {
+    return record.message.trim();
   }
   return undefined;
 }

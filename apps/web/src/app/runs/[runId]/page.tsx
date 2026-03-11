@@ -73,39 +73,61 @@ function extractFallbackMessagesFromTrace(
   companyId: string
 ): HeartbeatRunMessageRow[] {
   const details = runDetail.details;
-  if (!details || typeof details !== "object") {
-    return [];
-  }
-  const trace = (details as Record<string, unknown>).trace;
-  if (!trace || typeof trace !== "object") {
-    return [];
-  }
-  const transcript = (trace as Record<string, unknown>).transcript;
-  if (!Array.isArray(transcript)) {
-    return [];
-  }
   const messages: HeartbeatRunMessageRow[] = [];
-  transcript.forEach((entry, index) => {
-    if (!entry || typeof entry !== "object") {
-      return;
+  if (details && typeof details === "object") {
+    const detailsRecord = details as Record<string, unknown>;
+    const trace = detailsRecord.trace;
+    if (trace && typeof trace === "object") {
+      const transcript = (trace as Record<string, unknown>).transcript;
+      if (Array.isArray(transcript)) {
+        transcript.forEach((entry, index) => {
+          if (!entry || typeof entry !== "object") {
+            return;
+          }
+          const record = entry as Record<string, unknown>;
+          const kind = typeof record.kind === "string" ? record.kind : "system";
+          messages.push({
+            id: `legacy-${runDetail.run.id}-${index}`,
+            companyId,
+            runId: runDetail.run.id,
+            sequence: index,
+            kind: normalizeKind(kind),
+            label: typeof record.label === "string" ? record.label : null,
+            text: typeof record.text === "string" ? record.text : null,
+            payload: typeof record.payload === "string" ? record.payload : null,
+            signalLevel: normalizeSignalLevel(record.signalLevel, kind),
+            groupKey: typeof record.groupKey === "string" ? record.groupKey : null,
+            source: "trace_fallback",
+            createdAt: runDetail.run.startedAt
+          });
+        });
+      }
     }
-    const record = entry as Record<string, unknown>;
-    const kind = typeof record.kind === "string" ? record.kind : "system";
-    messages.push({
-      id: `legacy-${runDetail.run.id}-${index}`,
-      companyId,
-      runId: runDetail.run.id,
-      sequence: index,
-      kind: normalizeKind(kind),
-      label: typeof record.label === "string" ? record.label : null,
-      text: typeof record.text === "string" ? record.text : null,
-      payload: typeof record.payload === "string" ? record.payload : null,
-      signalLevel: normalizeSignalLevel(record.signalLevel, kind),
-      groupKey: typeof record.groupKey === "string" ? record.groupKey : null,
-      source: "trace_fallback",
-      createdAt: runDetail.run.startedAt
-    });
-  });
+    if (messages.length === 0) {
+      const fallbackText =
+        (typeof detailsRecord.result === "string" && detailsRecord.result.trim()) ||
+        (typeof detailsRecord.message === "string" && detailsRecord.message.trim()) ||
+        (typeof detailsRecord.errorMessage === "string" && detailsRecord.errorMessage.trim()) ||
+        runDetail.run.message ||
+        "";
+      if (fallbackText) {
+        messages.push({
+          id: `legacy-${runDetail.run.id}-summary`,
+          companyId,
+          runId: runDetail.run.id,
+          sequence: 0,
+          kind: "result",
+          label: runDetail.run.status,
+          text: fallbackText,
+          payload: null,
+          signalLevel: "high",
+          groupKey: "result",
+          source: "trace_fallback",
+          createdAt: runDetail.run.finishedAt ?? runDetail.run.startedAt
+        });
+      }
+    }
+  }
   return messages;
 }
 

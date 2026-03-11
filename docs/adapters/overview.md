@@ -18,6 +18,7 @@ Adapters connect heartbeat orchestration to a specific runtime provider.
 ## Provider selection quick guide
 
 - Use `codex` / `claude_code` when you want CLI-native behavior on hosts where those CLIs are installed.
+- Use `opencode` when you want OpenCode CLI execution; configure `runtimeModel` in `provider/model` format.
 - Use `openai_api` / `anthropic_api` for direct provider API execution with API keys only.
 - Use `http` / `shell` for custom worker commands or bespoke runtime wrappers.
 

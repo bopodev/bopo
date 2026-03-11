@@ -427,7 +427,16 @@ function sortOccupants(occupants: OfficeOccupant[]) {
 }
 
 function normalizeProviderType(value: string): OfficeOccupant["providerType"] {
-  return value === "claude_code" || value === "codex" || value === "http" || value === "shell" ? value : null;
+  return value === "claude_code" ||
+    value === "codex" ||
+    value === "cursor" ||
+    value === "opencode" ||
+    value === "openai_api" ||
+    value === "anthropic_api" ||
+    value === "http" ||
+    value === "shell"
+    ? value
+    : null;
 }
 
 function formatActionLabel(action: string) {

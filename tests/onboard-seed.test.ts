@@ -237,8 +237,40 @@ describe("onboarding seed bootstrap", () => {
       const agents = await listAgents(verify.db, result.companyId);
       expect(agents).toHaveLength(1);
       expect(agents[0]?.providerType).toBe("opencode");
+      expect(agents[0]?.runtimeModel === null || agents[0]?.runtimeModel.includes("/")).toBe(true);
     } finally {
       await verify.client.close?.();
+    }
+  });
+
+  test("uses BOPO_OPENCODE_MODEL override during opencode onboarding seed", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "bopo-onboard-seed-"));
+    cleanupDirs.push(tempDir);
+    const dbPath = join(tempDir, "seed.db");
+    const previous = process.env.BOPO_OPENCODE_MODEL;
+    process.env.BOPO_OPENCODE_MODEL = "openai/gpt-5-mini";
+    try {
+      const result = await ensureOnboardingSeed({
+        dbPath,
+        companyName: "OpenCode Model Override Co",
+        agentProvider: "opencode"
+      });
+
+      const verify = await bootstrapDatabase(dbPath);
+      try {
+        const agents = await listAgents(verify.db, result.companyId);
+        expect(agents).toHaveLength(1);
+        expect(agents[0]?.providerType).toBe("opencode");
+        expect(agents[0]?.runtimeModel).toBe("openai/gpt-5-mini");
+      } finally {
+        await verify.client.close?.();
+      }
+    } finally {
+      if (previous === undefined) {
+        delete process.env.BOPO_OPENCODE_MODEL;
+      } else {
+        process.env.BOPO_OPENCODE_MODEL = previous;
+      }
     }
   });
 });

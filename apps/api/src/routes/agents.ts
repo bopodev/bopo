@@ -14,6 +14,7 @@ import {
   deleteAgent,
   getApprovalRequest,
   listAgents,
+  listApprovalRequests,
   updateAgent
 } from "bopodev-db";
 import type { AppContext } from "../context";
@@ -25,6 +26,7 @@ import {
   runtimeConfigToDb,
   runtimeConfigToStateBlobPatch
 } from "../lib/agent-config";
+import { resolveOpencodeRuntimeModel } from "../lib/opencode-model";
 import { hasText, resolveDefaultRuntimeCwdForCompany } from "../lib/workspace-policy";
 import { requireCompanyScope } from "../middleware/company-scope";
 import { requireBoardRole, requirePermission } from "../middleware/request-actor";
@@ -262,6 +264,7 @@ export function createAgentsRouter(ctx: AppContext) {
       },
       defaultRuntimeCwd
     });
+    runtimeConfig.runtimeModel = await resolveOpencodeRuntimeModel(parsed.data.providerType, runtimeConfig);
     if (requiresRuntimeCwd(parsed.data.providerType) && !hasText(runtimeConfig.runtimeCwd)) {
       return sendError(res, "Runtime working directory is required for this runtime provider.", 422);
     }
@@ -270,6 +273,19 @@ export function createAgentsRouter(ctx: AppContext) {
     }
 
     if (parsed.data.requestApproval && isApprovalRequired("hire_agent")) {
+      const duplicate = await findDuplicateHireRequest(ctx.db, req.companyId!, {
+        role: parsed.data.role,
+        managerAgentId: parsed.data.managerAgentId ?? null
+      });
+      if (duplicate) {
+        return sendOk(res, {
+          queuedForApproval: false,
+          duplicate: true,
+          existingAgentId: duplicate.existingAgentId ?? null,
+          pendingApprovalId: duplicate.pendingApprovalId ?? null,
+          message: duplicateMessage(duplicate)
+        });
+      }
       const approvalId = await createApprovalRequest(ctx.db, {
         companyId: req.companyId!,
         action: "hire_agent",
@@ -380,6 +396,7 @@ export function createAgentsRouter(ctx: AppContext) {
           })
         : {})
     };
+    nextRuntime.runtimeModel = await resolveOpencodeRuntimeModel(effectiveProviderType, nextRuntime);
     if (!nextRuntime.runtimeCwd && defaultRuntimeCwd) {
       nextRuntime.runtimeCwd = defaultRuntimeCwd;
     }
@@ -538,4 +555,57 @@ function listUnsupportedAgentUpdateKeys(payload: unknown) {
     }
   }
   return unsupported;
+}
+
+async function findDuplicateHireRequest(
+  db: AppContext["db"],
+  companyId: string,
+  input: { role: string; managerAgentId: string | null }
+) {
+  const role = input.role.trim();
+  const managerAgentId = input.managerAgentId ?? null;
+  const agents = await listAgents(db, companyId);
+  const existingAgent = agents.find(
+    (agent) =>
+      agent.role === role &&
+      (agent.managerAgentId ?? null) === managerAgentId &&
+      agent.status !== "terminated"
+  );
+  const approvals = await listApprovalRequests(db, companyId);
+  const pendingApproval = approvals.find((approval) => {
+    if (approval.status !== "pending" || approval.action !== "hire_agent") {
+      return false;
+    }
+    const payload = parseApprovalPayload(approval.payloadJson);
+    return payload.role === role && (payload.managerAgentId ?? null) === managerAgentId;
+  });
+  if (!existingAgent && !pendingApproval) {
+    return null;
+  }
+  return {
+    existingAgentId: existingAgent?.id ?? null,
+    pendingApprovalId: pendingApproval?.id ?? null
+  };
+}
+
+function parseApprovalPayload(payloadJson: string): { role?: string; managerAgentId?: string | null } {
+  try {
+    const parsed = JSON.parse(payloadJson) as Record<string, unknown>;
+    return {
+      role: typeof parsed.role === "string" ? parsed.role : undefined,
+      managerAgentId: typeof parsed.managerAgentId === "string" ? parsed.managerAgentId : null
+    };
+  } catch {
+    return {};
+  }
+}
+
+function duplicateMessage(input: { existingAgentId: string | null; pendingApprovalId: string | null }) {
+  if (input.existingAgentId && input.pendingApprovalId) {
+    return `Duplicate hire request blocked: existing agent ${input.existingAgentId} and pending approval ${input.pendingApprovalId}.`;
+  }
+  if (input.existingAgentId) {
+    return `Duplicate hire request blocked: existing agent ${input.existingAgentId}.`;
+  }
+  return `Duplicate hire request blocked: pending approval ${input.pendingApprovalId}.`;
 }

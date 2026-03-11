@@ -70,4 +70,49 @@ describe("runtime transcript classification", () => {
       )
     ).toBe(true);
   });
+
+  it("captures OpenCode JSON message events for run details transcript", async () => {
+    const events: Array<{ kind: string; signalLevel?: string; text?: string }> = [];
+    const script = [
+      "console.log(JSON.stringify({ type: 'text', part: { text: 'OpenCode completed code changes and test verification for this run.' } }));",
+      "console.log(JSON.stringify({ type: 'tool_use', part: { tool: 'Edit', callID: 'call-1', state: { status: 'completed', output: 'Applied patch to runtime.ts', metadata: { lines: 12 } } } }));",
+      "console.log(JSON.stringify({ type: 'step_finish', part: { reason: 'completed', tokens: { input: 12, output: 5, reasoning: 3, cache: { read: 2 } }, cost: 0.00012 } }));"
+    ].join("");
+    const run = await executePromptRuntime(
+      process.execPath,
+      "ignored",
+      {
+        args: ["-e", script],
+        onTranscriptEvent: (event) => events.push(event)
+      },
+      { provider: "opencode" }
+    );
+
+    expect(run.ok).toBe(true);
+    expect(
+      events.some(
+        (event) =>
+          event.kind === "assistant" &&
+          event.signalLevel === "medium" &&
+          (event.text ?? "").includes("OpenCode completed code changes")
+      )
+    ).toBe(true);
+    expect(events.some((event) => event.kind === "tool_call" && event.signalLevel === "high")).toBe(true);
+    expect(events.some((event) => event.kind === "tool_result" && event.signalLevel === "high")).toBe(true);
+    expect(events.some((event) => event.kind === "result" && event.signalLevel === "high")).toBe(true);
+    expect(run.transcript?.some((event) => event.kind === "assistant")).toBe(true);
+  });
+
+  it("passes OpenCode prompts via stdin instead of CLI args", async () => {
+    const run = await executePromptRuntime(
+      process.execPath,
+      "PROMPT_SHOULD_NOT_BE_ARG",
+      {
+        args: ["-e", "console.log(JSON.stringify(process.argv.slice(2)))"]
+      },
+      { provider: "opencode" }
+    );
+    expect(run.ok).toBe(true);
+    expect(run.stdout).not.toContain("PROMPT_SHOULD_NOT_BE_ARG");
+  });
 });

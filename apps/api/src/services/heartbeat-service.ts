@@ -1834,16 +1834,10 @@ function resolveRuntimeAttemptTimeoutMs(
   if (Number.isFinite(configuredTimeoutMs) && (configuredTimeoutMs ?? 0) > 0) {
     return Math.floor(configuredTimeoutMs ?? 0);
   }
-  if (providerType === "claude_code") {
-    return 90_000;
+  if (providerType === "claude_code" || providerType === "codex" || providerType === "opencode" || providerType === "cursor") {
+    return 15 * 60 * 1000;
   }
-  if (providerType === "codex") {
-    return 5 * 60 * 1000;
-  }
-  if (providerType === "cursor") {
-    return 30_000;
-  }
-  return 45_000;
+  return 15 * 60 * 1000;
 }
 
 function resolveRuntimeRetryCount(
@@ -1853,7 +1847,7 @@ function resolveRuntimeRetryCount(
   if (Number.isFinite(configuredRetryCount)) {
     return Math.max(0, Math.min(2, Math.floor(configuredRetryCount ?? 0)));
   }
-  return providerType === "codex" ? 1 : 0;
+  return providerType === "codex" || providerType === "opencode" ? 1 : 0;
 }
 
 function mergeRuntimeForExecution(

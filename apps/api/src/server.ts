@@ -20,10 +20,15 @@ async function main() {
   const port = Number(process.env.PORT ?? 4020);
   const { db } = await bootstrapDatabase(dbPath);
   const codexCommand = process.env.BOPO_CODEX_COMMAND ?? "codex";
+  const openCodeCommand = process.env.BOPO_OPENCODE_COMMAND ?? "opencode";
   const skipCodexPreflight = process.env.BOPO_SKIP_CODEX_PREFLIGHT === "1";
+  const skipOpenCodePreflight = process.env.BOPO_SKIP_OPENCODE_PREFLIGHT === "1";
   const codexHealthRequired =
     !skipCodexPreflight &&
     (process.env.BOPO_REQUIRE_CODEX_HEALTH === "1" || (await hasCodexAgentsConfigured(db)));
+  const openCodeHealthRequired =
+    !skipOpenCodePreflight &&
+    (process.env.BOPO_REQUIRE_OPENCODE_HEALTH === "1" || (await hasOpenCodeAgentsConfigured(db)));
   const getRuntimeHealth = async () => {
     const codex = codexHealthRequired
       ? await checkRuntimeCommandHealth(codexCommand, {
@@ -38,8 +43,22 @@ async function main() {
             ? "Skipped by configuration: BOPO_SKIP_CODEX_PREFLIGHT=1."
             : "Skipped: no Codex agents configured."
         };
+    const opencode = openCodeHealthRequired
+      ? await checkRuntimeCommandHealth(openCodeCommand, {
+          timeoutMs: 5_000
+        })
+      : {
+          command: openCodeCommand,
+          available: skipOpenCodePreflight ? false : true,
+          exitCode: null,
+          elapsedMs: 0,
+          error: skipOpenCodePreflight
+            ? "Skipped by configuration: BOPO_SKIP_OPENCODE_PREFLIGHT=1."
+            : "Skipped: no OpenCode agents configured."
+        };
     return {
-      codex
+      codex,
+      opencode
     };
   };
   if (codexHealthRequired) {
@@ -48,6 +67,14 @@ async function main() {
     });
     if (!startupCodexHealth.available) {
       emitCodexPreflightWarning(startupCodexHealth);
+    }
+  }
+  if (openCodeHealthRequired) {
+    const startupOpenCodeHealth = await checkRuntimeCommandHealth(openCodeCommand, {
+      timeoutMs: 5_000
+    });
+    if (!startupOpenCodeHealth.available) {
+      emitOpenCodePreflightWarning(startupOpenCodeHealth);
     }
   }
 
@@ -80,6 +107,16 @@ async function hasCodexAgentsConfigured(db: Awaited<ReturnType<typeof bootstrapD
     SELECT id
     FROM agents
     WHERE provider_type = 'codex'
+    LIMIT 1
+  `);
+  return (result.rows ?? []).length > 0;
+}
+
+async function hasOpenCodeAgentsConfigured(db: Awaited<ReturnType<typeof bootstrapDatabase>>["db"]) {
+  const result = await db.execute(sql`
+    SELECT id
+    FROM agents
+    WHERE provider_type = 'opencode'
     LIMIT 1
   `);
   return (result.rows ?? []).length > 0;
@@ -122,6 +159,20 @@ function emitCodexPreflightWarning(health: RuntimeCommandHealth) {
     `${symbol} ${yellow}Codex preflight failed${reset}: command '${health.command}' is unavailable.\n`
   );
   process.stderr.write(`  Install Codex CLI or set BOPO_SKIP_CODEX_PREFLIGHT=1 for local dev.\n`);
+  if (process.env.BOPO_VERBOSE_STARTUP_WARNINGS === "1") {
+    process.stderr.write(`  Details: ${JSON.stringify(health)}\n`);
+  }
+}
+
+function emitOpenCodePreflightWarning(health: RuntimeCommandHealth) {
+  const red = process.stderr.isTTY ? "\x1b[31m" : "";
+  const yellow = process.stderr.isTTY ? "\x1b[33m" : "";
+  const reset = process.stderr.isTTY ? "\x1b[0m" : "";
+  const symbol = `${red}✖${reset}`;
+  process.stderr.write(
+    `${symbol} ${yellow}OpenCode preflight failed${reset}: command '${health.command}' is unavailable.\n`
+  );
+  process.stderr.write(`  Install OpenCode CLI or set BOPO_SKIP_OPENCODE_PREFLIGHT=1 for local dev.\n`);
   if (process.env.BOPO_VERBOSE_STARTUP_WARNINGS === "1") {
     process.stderr.write(`  Details: ${JSON.stringify(health)}\n`);
   }

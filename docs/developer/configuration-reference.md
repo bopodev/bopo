@@ -37,11 +37,15 @@ Give contributors and operators one reference for key environment variables and 
 | --- | --- | --- |
 | `NEXT_PUBLIC_DEFAULT_RUNTIME_CWD` | empty | UI fallback working directory for new agents. |
 | `BOPO_CODEX_COMMAND` | `codex` | Codex command override. |
+| `BOPO_OPENCODE_COMMAND` | `opencode` | OpenCode command override. |
 | `BOPO_SKIP_CODEX_PREFLIGHT` | `0` | Skip startup codex command health checks when `1`. |
+| `BOPO_SKIP_OPENCODE_PREFLIGHT` | `0` | Skip startup OpenCode command health checks when `1`. |
 | `BOPO_REQUIRE_CODEX_HEALTH` | `0` unless codex agents exist | Force codex health checks at startup when `1`. |
+| `BOPO_REQUIRE_OPENCODE_HEALTH` | `0` unless opencode agents exist | Force OpenCode health checks at startup when `1`. |
 | `BOPO_VERBOSE_STARTUP_WARNINGS` | `0` | Adds detailed startup warning payloads when `1`. |
 | `BOPO_CODEX_HOME_ROOT` | unset | Managed Codex home root override in runtime behavior. |
 | `BOPO_CODEX_ALLOW_HOME_SEED` | `false` | Controls managed Codex home initialization behavior. |
+| `BOPO_OPENCODE_MODEL` | unset | Optional OpenCode model for onboarding seed. If unset, onboarding attempts to auto-select from `opencode models`. |
 
 ## Heartbeat and Scheduler Controls
 
@@ -83,6 +87,7 @@ These variables are required for control-plane aware skill execution and approva
 | --- | --- |
 | `BOPO_OPENAI_API_KEY` / `OPENAI_API_KEY` | OpenAI-compatible runtime credentials. |
 | `BOPO_ANTHROPIC_API_KEY` / `ANTHROPIC_API_KEY` | Anthropic-compatible runtime credentials. |
+| `OPENCODE_MODEL` | Optional fallback default model for onboarding seed when provider is `opencode` (`provider/model` format). |
 | `BOPO_OPENAI_BASE_URL` | Optional OpenAI API base URL override for direct API adapters. |
 | `BOPO_ANTHROPIC_BASE_URL` | Optional Anthropic API base URL override for direct API adapters. |
 | `BOPO_OPENAI_INPUT_USD_PER_1M` / `BOPO_OPENAI_OUTPUT_USD_PER_1M` | Optional direct-adapter cost fallback rates when provider response omits cost fields. |

@@ -36,6 +36,17 @@ export async function runDoctorChecks(options?: { workspaceRoot?: string }): Pro
         : codex.error ?? `Command '${codexCommand}' exited with ${String(codex.exitCode)}`
   });
 
+  const openCodeCommand = process.env.BOPO_OPENCODE_COMMAND?.trim() || "opencode";
+  const openCode = await checkRuntimeCommandHealth(openCodeCommand, options?.workspaceRoot);
+  checks.push({
+    label: "OpenCode runtime",
+    ok: openCode.available && openCode.exitCode === 0,
+    details:
+      openCode.available && openCode.exitCode === 0
+        ? `Command '${openCodeCommand}' is available`
+        : openCode.error ?? `Command '${openCodeCommand}' exited with ${String(openCode.exitCode)}`
+  });
+
   const instanceRoot = resolveInstanceRoot();
   const storageRoot = join(instanceRoot, "data", "storage");
   const workspaceRoot = join(instanceRoot, "workspaces");

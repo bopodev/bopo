@@ -108,6 +108,56 @@ describe("BopoDev core workflows", () => {
     );
   });
 
+  it("prevents duplicate hire approvals for same manager and role", async () => {
+    const manager = await createAgent(db, {
+      companyId,
+      role: "CEO",
+      name: "Manager",
+      providerType: "shell",
+      heartbeatCron: "*/5 * * * *",
+      monthlyBudgetUsd: "100.0000",
+      canHireAgents: true,
+      initialState: {
+        runtime: {
+          command: "echo",
+          cwd: tempDir,
+          args: ['{"summary":"manager","tokenInput":0,"tokenOutput":0,"usdCost":0}']
+        }
+      }
+    });
+
+    const first = await request(app).post("/agents").set("x-company-id", companyId).send({
+      managerAgentId: manager.id,
+      role: "Engineer",
+      name: "Founding Engineer",
+      providerType: "opencode",
+      heartbeatCron: "*/5 * * * *",
+      monthlyBudgetUsd: 40,
+      canHireAgents: false,
+      requestApproval: true,
+      runtimeCwd: tempDir
+    });
+    expect(first.status).toBe(200);
+    expect(first.body.data.queuedForApproval).toBe(true);
+    const firstApprovalId = first.body.data.approvalId as string;
+
+    const second = await request(app).post("/agents").set("x-company-id", companyId).send({
+      managerAgentId: manager.id,
+      role: "Engineer",
+      name: "Founding Engineer Duplicate",
+      providerType: "opencode",
+      heartbeatCron: "*/5 * * * *",
+      monthlyBudgetUsd: 40,
+      canHireAgents: false,
+      requestApproval: true,
+      runtimeCwd: tempDir
+    });
+    expect(second.status).toBe(200);
+    expect(second.body.data.queuedForApproval).toBe(false);
+    expect(second.body.data.duplicate).toBe(true);
+    expect(second.body.data.pendingApprovalId).toBe(firstApprovalId);
+  });
+
   it("returns actionable codex runtime preflight results", async () => {
     const runtimeCwd = tempDir;
     const passResponse = await request(app)
@@ -542,6 +592,64 @@ describe("BopoDev core workflows", () => {
     expect(commentBodies).toContain("CEO intake: approved scope and preparing to hire execution support.");
     expect(commentBodies).toContain("CEO handoff: assigning to Execution Worker for implementation.");
     expect(commentBodies).toContain("Worker update: implementation started.");
+  });
+
+  it("auto-populates OpenCode model for approved hires when runtimeModel is omitted", async () => {
+    const previousDefault = process.env.BOPO_OPENCODE_MODEL;
+    process.env.BOPO_OPENCODE_MODEL = "opencode/big-pickle";
+    try {
+      const ceoResponse = await request(app).post("/agents").set("x-company-id", companyId).send({
+        role: "CEO",
+        name: "OpenCode CEO",
+        providerType: "shell",
+        heartbeatCron: "*/5 * * * *",
+        monthlyBudgetUsd: 100,
+        canHireAgents: true,
+        requestApproval: false,
+        runtimeCommand: "echo",
+        runtimeCwd: tempDir,
+        runtimeArgs: ['{"summary":"ceo heartbeat","tokenInput":0,"tokenOutput":0,"usdCost":0}']
+      });
+      expect(ceoResponse.status).toBe(200);
+      const ceoId = ceoResponse.body.data.id as string;
+
+      const hireRequestResponse = await request(app).post("/agents").set("x-company-id", companyId).send({
+        managerAgentId: ceoId,
+        role: "Engineer",
+        name: "OpenCode Founding Engineer",
+        providerType: "opencode",
+        heartbeatCron: "*/5 * * * *",
+        monthlyBudgetUsd: 40,
+        canHireAgents: false,
+        requestApproval: true,
+        runtimeCommand: "opencode",
+        runtimeCwd: tempDir
+      });
+      expect(hireRequestResponse.status).toBe(200);
+      const approvalId = hireRequestResponse.body.data.approvalId as string;
+
+      const resolveResponse = await request(app).post("/governance/resolve").set("x-company-id", companyId).send({
+        approvalId,
+        status: "approved"
+      });
+      expect(resolveResponse.status).toBe(200);
+      expect(resolveResponse.body.data.execution.applied).toBe(true);
+      const workerId = resolveResponse.body.data.execution.entityId as string;
+
+      const agentsResponse = await request(app).get("/agents").set("x-company-id", companyId);
+      expect(agentsResponse.status).toBe(200);
+      const hiredWorker = (
+        agentsResponse.body.data as Array<{ id: string; providerType: string; runtimeModel?: string | null }>
+      ).find((agent) => agent.id === workerId);
+      expect(hiredWorker?.providerType).toBe("opencode");
+      expect(hiredWorker?.runtimeModel).toBe("opencode/big-pickle");
+    } finally {
+      if (previousDefault === undefined) {
+        delete process.env.BOPO_OPENCODE_MODEL;
+      } else {
+        process.env.BOPO_OPENCODE_MODEL = previousDefault;
+      }
+    }
   });
 
   it("runs only due heartbeats, advances issues to review, and records cost entries", async () => {

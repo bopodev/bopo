@@ -389,7 +389,7 @@ export async function listAdapterModels(
     return dedupeModels([...discovered, ...modelCatalog.cursor]);
   }
   if (providerType === "opencode") {
-    const discovered = await discoverOpenCodeModels(runtime);
+    const discovered = await discoverOpenCodeModelsCached(runtime);
     return dedupeModels(discovered);
   }
   return modelCatalog[providerType];
@@ -822,7 +822,8 @@ async function runCursorWork(context: HeartbeatContext): Promise<AdapterExecutio
   const cursorLaunch = await resolveCursorLaunchConfig(context.runtime);
   const cwd = context.runtime?.cwd?.trim() || process.cwd();
   const resumeState = resolveCursorResumeState(context.state, cwd);
-  const runtimeTimeoutMs = context.runtime?.timeoutMs && context.runtime.timeoutMs > 0 ? context.runtime.timeoutMs : 30_000;
+  const runtimeTimeoutMs =
+    context.runtime?.timeoutMs && context.runtime.timeoutMs > 0 ? context.runtime.timeoutMs : 15 * 60 * 1000;
   const buildArgs = (resumeSessionId: string | null) => {
     const baseArgs = [...cursorLaunch.prefixArgs, "-p", "--output-format", "stream-json", "--workspace", cwd];
     if (resumeSessionId) {
@@ -890,6 +891,8 @@ async function runCursorWork(context: HeartbeatContext): Promise<AdapterExecutio
 async function runOpenCodeWork(context: HeartbeatContext): Promise<AdapterExecutionResult> {
   const prompt = createPrompt(context);
   const model = context.runtime?.model?.trim();
+  const runtimeTimeoutMs =
+    context.runtime?.timeoutMs && context.runtime.timeoutMs > 0 ? context.runtime.timeoutMs : 5 * 60 * 1000;
   if (!model) {
     return {
       status: "failed",
@@ -908,6 +911,32 @@ async function runOpenCodeWork(context: HeartbeatContext): Promise<AdapterExecut
       nextState: context.state
     };
   }
+  try {
+    await ensureOpenCodeModelConfiguredAndAvailable({
+      model,
+      command: context.runtime?.command,
+      cwd: context.runtime?.cwd,
+      env: context.runtime?.env
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "OpenCode model validation failed.";
+    return {
+      status: "failed",
+      summary: message,
+      tokenInput: 0,
+      tokenOutput: 0,
+      usdCost: 0,
+      outcome: toOutcome({
+        kind: "blocked",
+        issueIdsTouched: issueIdsTouched(context),
+        actions: [{ type: "runtime.validate", status: "error", detail: message }],
+        blockers: [{ code: "model_unavailable", message, retryable: false }],
+        artifacts: [],
+        nextSuggestedState: "blocked"
+      }),
+      nextState: context.state
+    };
+  }
   const resumeSessionId = context.state.sessionId?.trim();
   const baseArgs = ["run", "--format", "json", "--model", model];
   if (resumeSessionId) {
@@ -918,6 +947,7 @@ async function runOpenCodeWork(context: HeartbeatContext): Promise<AdapterExecut
     prompt,
     {
       ...context.runtime,
+      timeoutMs: runtimeTimeoutMs,
       args: [...baseArgs, ...(context.runtime?.args ?? [])]
     },
     { provider: "opencode" }
@@ -929,6 +959,7 @@ async function runOpenCodeWork(context: HeartbeatContext): Promise<AdapterExecut
       prompt,
       {
         ...context.runtime,
+        timeoutMs: runtimeTimeoutMs,
         args: ["run", "--format", "json", "--model", model, ...(context.runtime?.args ?? [])]
       },
       { provider: "opencode" }
@@ -1360,19 +1391,92 @@ async function discoverCursorModels(runtime?: AgentRuntimeConfig): Promise<Adapt
 async function discoverOpenCodeModels(runtime?: AgentRuntimeConfig): Promise<AdapterModelOption[]> {
   const probe = await executePromptRuntime(
     resolveRuntimeCommand("opencode", runtime),
-    "models",
+    "",
     {
       ...runtime,
       args: ["models"],
-      timeoutMs: 10_000,
+      timeoutMs: 120_000,
       retryCount: 0
     },
     { provider: "opencode" }
   );
-  if (!probe.ok && !probe.stdout.trim()) {
+  if (!probe.ok && !probe.stdout.trim() && !probe.stderr.trim()) {
     return [];
   }
-  return parseModelLines(probe.stdout).filter((entry) => entry.id.includes("/"));
+  return parseModelLines(`${probe.stdout}\n${probe.stderr}`).filter((entry) => entry.id.includes("/"));
+}
+
+const OPENCODE_MODEL_DISCOVERY_TTL_MS = 60_000;
+const openCodeModelDiscoveryCache = new Map<string, { expiresAt: number; models: AdapterModelOption[] }>();
+
+function normalizeRuntimeEnv(env: unknown): Record<string, string> {
+  if (!env || typeof env !== "object" || Array.isArray(env)) {
+    return {};
+  }
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(env as Record<string, unknown>)) {
+    if (typeof value === "string") {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
+function openCodeModelCacheKey(runtime?: AgentRuntimeConfig) {
+  const command = resolveRuntimeCommand("opencode", runtime);
+  const cwd = runtime?.cwd?.trim() || process.cwd();
+  const env = normalizeRuntimeEnv(runtime?.env);
+  const envSignature = Object.entries(env)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, value]) => `${key}=${value}`)
+    .join("\n");
+  return `${command}\n${cwd}\n${envSignature}`;
+}
+
+async function discoverOpenCodeModelsCached(runtime?: AgentRuntimeConfig): Promise<AdapterModelOption[]> {
+  const key = openCodeModelCacheKey(runtime);
+  const now = Date.now();
+  for (const [cacheKey, cacheValue] of openCodeModelDiscoveryCache.entries()) {
+    if (cacheValue.expiresAt <= now) {
+      openCodeModelDiscoveryCache.delete(cacheKey);
+    }
+  }
+  const cached = openCodeModelDiscoveryCache.get(key);
+  if (cached && cached.expiresAt > now) {
+    return cached.models;
+  }
+  const models = await discoverOpenCodeModels(runtime);
+  openCodeModelDiscoveryCache.set(key, {
+    expiresAt: now + OPENCODE_MODEL_DISCOVERY_TTL_MS,
+    models
+  });
+  return models;
+}
+
+async function ensureOpenCodeModelConfiguredAndAvailable(input: {
+  model?: string;
+  command?: string;
+  cwd?: string;
+  env?: Record<string, string>;
+}) {
+  const normalizedModel = input.model?.trim();
+  if (!normalizedModel) {
+    throw new Error("OpenCode requires runtimeModel in provider/model format.");
+  }
+  const models = await discoverOpenCodeModelsCached({
+    command: input.command,
+    cwd: input.cwd,
+    env: input.env
+  });
+  if (models.length === 0) {
+    throw new Error("OpenCode returned no models. Run `opencode models` and verify provider auth.");
+  }
+  if (!models.some((entry) => entry.id === normalizedModel)) {
+    const sample = models.slice(0, 12).map((entry) => entry.id).join(", ");
+    throw new Error(
+      `Configured OpenCode model is unavailable: ${normalizedModel}. Available models: ${sample}${models.length > 12 ? ", ..." : ""}`
+    );
+  }
 }
 
 function parseModelLines(text: string): AdapterModelOption[] {
@@ -1521,7 +1625,8 @@ function createPrompt(context: HeartbeatContext) {
     "- Prefer completing assigned issue work in this repository over non-essential coordination tasks.",
     "- Keep command usage minimal and task-focused; avoid broad repository scans unless strictly required for the assigned issue.",
     "- Shell commands run under zsh on macOS; avoid Bash-only features such as `local -n`, `declare -n`, `mapfile`, and `readarray`.",
-    "- Prefer POSIX/zsh-compatible shell snippets, direct `curl` headers, `jq`, and temp JSON files/heredocs.",
+    "- Prefer POSIX/zsh-compatible shell snippets, direct `curl` headers, and `jq`.",
+    "- For API payload files, write under `agents/<agent-id>/tmp/` (or OS temp via `mktemp`) and clean them up after successful calls.",
     "- If control-plane API connectivity fails, report the exact failing command/error once and stop retry loops for the same endpoint.",
     "- If any command fails, avoid further exploratory commands and still return the required final JSON summary.",
     "- Do not stop after planning. You must execute concrete steps for assigned issues in this run (file edits, API calls, or other verifiable actions).",

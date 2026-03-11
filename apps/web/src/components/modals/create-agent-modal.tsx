@@ -163,7 +163,8 @@ export function CreateAgentModal({
           .map((adapter) => ({ providerType: adapter.providerType, label: adapter.label }))
           .sort((a, b) => a.label.localeCompare(b.label))
       : defaultVisibleProviders
-  ).concat(
+  )
+    .concat(
     providerType === "cursor"
       ? [{ providerType: "cursor" as const, label: "Cursor (hidden)" }]
       : []
@@ -177,6 +178,8 @@ export function CreateAgentModal({
   );
   const fallbackModelOptions = getModelOptionsForProvider(providerType, runtimeModel);
   const modelOptions = discoveredModels ?? fallbackModelOptions;
+  const visibleModelOptions =
+    providerType === "opencode" ? modelOptions.filter((option) => option.value.trim().length > 0) : modelOptions;
   const providerSupportsWebSearch = providerMetadata?.supportsWebSearch ?? providerType === "codex";
   const sandboxPermissionLabel = providerType === "claude_code" ? "Skip permissions" : "Bypass approvals and sandbox";
 
@@ -422,6 +425,9 @@ export function CreateAgentModal({
   }, [providerType, allowWebSearch]);
 
   useEffect(() => {
+    if (providerType === "opencode") {
+      return;
+    }
     const allowedValues = getModelOptionsForProvider(providerType, runtimeModel).map((option) => option.value);
     if (runtimeModel && !allowedValues.includes(runtimeModel)) {
       setRuntimeModel("");
@@ -460,6 +466,14 @@ export function CreateAgentModal({
           allowWebSearch
         }
       };
+
+      if (providerType === "opencode") {
+        const normalizedModel = runtimeModel.trim();
+        if (!normalizedModel || !/^[^/\s]+\/[^/\s]+$/.test(normalizedModel)) {
+          setError("OpenCode model is required and must use provider/model format (for example: openai/gpt-5).");
+          return;
+        }
+      }
 
       const shouldRunPreflight = providerMetadata?.supportsEnvironmentTest ?? providerType !== "http";
       if (shouldRunPreflight) {
@@ -614,15 +628,27 @@ export function CreateAgentModal({
               <Field>
                 <FieldLabel htmlFor="agent-runtime-model">Model</FieldLabel>
                 <Select
-                  value={runtimeModel || "__default"}
-                  onValueChange={(value) => setRuntimeModel(value === "__default" ? "" : value)}
+                  value={runtimeModel || (providerType === "opencode" ? "__none" : "__default")}
+                  onValueChange={(value) => {
+                    if (providerType === "opencode") {
+                      setRuntimeModel(value === "__none" ? "" : value);
+                      return;
+                    }
+                    setRuntimeModel(value === "__default" ? "" : value);
+                  }}
                 >
                   <SelectTrigger id="agent-runtime-model" className={styles.createAgentModalSelectTrigger}>
                     <SelectValue placeholder="Select a model" />
                   </SelectTrigger>
                   <SelectContent>
-                    {modelOptions.map((option) => (
-                      <SelectItem key={option.value || "__default"} value={option.value || "__default"}>
+                    {providerType === "opencode" ? (
+                      <SelectItem value="__none">Select a model</SelectItem>
+                    ) : null}
+                    {visibleModelOptions.map((option) => (
+                      <SelectItem
+                        key={option.value || (providerType === "opencode" ? "__none" : "__default")}
+                        value={option.value || (providerType === "opencode" ? "__none" : "__default")}
+                      >
                         {option.label}
                       </SelectItem>
                     ))}

@@ -1,5 +1,6 @@
 import { pathToFileURL } from "node:url";
 import { mkdir } from "node:fs/promises";
+import { getAdapterModels } from "bopodev-agent-sdk";
 import {
   bootstrapDatabase,
   createAgent,
@@ -73,10 +74,15 @@ export async function ensureOnboardingSeed(input: {
     const resolvedCompanyName = companyRow.name;
     const defaultRuntimeCwd = await resolveDefaultRuntimeCwdForCompany(db, companyId);
     await mkdir(defaultRuntimeCwd, { recursive: true });
+    const seedRuntimeEnv = resolveSeedRuntimeEnv(agentProvider);
     const defaultRuntimeConfig = normalizeRuntimeConfig({
       defaultRuntimeCwd,
       runtimeConfig: {
-        runtimeEnv: resolveSeedRuntimeEnv(agentProvider)
+        runtimeEnv: seedRuntimeEnv,
+        runtimeModel: await resolveSeedRuntimeModel(agentProvider, {
+          defaultRuntimeCwd,
+          runtimeEnv: seedRuntimeEnv
+        })
       }
     });
     const agents = await listAgents(db, companyId);
@@ -186,7 +192,8 @@ async function ensureCeoStartupTask(
     "3. Save your operating-file reference on your own agent record via `PUT /agents/:agentId`.",
     `   - Supported simple body: \`{ "bootstrapPrompt": "Primary operating reference: agents/${input.ceoId}/AGENTS.md ..." }\``,
     "   - If using `runtimeConfig`, only `runtimeConfig.bootstrapPrompt` is supported there.",
-    "   - Use a temp JSON file or heredoc with `curl --data @file`; do not hand-escape multiline JSON.",
+    `   - Place temp payload files in \`agents/${input.ceoId}/tmp/\` (or OS temp via \`mktemp\`), then use \`curl --data @file\`; do not hand-escape multiline JSON.`,
+    "   - Remove temp payload files after successful API calls to avoid repo/workspace clutter.",
     "4. To inspect your own agent record, use `GET /agents` and filter by your agent id. Do not call `GET /agents/:agentId`.",
     "   - `GET /agents` uses envelope shape `{ \"ok\": true, \"data\": [...] }`; treat any other shape as failure.",
     "   - Deterministic filter: `jq -er --arg id \"$BOPODEV_AGENT_ID\" '.data | if type==\"array\" then . else error(\"invalid_agents_payload\") end | map(select((.id? // \"\") == $id))[0] | {id,name,role,bootstrapPrompt}'`",
@@ -282,6 +289,36 @@ function resolveSeedRuntimeEnv(agentProvider: AgentProvider): Record<string, str
     };
   }
   return {};
+}
+
+async function resolveSeedRuntimeModel(
+  agentProvider: AgentProvider,
+  input: { defaultRuntimeCwd: string; runtimeEnv: Record<string, string> }
+): Promise<string | undefined> {
+  if (agentProvider !== "opencode") {
+    return undefined;
+  }
+  const configured =
+    process.env.BOPO_OPENCODE_MODEL?.trim() ||
+    process.env.OPENCODE_MODEL?.trim();
+  try {
+    const discovered = await getAdapterModels("opencode", {
+      command: process.env.BOPO_OPENCODE_COMMAND?.trim() || "opencode",
+      cwd: input.defaultRuntimeCwd,
+      env: input.runtimeEnv
+    });
+    if (configured && discovered.some((entry) => entry.id === configured)) {
+      return configured;
+    }
+    if (discovered.length > 0) {
+      return discovered[0]!.id;
+    }
+  } catch {
+    if (configured) {
+      return configured;
+    }
+  }
+  return configured;
 }
 
 function isBootstrapCeoRuntime(providerType: string, stateBlob: string | null) {
