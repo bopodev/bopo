@@ -498,16 +498,6 @@ export function IssueDetailPageClient({
               companyId={companyId}
               projects={projects}
               agents={agents}
-              defaultProjectId={issue.projectId}
-              defaultParentIssueId={issue.id}
-              triggerLabel="Add sub-issue"
-              triggerVariant="outline"
-              triggerSize="sm"
-            />
-            <CreateIssueModal
-              companyId={companyId}
-              projects={projects}
-              agents={agents}
               issue={issue}
               triggerLabel="Edit issue"
               triggerVariant="outline"
@@ -706,6 +696,18 @@ export function IssueDetailPageClient({
                   ))}
                 </ItemGroup>
               )}
+
+              <div className={styles.issueSubIssueActionsRow}>
+                <CreateIssueModal
+                  companyId={companyId}
+                  projects={projects}
+                  agents={agents}
+                  defaultProjectId={issue.projectId}
+                  defaultParentIssueId={issue.id}
+                  triggerLabel="Add sub-issue"
+                  triggerVariant="outline"
+                />
+              </div>
             </TabsContent>
             <TabsContent value="activity" className="ui-issue-tabs-content">
               {activityLoading ? <div className="ui-issue-muted-text">Loading activity...</div> : null}

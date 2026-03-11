@@ -106,6 +106,10 @@
   @apply flex items-center gap-2;
 }
 
+.issueSubIssueActionsRow {
+  @apply mb-4 flex items-center gap-2;
+}
+
 .issueAttachmentInput {
   @apply hidden;
 }
