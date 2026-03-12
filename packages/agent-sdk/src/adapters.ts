@@ -294,6 +294,15 @@ const staticMetadata: AdapterMetadata[] = [
     requiresRuntimeCwd: true
   },
   {
+    providerType: "gemini_cli",
+    label: "Gemini CLI",
+    supportsModelSelection: true,
+    supportsEnvironmentTest: true,
+    supportsWebSearch: false,
+    supportsThinkingEffort: false,
+    requiresRuntimeCwd: true
+  },
+  {
     providerType: "openai_api",
     label: "OpenAI API",
     supportsModelSelection: true,
@@ -336,19 +345,18 @@ const metadataByProviderType = new Map(staticMetadata.map((entry) => [entry.prov
 const modelCatalog: Record<Exclude<AgentProviderType, "http" | "shell">, AdapterModelOption[]> = {
   codex: [
     { id: "gpt-5.3-codex", label: "GPT-5.3 Codex" },
-    { id: "gpt-5.3-codex-spark", label: "GPT-5.3 Codex Spark" },
-    { id: "gpt-5", label: "GPT-5" },
-    { id: "o3", label: "o3" },
-    { id: "o4-mini", label: "o4-mini" },
-    { id: "gpt-5-mini", label: "GPT-5 Mini" },
-    { id: "gpt-5-nano", label: "GPT-5 Nano" },
-    { id: "o3-mini", label: "o3-mini" },
-    { id: "codex-mini-latest", label: "Codex Mini" }
+    { id: "gpt-5.4", label: "GPT-5.4" },
+    { id: "gpt-5.2-codex", label: "GPT-5.2 Codex" },
+    { id: "gpt-5.2", label: "GPT-5.2" },
+    { id: "gpt-5.1-codex-max", label: "GPT-5.1 Codex Max" },
+    { id: "gpt-5.1-codex-mini", label: "GPT-5.1 Codex Mini" }
   ],
   claude_code: [
+    { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
+    { id: "claude-sonnet-4-6-1m", label: "Claude Sonnet 4.6 (1M context)" },
     { id: "claude-opus-4-6", label: "Claude Opus 4.6" },
-    { id: "claude-sonnet-4-5-20250929", label: "Claude Sonnet 4.5" },
-    { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" }
+    { id: "claude-opus-4-6-1m", label: "Claude Opus 4.6 (1M context)" },
+    { id: "claude-haiku-4-5", label: "Claude Haiku 4.5" }
   ],
   cursor: [
     { id: "auto", label: "Auto" },
@@ -357,7 +365,16 @@ const modelCatalog: Record<Exclude<AgentProviderType, "http" | "shell">, Adapter
     { id: "sonnet-4.5", label: "sonnet-4.5" },
     { id: "opus-4.6", label: "opus-4.6" }
   ],
-  opencode: [],
+  opencode: [{ id: "opencode/big-pickle", label: "Big Pickle" }],
+  gemini_cli: [
+    { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro" },
+    { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
+    { id: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash Lite" },
+    { id: "gemini-3.1-flash-lite", label: "Gemini 3.1 Flash Lite" },
+    { id: "gemini-3-flash", label: "Gemini 3 Flash" },
+    { id: "gemini-3-pro", label: "Gemini 3 Pro" },
+    { id: "gemini-3-pro-200k", label: "Gemini 3 Pro (>200k context)" }
+  ],
   openai_api: [
     { id: "gpt-5", label: "GPT-5" },
     { id: "gpt-5-mini", label: "GPT-5 Mini" },
@@ -396,8 +413,7 @@ export async function listAdapterModels(
     return dedupeModels([...discovered, ...modelCatalog.cursor]);
   }
   if (providerType === "opencode") {
-    const discovered = await discoverOpenCodeModelsCached(runtime);
-    return dedupeModels(discovered);
+    return [...modelCatalog.opencode];
   }
   return modelCatalog[providerType];
 }
@@ -1001,6 +1017,96 @@ export async function runOpenCodeWork(context: HeartbeatContext): Promise<Adapte
   }, pricingIdentity);
 }
 
+function resolveGeminiResumeState(state: HeartbeatContext["state"], cwd: string): {
+  resumeSessionId: string | null;
+  resumeAttempted: boolean;
+  resumeSkippedReason: string | null;
+} {
+  const savedSessionId = state.sessionId?.trim() || null;
+  const savedCwd = state.cwd?.trim() || null;
+  if (!savedSessionId) {
+    return { resumeSessionId: null, resumeAttempted: false, resumeSkippedReason: null };
+  }
+  if (savedCwd && resolve(savedCwd) !== resolve(cwd)) {
+    return { resumeSessionId: null, resumeAttempted: false, resumeSkippedReason: "cwd_mismatch" };
+  }
+  return { resumeSessionId: savedSessionId, resumeAttempted: true, resumeSkippedReason: null };
+}
+
+export async function runGeminiCliWork(context: HeartbeatContext): Promise<AdapterExecutionResult> {
+  const prompt = createPrompt(context);
+  const cwd = context.runtime?.cwd?.trim() || process.cwd();
+  const command = context.runtime?.command?.trim() || "gemini";
+  const model = context.runtime?.model?.trim() || "";
+  const pricingIdentity = resolveGeminiPricingIdentity(model || null);
+  const resumeState = resolveGeminiResumeState(context.state, cwd);
+  const runtimeTimeoutMs =
+    context.runtime?.timeoutMs && context.runtime.timeoutMs > 0 ? context.runtime.timeoutMs : 15 * 60 * 1000;
+
+  const buildArgs = (resumeSessionId: string | null) => {
+    const base = ["--output-format", "stream-json", "--approval-mode", "yolo", "--sandbox=none"];
+    if (resumeSessionId) {
+      base.push("--resume", resumeSessionId);
+    }
+    if (model) {
+      base.push("--model", model);
+    }
+    base.push(...(context.runtime?.args ?? []));
+    base.push(prompt);
+    return base;
+  };
+
+  const runtime = await executePromptRuntime(
+    command,
+    prompt,
+    {
+      ...context.runtime,
+      timeoutMs: runtimeTimeoutMs,
+      retryCount: 0,
+      args: buildArgs(resumeState.resumeSessionId)
+    },
+    { provider: "gemini_cli" }
+  );
+
+  const parsed = parseGeminiOutput(runtime.stdout);
+
+  if (!runtime.ok && resumeState.resumeSessionId && isGeminiUnknownSessionError(runtime.stdout, runtime.stderr)) {
+    const retry = await executePromptRuntime(
+      command,
+      prompt,
+      {
+        ...context.runtime,
+        timeoutMs: runtimeTimeoutMs,
+        retryCount: 0,
+        args: buildArgs(null)
+      },
+      { provider: "gemini_cli" }
+    );
+    const retryParsed = parseGeminiOutput(retry.stdout);
+    return toProviderResult(context, "gemini_cli", prompt, retry, {
+      inputRate: 0.0000015,
+      outputRate: 0.000008
+    }, {
+      currentSessionId: retryParsed.sessionId ?? null,
+      resumedSessionId: resumeState.resumeSessionId,
+      resumeAttempted: true,
+      clearedStaleSession: true,
+      cwd
+    }, pricingIdentity);
+  }
+
+  return toProviderResult(context, "gemini_cli", prompt, runtime, {
+    inputRate: 0.0000015,
+    outputRate: 0.000008
+  }, {
+    currentSessionId: parsed.sessionId ?? null,
+    resumedSessionId: resumeState.resumeSessionId,
+    resumeAttempted: resumeState.resumeAttempted,
+    resumeSkippedReason: resumeState.resumeSkippedReason,
+    cwd
+  }, pricingIdentity);
+}
+
 export function resolveFailedUsage(
   runtime: {
     parsedUsage?: {
@@ -1292,6 +1398,55 @@ export function parseOpenCodeOutput(stdout: string) {
   return { sessionId };
 }
 
+export function parseGeminiOutput(stdout: string): { sessionId: string | null } {
+  let sessionId: string | null = null;
+  for (const line of stdout.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) continue;
+    try {
+      const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+      const maybeSession =
+        (typeof parsed.session_id === "string" && parsed.session_id.trim()) ||
+        (typeof parsed.sessionId === "string" && parsed.sessionId.trim()) ||
+        (typeof parsed.sessionID === "string" && parsed.sessionID.trim()) ||
+        (typeof parsed.checkpoint_id === "string" && parsed.checkpoint_id.trim()) ||
+        (typeof parsed.thread_id === "string" && parsed.thread_id.trim()) ||
+        null;
+      if (maybeSession) {
+        sessionId = maybeSession;
+      }
+    } catch {
+      // ignore parser noise
+    }
+  }
+  return { sessionId };
+}
+
+export function isGeminiUnknownSessionError(stdout: string, stderr: string): boolean {
+  const haystack = `${stdout}\n${stderr}`
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join("\n")
+    .toLowerCase();
+  return (
+    /unknown\s+session|session\s+.*\s+not\s+found|resume\s+.*\s+not\s+found|checkpoint\s+.*\s+not\s+found|cannot\s+resume|failed\s+to\s+resume/i.test(
+      haystack
+    )
+  );
+}
+
+function resolveGeminiPricingIdentity(model: string | null | undefined): {
+  pricingProviderType: "gemini_api";
+  pricingModelId: string | null;
+} {
+  const normalizedModel = model?.trim() || null;
+  return {
+    pricingProviderType: "gemini_api",
+    pricingModelId: normalizedModel
+  };
+}
+
 export function resolveCursorResumeState(state: HeartbeatContext["state"], cwd: string) {
   const savedSessionId = state.cursorSession?.sessionId?.trim() || state.sessionId?.trim() || null;
   const savedCwd = state.cursorSession?.cwd?.trim() || state.cwd?.trim() || null;
@@ -1347,6 +1502,7 @@ export function resolveRuntimeCommand(providerType: AgentProviderType, runtime?:
   if (providerType === "codex") return "codex";
   if (providerType === "cursor") return "cursor";
   if (providerType === "opencode") return "opencode";
+  if (providerType === "gemini_cli") return "gemini";
   return providerType;
 }
 
@@ -1357,7 +1513,10 @@ function resolveCanonicalPricingProviderKey(providerType: string) {
   if (providerType === "claude_code") {
     return "anthropic_api";
   }
-  if (providerType === "openai_api" || providerType === "anthropic_api" || providerType === "opencode") {
+  if (providerType === "gemini_cli") {
+    return "gemini_api";
+  }
+  if (providerType === "openai_api" || providerType === "anthropic_api" || providerType === "opencode" || providerType === "gemini_api") {
     return providerType;
   }
   return null;
@@ -1489,6 +1648,24 @@ export async function runRuntimeProbe(providerType: AgentProviderType, runtime?:
         timeoutMs: runtime?.timeoutMs ? Math.min(runtime.timeoutMs, 45_000) : 45_000
       },
       { provider: "opencode" }
+    );
+  }
+  if (providerType === "gemini_cli") {
+    const model = runtime?.model?.trim();
+    const baseArgs = ["--output-format", "stream-json", "--approval-mode", "yolo", "--sandbox=none"];
+    if (model) baseArgs.push("--model", model);
+    baseArgs.push(...(runtime?.args ?? []));
+    baseArgs.push(prompt);
+    return executePromptRuntime(
+      resolveRuntimeCommand(providerType, runtime),
+      prompt,
+      {
+        ...runtime,
+        args: baseArgs,
+        retryCount: 0,
+        timeoutMs: runtime?.timeoutMs ? Math.min(runtime.timeoutMs, 45_000) : 45_000
+      },
+      { provider: "gemini_cli" }
     );
   }
   return executePromptRuntime(resolveRuntimeCommand(providerType, runtime), prompt, {
@@ -1845,6 +2022,12 @@ export function applyProviderSessionState(
     return nextState;
   }
   if (provider === "opencode") {
+    if (sessionUpdate?.currentSessionId?.trim()) {
+      nextState.sessionId = sessionUpdate.currentSessionId.trim();
+    }
+    return nextState;
+  }
+  if (provider === "gemini_cli") {
     if (sessionUpdate?.currentSessionId?.trim()) {
       nextState.sessionId = sessionUpdate.currentSessionId.trim();
     }

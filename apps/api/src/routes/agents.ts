@@ -70,6 +70,7 @@ const runtimePreflightSchema = z.object({
     "codex",
     "cursor",
     "opencode",
+    "gemini_cli",
     "openai_api",
     "anthropic_api",
     "http",
@@ -170,6 +171,7 @@ export function createAgentsRouter(ctx: AppContext) {
       | "codex"
       | "cursor"
       | "opencode"
+      | "gemini_cli"
       | "openai_api"
       | "anthropic_api"
       | "http"

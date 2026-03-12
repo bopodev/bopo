@@ -29,7 +29,7 @@ interface OnboardSeedResult {
   ceoMigrated: boolean;
 }
 
-type AgentProvider = "codex" | "claude_code" | "opencode" | "openai_api" | "anthropic_api" | "shell";
+type AgentProvider = "codex" | "claude_code" | "gemini_cli" | "opencode" | "openai_api" | "anthropic_api" | "shell";
 
 interface OnboardDeps {
   installDependencies: (workspaceRoot: string) => Promise<void>;
@@ -57,6 +57,7 @@ const DEFAULT_ENV_TEMPLATE = "NEXT_PUBLIC_API_URL=http://localhost:4020\n";
 const CLI_ONBOARD_VISIBLE_PROVIDERS: Array<{ value: AgentProvider; label: string }> = [
   { value: "codex", label: "Codex" },
   { value: "claude_code", label: "Claude Code" },
+  { value: "gemini_cli", label: "Gemini" },
   { value: "opencode", label: "OpenCode" }
 ];
 
@@ -349,6 +350,7 @@ function parseAgentProvider(value: unknown): AgentProvider | null {
   if (
     value === "codex" ||
     value === "claude_code" ||
+    value === "gemini_cli" ||
     value === "opencode" ||
     value === "openai_api" ||
     value === "anthropic_api" ||
@@ -365,6 +367,9 @@ function formatAgentProvider(provider: AgentProvider) {
   }
   if (provider === "claude_code") {
     return "Claude Code";
+  }
+  if (provider === "gemini_cli") {
+    return "Gemini";
   }
   if (provider === "opencode") {
     return "OpenCode";

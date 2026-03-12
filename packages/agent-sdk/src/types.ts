@@ -228,6 +228,7 @@ export interface AdapterTrace {
     claudeSessionId?: string;
     cursorSessionId?: string;
     cursorErrorMessage?: string;
+    geminiSessionId?: string;
     claudeContract?: {
       commandOverride: boolean;
       commandLooksClaude: boolean;

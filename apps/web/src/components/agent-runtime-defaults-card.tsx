@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/select";
 import {
   buildRegistryModelOptions,
+  getDefaultModelForProvider,
   getRegistryModelValuesForRuntimeProvider,
   type ModelRegistryRow
 } from "@/lib/model-registry-options";
@@ -98,8 +99,10 @@ export function AgentRuntimeDefaultsCard({
 
   useEffect(() => {
     const allowedValues = getRegistryModelValuesForRuntimeProvider(modelRegistryRows, defaults.providerType);
+    const defaultId = getDefaultModelForProvider(defaults.providerType);
+    const preferred = defaultId && allowedValues.includes(defaultId) ? defaultId : allowedValues[0] ?? "";
     if (defaults.runtimeModel && !allowedValues.includes(defaults.runtimeModel)) {
-      setDefaults((current) => ({ ...current, runtimeModel: allowedValues[0] ?? "" }));
+      setDefaults((current) => ({ ...current, runtimeModel: preferred }));
       setSaved(false);
       return;
     }
@@ -107,7 +110,7 @@ export function AgentRuntimeDefaultsCard({
     if (!requiresNamedModel || defaults.runtimeModel || allowedValues.length === 0) {
       return;
     }
-    setDefaults((current) => ({ ...current, runtimeModel: allowedValues[0] ?? "" }));
+    setDefaults((current) => ({ ...current, runtimeModel: preferred }));
     setSaved(false);
   }, [defaults.providerType, defaults.runtimeModel, modelRegistryRows]);
 
@@ -146,6 +149,7 @@ export function AgentRuntimeDefaultsCard({
                 <SelectItem value="claude_code">Claude Code</SelectItem>
                 <SelectItem value="codex">OpenAI Codex</SelectItem>
                 <SelectItem value="opencode">OpenCode</SelectItem>
+                <SelectItem value="gemini_cli">Gemini CLI</SelectItem>
                 <SelectItem value="http">HTTP Worker</SelectItem>
                 <SelectItem value="shell">Shell Runtime</SelectItem>
               </SelectContent>

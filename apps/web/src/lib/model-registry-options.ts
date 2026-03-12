@@ -1,10 +1,11 @@
-type CanonicalPricingProvider = "openai_api" | "anthropic_api" | "opencode";
+type CanonicalPricingProvider = "openai_api" | "anthropic_api" | "opencode" | "gemini_api";
 
 export type RuntimeProviderType =
   | "claude_code"
   | "codex"
   | "cursor"
   | "opencode"
+  | "gemini_cli"
   | "openai_api"
   | "anthropic_api"
   | "http"
@@ -33,7 +34,59 @@ export function resolveCanonicalPricingProviderForRuntime(
   if (providerType === "opencode") {
     return "opencode";
   }
+  if (providerType === "gemini_cli") {
+    return "gemini_api";
+  }
   return null;
+}
+
+/** Default model id to prefill when provider requires a named model. */
+export function getDefaultModelForProvider(providerType: RuntimeProviderType): string | null {
+  switch (providerType) {
+    case "claude_code":
+      return "claude-sonnet-4-6";
+    case "codex":
+      return "gpt-5.3-codex";
+    case "opencode":
+      return "opencode/big-pickle";
+    case "gemini_cli":
+      return "gemini-2.5-pro";
+    default:
+      return null;
+  }
+}
+
+/** Allowed model ids per runtime provider (catalog order). Used to filter registry options. */
+export const ALLOWED_MODEL_IDS_BY_PROVIDER: Partial<Record<RuntimeProviderType, string[]>> = {
+  claude_code: [
+    "claude-sonnet-4-6",
+    "claude-sonnet-4-6-1m",
+    "claude-opus-4-6",
+    "claude-opus-4-6-1m",
+    "claude-haiku-4-5"
+  ],
+  codex: [
+    "gpt-5.3-codex",
+    "gpt-5.4",
+    "gpt-5.2-codex",
+    "gpt-5.2",
+    "gpt-5.1-codex-max",
+    "gpt-5.1-codex-mini"
+  ],
+  opencode: ["opencode/big-pickle"],
+  gemini_cli: [
+    "gemini-2.5-pro",
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-3.1-flash-lite",
+    "gemini-3-flash",
+    "gemini-3-pro",
+    "gemini-3-pro-200k"
+  ]
+};
+
+export function getAllowedModelIdsForProvider(providerType: RuntimeProviderType): string[] {
+  return ALLOWED_MODEL_IDS_BY_PROVIDER[providerType] ?? [];
 }
 
 export function getRegistryModelValuesForRuntimeProvider(
@@ -44,10 +97,18 @@ export function getRegistryModelValuesForRuntimeProvider(
   if (!canonical) {
     return [];
   }
-  return rows
+  const discovered = rows
     .filter((row) => row.providerType === canonical)
     .map((row) => row.modelId.trim())
     .filter((value) => value.length > 0);
+  if (discovered.length > 0) {
+    return Array.from(new Set(discovered));
+  }
+  const allowed = getAllowedModelIdsForProvider(providerType);
+  if (allowed.length > 0) {
+    return [...allowed];
+  }
+  return [];
 }
 
 export function buildRegistryModelOptions(input: {
@@ -81,6 +142,26 @@ export function buildRegistryModelOptions(input: {
   const currentModel = input.currentModel?.trim();
   if (currentModel && !options.some((entry) => entry.value === currentModel)) {
     options.push({ value: currentModel, label: `${currentModel} (current)` });
+  }
+  const allowedIds = getAllowedModelIdsForProvider(input.providerType);
+  if (allowedIds.length > 0) {
+    const allowedSet = new Set(allowedIds);
+    const defaultId = getDefaultModelForProvider(input.providerType);
+    const ordered: ModelOption[] = [];
+    if (defaultId && allowedSet.has(defaultId)) {
+      const def = options.find((o) => o.value === defaultId);
+      if (def) ordered.push(def);
+    }
+    for (const id of allowedIds) {
+      if (id !== defaultId) {
+        const opt = options.find((o) => o.value === id);
+        if (opt) ordered.push(opt);
+      }
+    }
+    const currentOpt = currentModel ? options.find((o) => o.value === currentModel) : null;
+    const filtered = currentOpt && !allowedSet.has(currentModel!) ? [...ordered, currentOpt] : ordered;
+    const defaultOpt = input.includeDefault ? options.find((o) => o.value === "") : null;
+    return defaultOpt ? [defaultOpt, ...filtered] : filtered;
   }
   return options;
 }

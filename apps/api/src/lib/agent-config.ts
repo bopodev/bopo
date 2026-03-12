@@ -39,6 +39,7 @@ export function requiresRuntimeCwd(providerType: string) {
     providerType === "claude_code" ||
     providerType === "cursor" ||
     providerType === "opencode" ||
+    providerType === "gemini_cli" ||
     providerType === "shell"
   );
 }

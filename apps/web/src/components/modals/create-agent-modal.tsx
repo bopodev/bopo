@@ -11,6 +11,7 @@ import {
 } from "@/lib/agent-runtime-options";
 import {
   buildRegistryModelOptions,
+  getDefaultModelForProvider,
   getRegistryModelValuesForRuntimeProvider,
   type ModelRegistryRow
 } from "@/lib/model-registry-options";
@@ -54,6 +55,7 @@ type ProviderType =
   | "codex"
   | "cursor"
   | "opencode"
+  | "gemini_cli"
   | "openai_api"
   | "anthropic_api"
   | "http"
@@ -76,14 +78,13 @@ type ProviderOption = {
   label: string;
 };
 
+const EDIT_AGENT_VISIBLE_PROVIDER_TYPES: ProviderType[] = ["claude_code", "codex", "opencode", "gemini_cli"];
+
 const defaultVisibleProviders: ProviderOption[] = [
   { providerType: "claude_code", label: "Claude Code" },
-  { providerType: "codex", label: "OpenAI Codex" },
-  { providerType: "openai_api", label: "OpenAI API (direct)" },
-  { providerType: "anthropic_api", label: "Anthropic API (direct)" },
+  { providerType: "codex", label: "Codex" },
   { providerType: "opencode", label: "OpenCode" },
-  { providerType: "http", label: "HTTP Worker" },
-  { providerType: "shell", label: "Shell Runtime" }
+  { providerType: "gemini_cli", label: "Gemini CLI" }
 ];
 
 export function CreateAgentModal({
@@ -167,14 +168,13 @@ export function CreateAgentModal({
     Object.values(adapterMetadataByProvider).filter(Boolean).length > 0
       ? Object.values(adapterMetadataByProvider)
           .filter((adapter): adapter is NonNullable<typeof adapter> => Boolean(adapter))
-          .filter((adapter) => adapter.providerType !== "cursor")
+          .filter((adapter) => EDIT_AGENT_VISIBLE_PROVIDER_TYPES.includes(adapter.providerType))
           .map((adapter) => ({ providerType: adapter.providerType, label: adapter.label }))
           .sort((a, b) => a.label.localeCompare(b.label))
       : defaultVisibleProviders
-  )
-    .concat(
-    providerType === "cursor"
-      ? [{ providerType: "cursor" as const, label: "Cursor (hidden)" }]
+  ).concat(
+    providerType && !EDIT_AGENT_VISIBLE_PROVIDER_TYPES.includes(providerType)
+      ? [{ providerType, label: adapterMetadataByProvider[providerType]?.label ?? providerType }]
       : []
   );
   const runtimeCwdRequired = providerMetadata?.requiresRuntimeCwd ?? (
@@ -470,12 +470,14 @@ export function CreateAgentModal({
   useEffect(() => {
     const allowedValues = getRegistryModelValuesForRuntimeProvider(modelRegistryRows, providerType);
     if (runtimeModel && !allowedValues.includes(runtimeModel)) {
-      setRuntimeModel(allowedValues[0] ?? "");
+      const defaultId = getDefaultModelForProvider(providerType);
+      setRuntimeModel(defaultId && allowedValues.includes(defaultId) ? defaultId : allowedValues[0] ?? "");
       return;
     }
     const requiresNamedModel = providerType !== "http" && providerType !== "shell";
     if (requiresNamedModel && !runtimeModel && allowedValues.length > 0) {
-      setRuntimeModel(allowedValues[0] ?? "");
+      const defaultId = getDefaultModelForProvider(providerType);
+      setRuntimeModel(defaultId && allowedValues.includes(defaultId) ? defaultId : allowedValues[0] ?? "");
     }
   }, [modelRegistryRows, providerType, runtimeModel]);
 
@@ -633,7 +635,7 @@ export function CreateAgentModal({
           <section className={styles.createAgentModalSection}>
             <FieldGroup className={styles.createAgentModalFieldGroup}>
               <Field>
-                <FieldLabel>Runtime provider</FieldLabel>
+                <FieldLabel>Provider</FieldLabel>
                 <Select
                   value={providerType}
                   onValueChange={(value) =>
@@ -647,6 +649,24 @@ export function CreateAgentModal({
                     {visibleProviders.map((adapter) => (
                       <SelectItem key={adapter.providerType} value={adapter.providerType}>
                         {adapter.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="agent-runtime-model">Model</FieldLabel>
+                <Select
+                  value={runtimeModel || undefined}
+                  onValueChange={(value) => setRuntimeModel(value)}
+                >
+                  <SelectTrigger id="agent-runtime-model" className={styles.createAgentModalSelectTrigger}>
+                    <SelectValue placeholder="Select a model" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {visibleModelOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -669,16 +689,6 @@ export function CreateAgentModal({
                 <FieldLabel htmlFor="agent-budget">Monthly budget (USD)</FieldLabel>
                 <Input id="agent-budget" value={budget} onChange={(e) => setBudget(e.target.value)} type="number" min={0} step="1" />
               </Field>
-              <Field>
-                <FieldLabel htmlFor="agent-runtime-cwd">Runtime working directory</FieldLabel>
-                <Input
-                  id="agent-runtime-cwd"
-                  value={runtimeCwd}
-                  onChange={(e) => setRuntimeCwd(e.target.value)}
-                  placeholder="/path/to/workspace"
-                  required={runtimeCwdRequired}
-                />
-              </Field>
             </FieldGroup>
           </section>
 
@@ -693,24 +703,11 @@ export function CreateAgentModal({
                   placeholder="codex"
                 />
               </Field>
-              <Field>
-                <FieldLabel htmlFor="agent-runtime-model">Model</FieldLabel>
-                <Select
-                  value={runtimeModel || undefined}
-                  onValueChange={(value) => setRuntimeModel(value)}
-                >
-                  <SelectTrigger id="agent-runtime-model" className={styles.createAgentModalSelectTrigger}>
-                    <SelectValue placeholder="Select a model" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {visibleModelOptions.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
+
+
+
+
+
               <Field>
                 <FieldLabel>Thinking effort</FieldLabel>
                 <Select value={runtimeThinkingEffort} onValueChange={(value) => setRuntimeThinkingEffort(value as "auto" | "low" | "medium" | "high")}>
@@ -754,6 +751,16 @@ export function CreateAgentModal({
                   type="number"
                   min={0}
                   step="1"
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="agent-runtime-cwd">Runtime working directory</FieldLabel>
+                <Input
+                  id="agent-runtime-cwd"
+                  value={runtimeCwd}
+                  onChange={(e) => setRuntimeCwd(e.target.value)}
+                  placeholder="/path/to/workspace"
+                  required={runtimeCwdRequired}
                 />
               </Field>
               {providerType === "codex" || providerType === "claude_code" ? (

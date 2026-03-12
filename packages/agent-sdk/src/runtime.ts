@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AgentRuntimeConfig } from "./types";
 
-type LocalProvider = "claude_code" | "codex" | "cursor" | "opencode";
+type LocalProvider = "claude_code" | "codex" | "cursor" | "opencode" | "gemini_cli";
 type ClaudeContractDiagnostics = {
   commandOverride: boolean;
   commandLooksClaude: boolean;
@@ -299,7 +299,8 @@ export async function executePromptRuntime(
     (provider === "claude_code" && hasCliFlagValue(baseWithInjection, "--print", "-")) ||
     (provider === "cursor" && (baseWithInjection.includes("-p") || hasCliFlag(baseWithInjection, "--print"))) ||
     provider === "opencode";
-  const args = readsPromptFromStdin ? baseWithInjection : [...baseWithInjection, prompt];
+  const promptIsInArgs = provider === "gemini_cli" && baseWithInjection.length > 0;
+  const args = readsPromptFromStdin ? baseWithInjection : promptIsInArgs ? baseWithInjection : [...baseWithInjection, prompt];
   const attempts: RuntimeAttemptTrace[] = [];
   let streamedEventCount = 0;
   const emitTranscriptEvent = (event: RuntimeTranscriptEvent) => {
@@ -362,7 +363,8 @@ export async function executePromptRuntime(
       if (attemptResult.ok) {
         const claudeStream = provider === "claude_code" ? parseClaudeStreamOutput(stdout) : undefined;
         const cursorStream = provider === "cursor" ? parseCursorStreamOutput(stdout) : undefined;
-        const stdoutUsage = cursorStream?.usage ?? claudeStream?.usage ?? parseStructuredUsage(stdout);
+        const geminiStream = provider === "gemini_cli" ? parseGeminiStreamOutput(stdout) : undefined;
+        const stdoutUsage = cursorStream?.usage ?? claudeStream?.usage ?? geminiStream?.usage ?? parseStructuredUsage(stdout);
         const stderrUsage = parseStructuredUsage(stderr);
         return {
           ok: true,
@@ -390,6 +392,7 @@ export async function executePromptRuntime(
             ...(claudeStream?.sessionId ? { claudeSessionId: claudeStream.sessionId } : {}),
             ...(cursorStream?.sessionId ? { cursorSessionId: cursorStream.sessionId } : {}),
             ...(cursorStream?.errorMessage ? { cursorErrorMessage: cursorStream.errorMessage } : {}),
+            ...(geminiStream?.sessionId ? { geminiSessionId: geminiStream.sessionId } : {}),
             ...(options?.claudeContract ? { claudeContract: options.claudeContract } : {})
           },
           commandUsed: command,
@@ -416,7 +419,8 @@ export async function executePromptRuntime(
 
     const claudeStream = provider === "claude_code" ? parseClaudeStreamOutput(stdout) : undefined;
     const cursorStream = provider === "cursor" ? parseCursorStreamOutput(stdout) : undefined;
-    const stdoutUsage = cursorStream?.usage ?? claudeStream?.usage ?? parseStructuredUsage(stdout);
+    const geminiStream = provider === "gemini_cli" ? parseGeminiStreamOutput(stdout) : undefined;
+    const stdoutUsage = cursorStream?.usage ?? claudeStream?.usage ?? geminiStream?.usage ?? parseStructuredUsage(stdout);
     const stderrUsage = parseStructuredUsage(stderr);
     return {
       ok: false,
@@ -445,6 +449,7 @@ export async function executePromptRuntime(
         ...(claudeStream?.sessionId ? { claudeSessionId: claudeStream.sessionId } : {}),
         ...(cursorStream?.sessionId ? { cursorSessionId: cursorStream.sessionId } : {}),
         ...(cursorStream?.errorMessage ? { cursorErrorMessage: cursorStream.errorMessage } : {}),
+        ...(geminiStream?.sessionId ? { geminiSessionId: geminiStream.sessionId } : {}),
         ...(options?.claudeContract ? { claudeContract: options.claudeContract } : {})
       },
       commandUsed: command,
@@ -1003,6 +1008,14 @@ function toStreamingStdoutEvents(
       return parsedOpenCodeEvents;
     }
   }
+  if (provider === "gemini_cli") {
+    const parsedGeminiEvents = parseGeminiStreamingTranscriptLine(line).map((event) =>
+      enrichStreamedEvent(event, provider, stream, line),
+    );
+    if (parsedGeminiEvents.length > 0) {
+      return parsedGeminiEvents;
+    }
+  }
   const parsedJsonEvent = parseGenericTranscriptJsonLine(line);
   if (parsedJsonEvent) {
     return [enrichStreamedEvent(parsedJsonEvent, provider, stream, line)];
@@ -1014,7 +1027,7 @@ function toStreamingStdoutEvents(
   if (stream === "stderr") {
     return [];
   }
-  if (provider === "claude_code" || provider === "cursor" || provider === "opencode") {
+  if (provider === "claude_code" || provider === "cursor" || provider === "opencode" || provider === "gemini_cli") {
     const assistantEvent = enrichStreamedEvent(
       {
         kind: "assistant",
@@ -1773,6 +1786,74 @@ export function parseCursorStreamOutput(stdout: string): CursorParsedStream | un
   };
 }
 
+export function parseGeminiStreamOutput(stdout: string): { usage: ParsedUsageRecord; sessionId?: string } | undefined {
+  let sessionId: string | undefined;
+  let tokenInput = 0;
+  let tokenOutput = 0;
+  let usdCost = 0;
+  let summary = "";
+  let sawUsage = false;
+
+  function readSessionId(ev: Record<string, unknown>) {
+    const id =
+      (typeof ev.session_id === "string" && ev.session_id.trim()) ||
+      (typeof ev.sessionId === "string" && ev.sessionId.trim()) ||
+      (typeof ev.sessionID === "string" && ev.sessionID.trim()) ||
+      (typeof ev.checkpoint_id === "string" && ev.checkpoint_id.trim()) ||
+      (typeof ev.thread_id === "string" && ev.thread_id.trim());
+    if (id) sessionId = id;
+  }
+
+  function accumulateUsage(usageRaw: unknown) {
+    if (!usageRaw || typeof usageRaw !== "object" || Array.isArray(usageRaw)) return;
+    const u = usageRaw as Record<string, unknown>;
+    const meta = (u.usageMetadata && typeof u.usageMetadata === "object" && !Array.isArray(u.usageMetadata)
+      ? u.usageMetadata
+      : u) as Record<string, unknown>;
+    tokenInput += toNumber(meta.input_tokens) ?? toNumber(meta.inputTokens) ?? toNumber(meta.promptTokenCount) ?? 0;
+    tokenInput += toNumber(meta.cached_input_tokens) ?? toNumber(meta.cachedInputTokens) ?? toNumber(meta.cachedContentTokenCount) ?? 0;
+    tokenOutput += toNumber(meta.output_tokens) ?? toNumber(meta.outputTokens) ?? toNumber(meta.candidatesTokenCount) ?? 0;
+    usdCost += toNumber(u.total_cost_usd) ?? toNumber(u.cost_usd) ?? toNumber(u.cost) ?? 0;
+    sawUsage = true;
+  }
+
+  for (const rawLine of stdout.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line.startsWith("{") || !line.endsWith("}")) continue;
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(line) as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+    readSessionId(parsed);
+    const type = (typeof parsed.type === "string" ? parsed.type : "").trim().toLowerCase();
+    if (parsed.usage) accumulateUsage(parsed.usage);
+    if (parsed.usageMetadata) accumulateUsage(parsed.usageMetadata);
+    if (type === "result") {
+      accumulateUsage(parsed.usage ?? parsed.usageMetadata);
+      usdCost += toNumber(parsed.total_cost_usd) ?? toNumber(parsed.cost_usd) ?? toNumber(parsed.cost) ?? 0;
+      const resultText =
+        (typeof parsed.result === "string" && parsed.result.trim()) ||
+        (typeof parsed.text === "string" && parsed.text.trim()) ||
+        (typeof parsed.response === "string" && parsed.response.trim());
+      if (resultText) summary = resultText;
+    }
+    if (type === "step_finish" && parsed.usage) accumulateUsage(parsed.usage);
+  }
+
+  if (!sawUsage && usdCost <= 0 && !summary && !sessionId) return undefined;
+  return {
+    usage: {
+      summary: summary || undefined,
+      tokenInput: sawUsage ? tokenInput : undefined,
+      tokenOutput: sawUsage ? tokenOutput : undefined,
+      usdCost: usdCost > 0 ? usdCost : undefined
+    },
+    sessionId
+  };
+}
+
 function parseClaudeTranscript(stdout: string, stderr: string): RuntimeTranscriptEvent[] | undefined {
   const events: RuntimeTranscriptEvent[] = [];
   for (const rawLine of stdout.split(/\r?\n/)) {
@@ -1869,8 +1950,9 @@ export function parseRuntimeTranscript(
   const codexEvents = provider === "codex" ? parseCodexTranscript(stdout, stderr) : undefined;
   const cursorEvents = provider === "cursor" ? parseCursorTranscript(stdout, stderr) : undefined;
   const openCodeEvents = provider === "opencode" ? parseOpenCodeTranscript(stdout, stderr) : undefined;
+  const geminiEvents = provider === "gemini_cli" ? parseGeminiTranscript(stdout, stderr) : undefined;
   const genericEvents = parseGenericTranscript(stdout, stderr);
-  const providerEvents = claudeEvents ?? codexEvents ?? cursorEvents ?? openCodeEvents;
+  const providerEvents = claudeEvents ?? codexEvents ?? cursorEvents ?? openCodeEvents ?? geminiEvents;
   return providerEvents ?? genericEvents;
 }
 
@@ -1890,6 +1972,140 @@ function parseOpenCodeTranscript(stdout: string, stderr: string): RuntimeTranscr
   if (events.length === 0) {
     return undefined;
   }
+  return events.slice(0, 140);
+}
+
+function parseGeminiStreamingTranscriptLine(line: string): RuntimeTranscriptEvent[] {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return [];
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(trimmed) as Record<string, unknown>;
+  } catch {
+    return [];
+  }
+  const type = (typeof parsed.type === "string" ? parsed.type : "").trim().toLowerCase();
+  if (type === "system") {
+    const sid =
+      (typeof parsed.session_id === "string" && parsed.session_id.trim()) ||
+      (typeof parsed.sessionId === "string" && parsed.sessionId.trim()) ||
+      "";
+    return [{ kind: "system", text: sid ? `session: ${sid}` : "session init" }];
+  }
+  if (type === "assistant") {
+    const message = parsed.message;
+    if (message && typeof message === "object" && !Array.isArray(message)) {
+      const content = (message as Record<string, unknown>).content;
+      if (Array.isArray(content)) {
+        const texts: string[] = [];
+        for (const entry of content) {
+          if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+          const block = entry as Record<string, unknown>;
+          const text = typeof block.text === "string" ? block.text.trim() : "";
+          if (text) texts.push(text);
+        }
+        if (texts.length > 0) return [{ kind: "assistant", text: clipText(texts.join("\n"), 1200) }];
+      }
+    }
+    return [];
+  }
+  if (type === "result") {
+    const resultText =
+      (typeof parsed.result === "string" && parsed.result.trim()) ||
+      (typeof parsed.text === "string" && parsed.text.trim()) ||
+      "";
+    const usage = parsed.usage as Record<string, unknown> | undefined;
+    const inT = usage && typeof usage === "object" ? toNumber(usage.input_tokens ?? usage.inputTokens) ?? 0 : 0;
+    const outT = usage && typeof usage === "object" ? toNumber(usage.output_tokens ?? usage.outputTokens) ?? 0 : 0;
+    const cost = toNumber(parsed.total_cost_usd ?? parsed.cost_usd ?? parsed.cost) ?? 0;
+    return [
+      {
+        kind: "result",
+        text: clipText(
+          [resultText, `tokens in=${inT} out=${outT} cost=$${cost.toFixed(6)}`].filter(Boolean).join("\n"),
+          1200
+        )
+      }
+    ];
+  }
+  if (type === "error") {
+    const msg =
+      (typeof parsed.error === "string" && parsed.error.trim()) ||
+      (typeof parsed.message === "string" && parsed.message.trim()) ||
+      "";
+    return msg ? [{ kind: "stderr", text: clipText(msg, 800) }] : [];
+  }
+  return [];
+}
+
+function parseGeminiTranscript(stdout: string, stderr: string): RuntimeTranscriptEvent[] | undefined {
+  const events: RuntimeTranscriptEvent[] = [];
+  for (const rawLine of stdout.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line.startsWith("{") || !line.endsWith("}")) continue;
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(line) as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+    const type = (typeof parsed.type === "string" ? parsed.type : "").trim().toLowerCase();
+    if (type === "system") {
+      const sid =
+        (typeof parsed.session_id === "string" && parsed.session_id.trim()) ||
+        (typeof parsed.sessionId === "string" && parsed.sessionId.trim()) ||
+        "";
+      events.push({ kind: "system", text: sid ? `session: ${sid}` : "session init" });
+      continue;
+    }
+    if (type === "assistant") {
+      const message = parsed.message;
+      if (message && typeof message === "object" && !Array.isArray(message)) {
+        const content = (message as Record<string, unknown>).content;
+        if (Array.isArray(content)) {
+          for (const entry of content) {
+            if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+            const block = entry as Record<string, unknown>;
+            const text = typeof block.text === "string" ? block.text.trim() : "";
+            if (text) events.push({ kind: "assistant", text: clipText(text, 1200) });
+          }
+        }
+      }
+      const resultText = typeof (message as Record<string, unknown>)?.text === "string" ? ((message as Record<string, unknown>).text as string).trim() : "";
+      if (resultText && events.filter((e) => e.kind === "assistant").length === 0) {
+        events.push({ kind: "assistant", text: clipText(resultText, 1200) });
+      }
+      continue;
+    }
+    if (type === "result") {
+      const resultText =
+        (typeof parsed.result === "string" && parsed.result.trim()) ||
+        (typeof parsed.text === "string" && parsed.text.trim()) ||
+        "";
+      const usage = parsed.usage as Record<string, unknown> | undefined;
+      const inT = usage && typeof usage === "object" ? toNumber(usage.input_tokens ?? usage.inputTokens) ?? 0 : 0;
+      const outT = usage && typeof usage === "object" ? toNumber(usage.output_tokens ?? usage.outputTokens) ?? 0 : 0;
+      const cost = toNumber(parsed.total_cost_usd ?? parsed.cost_usd ?? parsed.cost) ?? 0;
+      events.push({
+        kind: "result",
+        text: clipText(
+          [resultText, `tokens in=${inT} out=${outT} cost=$${cost.toFixed(6)}`].filter(Boolean).join("\n"),
+          1200
+        )
+      });
+      continue;
+    }
+    if (type === "error") {
+      const msg =
+        (typeof parsed.error === "string" && parsed.error.trim()) ||
+        (typeof parsed.message === "string" && parsed.message.trim()) ||
+        "";
+      if (msg) events.push({ kind: "stderr", text: clipText(msg, 800) });
+    }
+  }
+  const stderrEvents = parseStderrTranscript(stderr);
+  if (stderrEvents) events.push(...stderrEvents.slice(0, 10));
+  if (events.length === 0) return undefined;
   return events.slice(0, 140);
 }
 

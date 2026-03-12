@@ -46,12 +46,15 @@ import {
 } from "@/components/ui/select";
 import type { ModelPricingRow } from "@/components/workspace/types";
 
-const MODELS_PROVIDER_FALLBACKS = ["openai_api", "anthropic_api", "opencode"] as const;
+const MODELS_PROVIDER_FALLBACKS = ["openai_api", "anthropic_api", "opencode", "gemini_api"] as const;
 
 function resolveModelCatalogProvider(providerType: string) {
   const normalizedProvider = providerType.trim();
   if (normalizedProvider === "opencode") {
     return "opencode";
+  }
+  if (normalizedProvider === "gemini_api" || normalizedProvider === "gemini_cli") {
+    return "gemini_api";
   }
   if (normalizedProvider === "anthropic_api" || normalizedProvider === "claude_code") {
     return "anthropic_api";
@@ -59,7 +62,6 @@ function resolveModelCatalogProvider(providerType: string) {
   if (
     normalizedProvider === "openai_api" ||
     normalizedProvider === "codex" ||
-    normalizedProvider === "opencode" ||
     normalizedProvider === "cursor"
   ) {
     return "openai_api";
@@ -1526,13 +1528,11 @@ export function WorkspaceClient({
       addModel(pair.providerType, pair.modelId);
     }
     for (const providerType of MODELS_PROVIDER_FALLBACKS) {
-      const sourceProvider = providerType === "opencode" ? "openai_api" : providerType;
+      const sourceProvider =
+        providerType === "opencode" ? "opencode" : providerType === "gemini_api" ? "gemini_cli" : providerType;
       const defaults = getSupportedModelOptionsForProvider(sourceProvider).filter((option) => option.value.trim().length > 0);
       for (const option of defaults) {
         addModel(providerType, option.value);
-      }
-      if (providerType === "opencode") {
-        addModel("opencode", "big-pickle");
       }
     }
     const normalized = new Map<string, string[]>();

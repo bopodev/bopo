@@ -42,6 +42,7 @@ type HeartbeatProviderType =
   | "codex"
   | "cursor"
   | "opencode"
+  | "gemini_cli"
   | "openai_api"
   | "anthropic_api"
   | "http"

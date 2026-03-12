@@ -12,6 +12,7 @@ import { codexAdapterModule } from "../../adapters/codex/src";
 import { claudecodeAdapterModule } from "../../adapters/claude-code/src";
 import { cursorAdapterModule } from "../../adapters/cursor/src";
 import { opencodeAdapterModule } from "../../adapters/opencode/src";
+import { geminiCliAdapterModule } from "../../adapters/gemini-cli/src";
 import { openaiapiAdapterModule } from "../../adapters/openai-api/src";
 import { anthropicapiAdapterModule } from "../../adapters/anthropic-api/src";
 import { httpAdapterModule } from "../../adapters/http/src";
@@ -22,6 +23,7 @@ const adapterModules: Record<AgentProviderType, AdapterModule> = {
   codex: codexAdapterModule,
   cursor: cursorAdapterModule,
   opencode: opencodeAdapterModule,
+  gemini_cli: geminiCliAdapterModule,
   openai_api: openaiapiAdapterModule,
   anthropic_api: anthropicapiAdapterModule,
   http: httpAdapterModule,
@@ -48,6 +50,10 @@ const adapters: Record<AgentProviderType, AgentAdapter> = {
   opencode: {
     providerType: "opencode",
     execute: (context) => adapterModules.opencode.server.execute(context)
+  },
+  gemini_cli: {
+    providerType: "gemini_cli",
+    execute: (context) => adapterModules.gemini_cli.server.execute(context)
   },
   openai_api: {
     providerType: "openai_api",

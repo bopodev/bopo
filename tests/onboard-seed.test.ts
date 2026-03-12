@@ -248,7 +248,7 @@ describe("onboarding seed bootstrap", () => {
     cleanupDirs.push(tempDir);
     const dbPath = join(tempDir, "seed.db");
     const previous = process.env.BOPO_OPENCODE_MODEL;
-    process.env.BOPO_OPENCODE_MODEL = "openai/gpt-5-mini";
+    process.env.BOPO_OPENCODE_MODEL = "opencode/big-pickle";
     try {
       const result = await ensureOnboardingSeed({
         dbPath,
@@ -261,7 +261,7 @@ describe("onboarding seed bootstrap", () => {
         const agents = await listAgents(verify.db, result.companyId);
         expect(agents).toHaveLength(1);
         expect(agents[0]?.providerType).toBe("opencode");
-        expect(agents[0]?.runtimeModel).toBe("openai/gpt-5-mini");
+        expect(agents[0]?.runtimeModel).toBe("opencode/big-pickle");
       } finally {
         await verify.client.close?.();
       }

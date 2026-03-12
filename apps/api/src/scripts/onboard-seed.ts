@@ -31,7 +31,7 @@ export interface OnboardSeedSummary {
 const DEFAULT_COMPANY_NAME_ENV = "BOPO_DEFAULT_COMPANY_NAME";
 const DEFAULT_COMPANY_ID_ENV = "BOPO_DEFAULT_COMPANY_ID";
 const DEFAULT_AGENT_PROVIDER_ENV = "BOPO_DEFAULT_AGENT_PROVIDER";
-type AgentProvider = "codex" | "claude_code" | "cursor" | "opencode" | "openai_api" | "anthropic_api" | "shell";
+type AgentProvider = "codex" | "claude_code" | "cursor" | "gemini_cli" | "opencode" | "openai_api" | "anthropic_api" | "shell";
 const CEO_BOOTSTRAP_SUMMARY = "ceo bootstrap heartbeat";
 const STARTUP_PROJECT_NAME = "Leadership Setup";
 const CEO_STARTUP_TASK_TITLE = "Set up CEO operating files and hire founding engineer";
@@ -261,6 +261,7 @@ function parseAgentProvider(value: unknown): AgentProvider | null {
     value === "codex" ||
     value === "claude_code" ||
     value === "cursor" ||
+    value === "gemini_cli" ||
     value === "opencode" ||
     value === "openai_api" ||
     value === "anthropic_api" ||

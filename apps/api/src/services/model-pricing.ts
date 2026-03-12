@@ -2,7 +2,7 @@ import type { BopoDb } from "bopodev-db";
 import { getModelPricing, upsertModelPricing } from "bopodev-db";
 
 type SeedModelPricingRow = {
-  providerType: "openai_api" | "anthropic_api";
+  providerType: "openai_api" | "anthropic_api" | "gemini_api";
   modelId: string;
   displayName: string;
   inputUsdPer1M: number;
@@ -24,13 +24,14 @@ const OPENAI_MODEL_BASE_PRICES: Array<{
   { modelId: "gpt-5.2-chat-latest", displayName: "GPT-5.2 Chat Latest", inputUsdPer1M: 1.75, outputUsdPer1M: 14 },
   { modelId: "gpt-5.1-chat-latest", displayName: "GPT-5.1 Chat Latest", inputUsdPer1M: 1.25, outputUsdPer1M: 10 },
   { modelId: "gpt-5-chat-latest", displayName: "GPT-5 Chat Latest", inputUsdPer1M: 1.25, outputUsdPer1M: 10 },
+  { modelId: "gpt-5.4", displayName: "GPT-5.4", inputUsdPer1M: 1.75, outputUsdPer1M: 14 },
   { modelId: "gpt-5.3-codex", displayName: "GPT-5.3 Codex", inputUsdPer1M: 1.75, outputUsdPer1M: 14 },
   { modelId: "gpt-5.3-codex-spark", displayName: "GPT-5.3 Codex Spark", inputUsdPer1M: 1.75, outputUsdPer1M: 14 },
   { modelId: "gpt-5.2-codex", displayName: "GPT-5.2 Codex", inputUsdPer1M: 1.75, outputUsdPer1M: 14 },
   { modelId: "gpt-5.1-codex-max", displayName: "GPT-5.1 Codex Max", inputUsdPer1M: 1.25, outputUsdPer1M: 10 },
+  { modelId: "gpt-5.1-codex-mini", displayName: "GPT-5.1 Codex Mini", inputUsdPer1M: 0.25, outputUsdPer1M: 2 },
   { modelId: "gpt-5.1-codex", displayName: "GPT-5.1 Codex", inputUsdPer1M: 1.25, outputUsdPer1M: 10 },
   { modelId: "gpt-5-codex", displayName: "GPT-5 Codex", inputUsdPer1M: 1.25, outputUsdPer1M: 10 },
-  { modelId: "codex-mini-latest", displayName: "Codex Mini", inputUsdPer1M: 0.25, outputUsdPer1M: 2 },
   { modelId: "gpt-5.2-pro", displayName: "GPT-5.2 Pro", inputUsdPer1M: 21, outputUsdPer1M: 168 },
   { modelId: "gpt-5-pro", displayName: "GPT-5 Pro", inputUsdPer1M: 15, outputUsdPer1M: 120 },
   { modelId: "gpt-4.1", displayName: "GPT-4.1", inputUsdPer1M: 2, outputUsdPer1M: 8 },
@@ -68,9 +69,12 @@ const CLAUDE_MODEL_BASE_PRICES: Array<{
   // Runtime ids currently used in provider model selectors.
   { modelId: "claude-opus-4-6", displayName: "Claude Opus 4.6", inputUsdPer1M: 5, outputUsdPer1M: 25 },
   { modelId: "claude-sonnet-4-6", displayName: "Claude Sonnet 4.6", inputUsdPer1M: 3, outputUsdPer1M: 15 },
+  { modelId: "claude-sonnet-4-6-1m", displayName: "Claude Sonnet 4.6 (1M context)", inputUsdPer1M: 6, outputUsdPer1M: 22.5 },
+  { modelId: "claude-opus-4-6-1m", displayName: "Claude Opus 4.6 (1M context)", inputUsdPer1M: 10, outputUsdPer1M: 37.5 },
+  { modelId: "claude-haiku-4-5", displayName: "Claude Haiku 4.5", inputUsdPer1M: 1, outputUsdPer1M: 5 },
+  // Legacy / alternate ids
   { modelId: "claude-sonnet-4-5-20250929", displayName: "Claude Sonnet 4.5", inputUsdPer1M: 3, outputUsdPer1M: 15 },
   { modelId: "claude-haiku-4-5-20251001", displayName: "Claude Haiku 4.5", inputUsdPer1M: 1, outputUsdPer1M: 5 },
-  // Baseline catalog from your provided Claude pricing image.
   { modelId: "claude-opus-4.6", displayName: "Claude Opus 4.6", inputUsdPer1M: 5, outputUsdPer1M: 25 },
   { modelId: "claude-opus-4.5", displayName: "Claude Opus 4.5", inputUsdPer1M: 5, outputUsdPer1M: 25 },
   { modelId: "claude-opus-4.1", displayName: "Claude Opus 4.1", inputUsdPer1M: 15, outputUsdPer1M: 75 },
@@ -85,9 +89,25 @@ const CLAUDE_MODEL_BASE_PRICES: Array<{
   { modelId: "claude-haiku-3", displayName: "Claude Haiku 3", inputUsdPer1M: 0.25, outputUsdPer1M: 1.25 }
 ];
 
+const GEMINI_MODEL_BASE_PRICES: Array<{
+  modelId: string;
+  displayName: string;
+  inputUsdPer1M: number;
+  outputUsdPer1M: number;
+}> = [
+  { modelId: "gemini-3.1-flash-lite", displayName: "Gemini 3.1 Flash Lite", inputUsdPer1M: 0.25, outputUsdPer1M: 1.5 },
+  { modelId: "gemini-3-flash", displayName: "Gemini 3 Flash", inputUsdPer1M: 0.5, outputUsdPer1M: 3 },
+  { modelId: "gemini-3-pro", displayName: "Gemini 3 Pro", inputUsdPer1M: 2, outputUsdPer1M: 12 },
+  { modelId: "gemini-3-pro-200k", displayName: "Gemini 3 Pro (>200k context)", inputUsdPer1M: 4, outputUsdPer1M: 18 },
+  { modelId: "gemini-2.5-flash-lite", displayName: "Gemini 2.5 Flash Lite", inputUsdPer1M: 0.1, outputUsdPer1M: 0.4 },
+  { modelId: "gemini-2.5-flash", displayName: "Gemini 2.5 Flash", inputUsdPer1M: 0.3, outputUsdPer1M: 2.5 },
+  { modelId: "gemini-2.5-pro", displayName: "Gemini 2.5 Pro", inputUsdPer1M: 1.25, outputUsdPer1M: 10 }
+];
+
 const DEFAULT_MODEL_PRICING_ROWS: SeedModelPricingRow[] = [
   ...OPENAI_MODEL_BASE_PRICES.map((row) => ({ ...row, providerType: "openai_api" as const })),
-  ...CLAUDE_MODEL_BASE_PRICES.map((row) => ({ ...row, providerType: "anthropic_api" as const }))
+  ...CLAUDE_MODEL_BASE_PRICES.map((row) => ({ ...row, providerType: "anthropic_api" as const })),
+  ...GEMINI_MODEL_BASE_PRICES.map((row) => ({ ...row, providerType: "gemini_api" as const }))
 ];
 
 export async function ensureCompanyModelPricingDefaults(db: BopoDb, companyId: string) {
@@ -167,7 +187,8 @@ export function resolveCanonicalPricingProvider(providerType: string | null | un
   if (
     normalizedProvider === "openai_api" ||
     normalizedProvider === "anthropic_api" ||
-    normalizedProvider === "opencode"
+    normalizedProvider === "opencode" ||
+    normalizedProvider === "gemini_api"
   ) {
     return normalizedProvider;
   }
@@ -176,6 +197,9 @@ export function resolveCanonicalPricingProvider(providerType: string | null | un
   }
   if (normalizedProvider === "claude_code") {
     return "anthropic_api";
+  }
+  if (normalizedProvider === "gemini_cli") {
+    return "gemini_api";
   }
   return null;
 }
