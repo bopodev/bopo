@@ -205,6 +205,8 @@ importers:
 
   packages/adapters/cursor: {}
 
+  packages/adapters/gemini-cli: {}
+
   packages/adapters/http: {}
 
   packages/adapters/openai-api: {}

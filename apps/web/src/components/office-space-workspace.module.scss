@@ -33,7 +33,7 @@
 }
 
 .sceneGrid {
-  @apply grid h-[calc(100vh-9rem)] min-h-[720px] min-w-[1264px] gap-8;
+  @apply grid h-[calc(100vh-8.5rem)] min-h-[720px] min-w-[1264px] gap-6;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
 }
