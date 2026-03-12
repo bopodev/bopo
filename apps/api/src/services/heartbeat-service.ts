@@ -773,6 +773,16 @@ export async function runHeartbeatForAgent(
       externalAbortSignal: activeRunAbort.signal
     });
     executionSummary = execution.summary;
+    const normalizedUsage = execution.usage ?? {
+      inputTokens: Math.max(0, execution.tokenInput),
+      cachedInputTokens: 0,
+      outputTokens: Math.max(0, execution.tokenOutput),
+      ...(execution.usdCost > 0 ? { costUsd: execution.usdCost } : {}),
+      ...(execution.summary ? { summary: execution.summary } : {})
+    };
+    const effectiveTokenInput = normalizedUsage.inputTokens + normalizedUsage.cachedInputTokens;
+    const effectiveTokenOutput = normalizedUsage.outputTokens;
+    const effectiveRuntimeUsdCost = normalizedUsage.costUsd ?? (execution.usdCost > 0 ? execution.usdCost : 0);
     const afterAdapterHook = await runPluginHook(db, {
       hook: "afterAdapterExecute",
       context: {
@@ -806,8 +816,10 @@ export async function runHeartbeatForAgent(
       runtimeModelId: effectivePricingModelId ?? runtimeModelId,
       pricingProviderType: effectivePricingProviderType,
       pricingModelId: effectivePricingModelId,
-      tokenInput: execution.tokenInput,
-      tokenOutput: execution.tokenOutput,
+      tokenInput: effectiveTokenInput,
+      tokenOutput: effectiveTokenOutput,
+      runtimeUsdCost: effectiveRuntimeUsdCost,
+      failureType: readTraceString(execution.trace, "failureType"),
       issueId: primaryIssueId,
       projectId: primaryProjectId,
       agentId,
@@ -865,8 +877,8 @@ export async function runHeartbeatForAgent(
     if (
       execution.nextState ||
       executionUsdCost > 0 ||
-      execution.tokenInput > 0 ||
-      execution.tokenOutput > 0 ||
+      effectiveTokenInput > 0 ||
+      effectiveTokenOutput > 0 ||
       execution.status !== "skipped"
     ) {
       await db
@@ -875,7 +887,7 @@ export async function runHeartbeatForAgent(
           stateBlob: JSON.stringify(execution.nextState ?? state),
           runtimeModel: effectivePricingModelId ?? persistedRuntime.runtimeModel ?? null,
           usedBudgetUsd: sql`${agents.usedBudgetUsd} + ${executionUsdCost}`,
-          tokenUsage: sql`${agents.tokenUsage} + ${execution.tokenInput + execution.tokenOutput}`,
+          tokenUsage: sql`${agents.tokenUsage} + ${effectiveTokenInput + effectiveTokenOutput}`,
           updatedAt: new Date()
         })
         .where(and(eq(agents.companyId, companyId), eq(agents.id, agentId)));
@@ -883,8 +895,8 @@ export async function runHeartbeatForAgent(
 
     const shouldAdvanceIssuesToReview = shouldPromoteIssuesToReview({
       summary: execution.summary,
-      tokenInput: execution.tokenInput,
-      tokenOutput: execution.tokenOutput,
+      tokenInput: effectiveTokenInput,
+      tokenOutput: effectiveTokenOutput,
       usdCost: executionUsdCost,
       trace: executionTrace,
       outcome: executionOutcome
@@ -929,8 +941,8 @@ export async function runHeartbeatForAgent(
           summary: execution.summary,
           outcome: executionOutcome,
           usage: {
-            tokenInput: execution.tokenInput,
-            tokenOutput: execution.tokenOutput,
+            tokenInput: effectiveTokenInput,
+            tokenOutput: effectiveTokenOutput,
             usdCost: executionUsdCost
           }
         }
@@ -1062,9 +1074,9 @@ export async function runHeartbeatForAgent(
         outcome: executionOutcome,
         issueIds,
         usage: {
-          tokenInput: execution.tokenInput,
-          tokenOutput: execution.tokenOutput,
-          usdCost: execution.usdCost,
+          tokenInput: effectiveTokenInput,
+          tokenOutput: effectiveTokenOutput,
+          usdCost: executionUsdCost,
           source: readTraceString(execution.trace, "usageSource") ?? "unknown"
         },
         trace: execution.trace ?? null,
@@ -2430,6 +2442,8 @@ async function appendFinishedRunCostEntry(input: {
   pricingModelId?: string | null;
   tokenInput: number;
   tokenOutput: number;
+  runtimeUsdCost?: number;
+  failureType?: string | null;
   issueId?: string | null;
   projectId?: string | null;
   agentId?: string | null;
@@ -2446,24 +2460,41 @@ async function appendFinishedRunCostEntry(input: {
   });
 
   const shouldPersist = input.status === "ok" || input.status === "failed";
-  if (shouldPersist) {
+  const runtimeUsdCost = Math.max(0, input.runtimeUsdCost ?? 0);
+  const pricedUsdCost = Math.max(0, pricingDecision.usdCost);
+  const shouldUseRuntimeUsdCost = pricedUsdCost <= 0 && runtimeUsdCost > 0;
+  const baseUsdCost = shouldUseRuntimeUsdCost ? runtimeUsdCost : pricedUsdCost;
+  const effectiveUsdCost =
+    baseUsdCost > 0
+      ? baseUsdCost
+      : input.status === "failed" && input.failureType !== "spawn_error"
+        ? 0.000001
+        : 0;
+  const effectivePricingSource = pricingDecision.pricingSource;
+  const shouldPersistWithUsage =
+    shouldPersist && (input.tokenInput > 0 || input.tokenOutput > 0 || effectiveUsdCost > 0);
+  if (shouldPersistWithUsage) {
     await appendCost(input.db, {
       companyId: input.companyId,
       providerType: input.providerType,
       runtimeModelId: input.runtimeModelId,
       pricingProviderType: pricingDecision.pricingProviderType,
       pricingModelId: pricingDecision.pricingModelId,
-      pricingSource: pricingDecision.pricingSource,
+      pricingSource: effectivePricingSource,
       tokenInput: input.tokenInput,
       tokenOutput: input.tokenOutput,
-      usdCost: pricingDecision.usdCost.toFixed(6),
+      usdCost: effectiveUsdCost.toFixed(6),
       issueId: input.issueId ?? null,
       projectId: input.projectId ?? null,
       agentId: input.agentId ?? null
     });
   }
 
-  return pricingDecision;
+  return {
+    ...pricingDecision,
+    pricingSource: effectivePricingSource,
+    usdCost: effectiveUsdCost
+  };
 }
 
 function isHeartbeatDue(cronExpression: string, lastRunAt: Date | null, now: Date) {

@@ -64,12 +64,30 @@ export interface HeartbeatContext {
   runtime?: AgentRuntimeConfig;
 }
 
+/**
+ * Normalized usage contract produced by adapter execution.
+ *
+ * Invariants:
+ * - `inputTokens` excludes cache reads.
+ * - `cachedInputTokens` tracks cache-hit prompt tokens only.
+ * - persisted `tokenInput` = `inputTokens + cachedInputTokens` for backwards compatibility.
+ * - `outputTokens` reflects generated/completion tokens.
+ */
+export interface AdapterNormalizedUsage {
+  inputTokens: number;
+  cachedInputTokens: number;
+  outputTokens: number;
+  costUsd?: number;
+  summary?: string;
+}
+
 export interface AdapterExecutionResult {
   status: "ok" | "skipped" | "failed";
   summary: string;
   tokenInput: number;
   tokenOutput: number;
   usdCost: number;
+  usage?: AdapterNormalizedUsage;
   pricingProviderType?: string | null;
   pricingModelId?: string | null;
   outcome?: ExecutionOutcome;

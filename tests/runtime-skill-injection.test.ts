@@ -200,6 +200,7 @@ describe("agent runtime skill injection", () => {
     expect(argv).toContain("exec");
     expect(argv).toContain("--full-auto");
     expect(argv).toContain("--skip-git-repo-check");
+    expect(argv).toContain("--json");
     expect(argv.at(-1)).toBe("shim prompt");
 
     await rm(tempDir, { recursive: true, force: true });
@@ -345,6 +346,54 @@ describe("agent runtime skill injection", () => {
     expect(run.parsedUsage?.tokenInput).toBeUndefined();
     expect(run.parsedUsage?.tokenOutput).toBeUndefined();
     expect(run.parsedUsage?.usdCost).toBeUndefined();
+  });
+
+  it("prefers stderr metrics when stdout is summary-only", async () => {
+    const run = await executePromptRuntime(
+      process.execPath,
+      "prompt payload",
+      {
+        args: [
+          "-e",
+          [
+            "console.log('{\"summary\":\"completed work\"}');",
+            "console.error('{\"tokenInput\":1234,\"tokenOutput\":567,\"usdCost\":0.00987}');"
+          ].join("")
+        ]
+      },
+      { provider: "codex" }
+    );
+
+    expect(run.ok).toBe(true);
+    expect(run.parsedUsage?.summary).toBe("completed work");
+    expect(run.parsedUsage?.tokenInput).toBe(1234);
+    expect(run.parsedUsage?.tokenOutput).toBe(567);
+    expect(run.parsedUsage?.usdCost).toBe(0.00987);
+    expect(run.structuredOutputSource).toBe("stderr");
+  });
+
+  it("parses provider-style usage keys from stderr and merges with stdout summary", async () => {
+    const run = await executePromptRuntime(
+      process.execPath,
+      "prompt payload",
+      {
+        args: [
+          "-e",
+          [
+            "console.log('{\"summary\":\"completed work\"}');",
+            "console.error('{\"type\":\"result\",\"usage\":{\"input_tokens\":900,\"cache_read_input_tokens\":100,\"output_tokens\":250},\"total_cost_usd\":0.0042}');"
+          ].join("")
+        ]
+      },
+      { provider: "codex" }
+    );
+
+    expect(run.ok).toBe(true);
+    expect(run.parsedUsage?.summary).toBe("completed work");
+    expect(run.parsedUsage?.tokenInput).toBe(1000);
+    expect(run.parsedUsage?.tokenOutput).toBe(250);
+    expect(run.parsedUsage?.usdCost).toBe(0.0042);
+    expect(run.structuredOutputSource).toBe("stderr");
   });
 
   it("parses structured usage from stderr when stdout has no usage JSON", async () => {

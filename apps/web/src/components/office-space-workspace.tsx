@@ -19,17 +19,17 @@ const roomDefinitions: Array<{
 }> = [
   {
     id: "waiting_room",
-    title: "Waiting Room",
+    title: "Lounge",
     columns: 2
   },
   {
     id: "security",
-    title: "Security",
+    title: "Approvals",
     columns: 2
   },
   {
     id: "work_space",
-    title: "Work Space",
+    title: "Workspace",
     columns: 5
   }
 ];
@@ -156,7 +156,9 @@ function OfficeSpaceCanvas({
                 )}>
                   <CardHeader>
                     <CardTitle>{room.title}</CardTitle>
-                    <CardDescription>{roomOccupants.length} occupants</CardDescription>
+                    <CardDescription>
+                      {room.id === "work_space" ? `There are ${roomOccupants.length} agents working` : room.id === "security" ? `There are ${roomOccupants.length} agents waiting for approvals` : ` THere are ${roomOccupants.length} agents waiting for work`}
+                    </CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div

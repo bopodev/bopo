@@ -27,6 +27,11 @@ type ParsedUsageRecord = {
   summary?: string;
 };
 
+type UsageSourceResolution = {
+  usage?: ParsedUsageRecord;
+  source?: "stdout" | "stderr";
+};
+
 type CursorParsedStream = {
   usage: ParsedUsageRecord;
   sessionId?: string;
@@ -141,6 +146,10 @@ function providerConfigArgs(provider: "claude_code" | "codex", config?: AgentRun
   if (provider === "codex") {
     if (config?.model?.trim()) {
       args.push("--model", config.model.trim());
+    }
+    if (!hasCliFlag(config?.args ?? [], "--json")) {
+      // Codex JSON events carry usage metrics we need for reliable cost accounting.
+      args.push("--json");
     }
     if (config?.thinkingEffort && config.thinkingEffort !== "auto") {
       args.push("--reasoning-effort", config.thinkingEffort);
@@ -364,8 +373,9 @@ export async function executePromptRuntime(
         const claudeStream = provider === "claude_code" ? parseClaudeStreamOutput(stdout) : undefined;
         const cursorStream = provider === "cursor" ? parseCursorStreamOutput(stdout) : undefined;
         const geminiStream = provider === "gemini_cli" ? parseGeminiStreamOutput(stdout, stderr) : undefined;
-        const stdoutUsage = cursorStream?.usage ?? claudeStream?.usage ?? geminiStream?.usage ?? parseStructuredUsage(stdout);
+        const stdoutUsage = parseStructuredUsage(stdout);
         const stderrUsage = parseStructuredUsage(stderr);
+        const usageResolution = resolveUsageSource(stdoutUsage, stderrUsage);
         return {
           ok: true,
           code: attemptResult.code,
@@ -375,8 +385,8 @@ export async function executePromptRuntime(
           elapsedMs: attempts.reduce((sum, item) => sum + item.elapsedMs, 0),
           attemptCount: attempts.length,
           attempts,
-          parsedUsage: stdoutUsage ?? stderrUsage,
-          structuredOutputSource: stdoutUsage ? "stdout" : stderrUsage ? "stderr" : undefined,
+          parsedUsage: usageResolution.usage,
+          structuredOutputSource: usageResolution.source,
           structuredOutputDiagnostics: {
             stdoutJsonObjectCount: extractJsonObjectBlocks(stdout).length,
             stderrJsonObjectCount: extractJsonObjectBlocks(stderr).length,
@@ -422,8 +432,9 @@ export async function executePromptRuntime(
     const claudeStream = provider === "claude_code" ? parseClaudeStreamOutput(stdout) : undefined;
     const cursorStream = provider === "cursor" ? parseCursorStreamOutput(stdout) : undefined;
     const geminiStream = provider === "gemini_cli" ? parseGeminiStreamOutput(stdout, stderr) : undefined;
-    const stdoutUsage = cursorStream?.usage ?? claudeStream?.usage ?? geminiStream?.usage ?? parseStructuredUsage(stdout);
+    const stdoutUsage = parseStructuredUsage(stdout);
     const stderrUsage = parseStructuredUsage(stderr);
+    const usageResolution = resolveUsageSource(stdoutUsage, stderrUsage);
     return {
       ok: false,
       code: lastResult?.code ?? null,
@@ -434,8 +445,8 @@ export async function executePromptRuntime(
       attemptCount: attempts.length,
       attempts,
       failureType: classifyFailure(lastResult?.timedOut ?? false, lastResult?.spawnErrorCode, lastResult?.code ?? null),
-      parsedUsage: stdoutUsage ?? stderrUsage,
-      structuredOutputSource: stdoutUsage ? "stdout" : stderrUsage ? "stderr" : undefined,
+      parsedUsage: usageResolution.usage,
+      structuredOutputSource: usageResolution.source,
       structuredOutputDiagnostics: {
         stdoutJsonObjectCount: extractJsonObjectBlocks(stdout).length,
         stderrJsonObjectCount: extractJsonObjectBlocks(stderr).length,
@@ -3149,10 +3160,13 @@ function tryParseUsage(candidate: string) {
   try {
     const parsed = JSON.parse(candidate) as Record<string, unknown>;
     const direct = toUsageRecord(parsed);
+    const nested = findNestedUsage(parsed);
+    if (direct && nested) {
+      return mergeUsageRecords(direct, nested);
+    }
     if (direct) {
       return direct;
     }
-    const nested = findNestedUsage(parsed);
     if (nested) {
       return nested;
     }
@@ -3163,22 +3177,119 @@ function tryParseUsage(candidate: string) {
 }
 
 function toUsageRecord(parsed: Record<string, unknown>) {
-    const tokenInput = toNumber(parsed.tokenInput);
-    const tokenOutput = toNumber(parsed.tokenOutput);
-    const usdCost = toNumber(parsed.usdCost);
-    const summary = typeof parsed.summary === "string" ? parsed.summary : undefined;
-    if (isPromptTemplateUsage(summary, tokenInput, tokenOutput, usdCost)) {
+    const directInputTokens =
+      toNumber(parsed.tokenInput) ??
+      toNumber(parsed.input_tokens) ??
+      toNumber(parsed.inputTokens) ??
+      toNumber(parsed.prompt_tokens) ??
+      toNumber(parsed.promptTokens) ??
+      toNumber(parsed.promptTokenCount);
+    const cachedInputTokens =
+      toNumber(parsed.cached_input_tokens) ??
+      toNumber(parsed.cachedInputTokens) ??
+      toNumber(parsed.cache_read_input_tokens) ??
+      toNumber(parsed.cacheReadInputTokens) ??
+      toNumber(parsed.cache_read_tokens) ??
+      toNumber(parsed.cacheReadTokens) ??
+      toNumber(parsed.cachedContentTokenCount);
+    const tokenInput =
+      directInputTokens !== undefined || cachedInputTokens !== undefined
+        ? (directInputTokens ?? 0) + (cachedInputTokens ?? 0)
+        : undefined;
+    const tokenOutput =
+      toNumber(parsed.tokenOutput) ??
+      toNumber(parsed.output_tokens) ??
+      toNumber(parsed.outputTokens) ??
+      toNumber(parsed.completion_tokens) ??
+      toNumber(parsed.completionTokens) ??
+      toNumber(parsed.candidatesTokenCount) ??
+      toNumber(parsed.generated_tokens) ??
+      toNumber(parsed.generatedTokens);
+    const estimatedOutputFromTotals =
+      tokenOutput === undefined &&
+      tokenInput !== undefined &&
+      (toNumber(parsed.total_tokens) ?? toNumber(parsed.totalTokens) ?? toNumber(parsed.totalTokenCount)) !== undefined
+        ? Math.max(
+            0,
+            (toNumber(parsed.total_tokens) ?? toNumber(parsed.totalTokens) ?? toNumber(parsed.totalTokenCount) ?? 0) -
+              tokenInput
+          )
+        : undefined;
+    const resolvedTokenOutput = tokenOutput ?? estimatedOutputFromTotals;
+    const usdCost = toNumber(parsed.usdCost) ?? toNumber(parsed.total_cost_usd) ?? toNumber(parsed.cost_usd) ?? toNumber(parsed.cost);
+    const summary =
+      (typeof parsed.summary === "string" ? parsed.summary : undefined) ??
+      (typeof parsed.result === "string" ? parsed.result : undefined) ??
+      (typeof parsed.message === "string" ? parsed.message : undefined);
+    if (isPromptTemplateUsage(summary, tokenInput, resolvedTokenOutput, usdCost)) {
       return undefined;
     }
     if (
       tokenInput === undefined &&
-      tokenOutput === undefined &&
+      resolvedTokenOutput === undefined &&
       usdCost === undefined &&
       !summary
     ) {
       return undefined;
     }
-    return { tokenInput, tokenOutput, usdCost, summary };
+    return { tokenInput, tokenOutput: resolvedTokenOutput, usdCost, summary };
+}
+
+function hasUsageMetrics(usage: ParsedUsageRecord | undefined) {
+  if (!usage) {
+    return false;
+  }
+  return usage.tokenInput !== undefined || usage.tokenOutput !== undefined || usage.usdCost !== undefined;
+}
+
+function mergeUsageRecords(primary: ParsedUsageRecord, secondary: ParsedUsageRecord): ParsedUsageRecord {
+  return {
+    summary: primary.summary ?? secondary.summary,
+    tokenInput: primary.tokenInput ?? secondary.tokenInput,
+    tokenOutput: primary.tokenOutput ?? secondary.tokenOutput,
+    usdCost: primary.usdCost ?? secondary.usdCost
+  };
+}
+
+function resolveUsageSource(
+  stdoutUsage: ParsedUsageRecord | undefined,
+  stderrUsage: ParsedUsageRecord | undefined
+): UsageSourceResolution {
+  if (!stdoutUsage && !stderrUsage) {
+    return {};
+  }
+  if (stdoutUsage && !stderrUsage) {
+    return { usage: stdoutUsage, source: "stdout" };
+  }
+  if (!stdoutUsage && stderrUsage) {
+    return { usage: stderrUsage, source: "stderr" };
+  }
+  const stdoutRecord = stdoutUsage as ParsedUsageRecord;
+  const stderrRecord = stderrUsage as ParsedUsageRecord;
+  const stdoutHasMetrics = hasUsageMetrics(stdoutUsage);
+  const stderrHasMetrics = hasUsageMetrics(stderrUsage);
+  if (!stdoutHasMetrics && stderrHasMetrics) {
+    return {
+      usage: mergeUsageRecords(stderrRecord, stdoutRecord),
+      source: "stderr"
+    };
+  }
+  if (stdoutHasMetrics && !stderrHasMetrics) {
+    return {
+      usage: mergeUsageRecords(stdoutRecord, stderrRecord),
+      source: "stdout"
+    };
+  }
+  if (stdoutHasMetrics && stderrHasMetrics) {
+    return {
+      usage: mergeUsageRecords(stdoutRecord, stderrRecord),
+      source: "stdout"
+    };
+  }
+  return {
+    usage: mergeUsageRecords(stdoutRecord, stderrRecord),
+    source: "stdout"
+  };
 }
 
 function findNestedUsage(parsed: Record<string, unknown>) {
@@ -3266,15 +3377,15 @@ function tailLine(value: string) {
 function classifyStructuredOutputLikelyCause(
   stdout: string,
   stderr: string,
-  stdoutUsage: { summary?: string } | undefined,
-  stderrUsage: { summary?: string } | undefined
+  stdoutUsage: ParsedUsageRecord | undefined,
+  stderrUsage: ParsedUsageRecord | undefined
 ) {
   const hasStdout = stdout.trim().length > 0;
   const hasStderr = stderr.trim().length > 0;
   if (!hasStdout && !hasStderr) {
     return "no_output_from_runtime" as const;
   }
-  if (!stdoutUsage && stderrUsage) {
+  if (!hasUsageMetrics(stdoutUsage) && hasUsageMetrics(stderrUsage)) {
     return "json_on_stderr_only" as const;
   }
   const jsonLike = /[\{\}\[\]\"]/m.test(stdout) || /[\{\}\[\]\"]/m.test(stderr);

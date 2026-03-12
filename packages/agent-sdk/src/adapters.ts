@@ -4,6 +4,7 @@ import type {
   AdapterExecutionResult,
   AdapterMetadata,
   AdapterModelOption,
+  AdapterNormalizedUsage,
   AgentAdapter,
   AgentProviderType,
   AgentRuntimeConfig,
@@ -11,6 +12,12 @@ import type {
 } from "./types";
 import { ExecutionOutcomeSchema, type ExecutionOutcome } from "bopodev-contracts";
 import { checkRuntimeCommandHealth, containsRateLimitFailure, executeAgentRuntime, executePromptRuntime } from "./runtime-core";
+import {
+  parseClaudeStreamOutput,
+  parseCursorStreamOutput,
+  parseGeminiStreamOutput,
+  parseStructuredUsage
+} from "./runtime-parsers";
 import {
   executeDirectApiRuntime,
   probeDirectApiEnvironment,
@@ -37,6 +44,195 @@ function toOutcome(outcome: ExecutionOutcome): ExecutionOutcome {
 
 function isRateLimitedRuntimeFailure(runtime: { stdout: string; stderr: string }, detail?: string) {
   return containsRateLimitFailure(`${detail ?? ""}\n${runtime.stderr}\n${runtime.stdout}`);
+}
+
+type RuntimeParsedUsage = {
+  tokenInput?: number;
+  tokenOutput?: number;
+  usdCost?: number;
+  summary?: string;
+  inputTokens?: number;
+  cachedInputTokens?: number;
+  outputTokens?: number;
+  costUsd?: number;
+};
+
+export type AdapterRuntimeUsageResolution = {
+  parsedUsage?: RuntimeParsedUsage;
+  structuredOutputSource?: "stdout" | "stderr";
+};
+
+export type AdapterRuntimeUsageResolver = (runtime: {
+  stdout: string;
+  stderr: string;
+  parsedUsage?: RuntimeParsedUsage;
+  structuredOutputSource?: "stdout" | "stderr";
+}) => AdapterRuntimeUsageResolution;
+
+function withResolvedRuntimeUsage<
+  T extends {
+    stdout: string;
+    stderr: string;
+    parsedUsage?: RuntimeParsedUsage;
+    structuredOutputSource?: "stdout" | "stderr";
+  }
+>(
+  runtime: T,
+  usageResolver?: AdapterRuntimeUsageResolver
+): Omit<T, "parsedUsage" | "structuredOutputSource"> & {
+  parsedUsage?: RuntimeParsedUsage;
+  structuredOutputSource?: "stdout" | "stderr";
+} {
+  if (!usageResolver) {
+    return runtime;
+  }
+  const resolution = usageResolver({
+    stdout: runtime.stdout,
+    stderr: runtime.stderr,
+    parsedUsage: runtime.parsedUsage,
+    structuredOutputSource: runtime.structuredOutputSource
+  });
+  if (!resolution.parsedUsage && !resolution.structuredOutputSource) {
+    return runtime;
+  }
+  return {
+    ...runtime,
+    parsedUsage: resolution.parsedUsage ?? runtime.parsedUsage,
+    structuredOutputSource: resolution.structuredOutputSource ?? runtime.structuredOutputSource
+  };
+}
+
+function toNormalizedUsage(usage: RuntimeParsedUsage | undefined): AdapterNormalizedUsage | undefined {
+  if (!usage) {
+    return undefined;
+  }
+  const inputTokens = usage.inputTokens ?? usage.tokenInput ?? 0;
+  const cachedInputTokens = usage.cachedInputTokens ?? 0;
+  const outputTokens = usage.outputTokens ?? usage.tokenOutput ?? 0;
+  const costUsd = usage.costUsd ?? usage.usdCost;
+  const summary = usage.summary;
+  return {
+    inputTokens: Math.max(0, inputTokens),
+    cachedInputTokens: Math.max(0, cachedInputTokens),
+    outputTokens: Math.max(0, outputTokens),
+    ...(costUsd !== undefined ? { costUsd } : {}),
+    ...(summary ? { summary } : {})
+  };
+}
+
+function usageTokenInputTotal(usage: RuntimeParsedUsage | undefined) {
+  if (!usage) {
+    return 0;
+  }
+  if (usage.inputTokens !== undefined || usage.cachedInputTokens !== undefined) {
+    return Math.max(0, (usage.inputTokens ?? 0) + (usage.cachedInputTokens ?? 0));
+  }
+  return Math.max(0, usage.tokenInput ?? 0);
+}
+
+function hasUsageMetrics(usage: RuntimeParsedUsage | undefined) {
+  if (!usage) {
+    return false;
+  }
+  return usage.tokenInput !== undefined || usage.tokenOutput !== undefined || usage.usdCost !== undefined;
+}
+
+function resolveCodexDefaultRuntimeUsage(input: {
+  stdout: string;
+  stderr: string;
+  parsedUsage?: RuntimeParsedUsage;
+  structuredOutputSource?: "stdout" | "stderr";
+}): AdapterRuntimeUsageResolution {
+  const stdoutUsage = parseStructuredUsage(input.stdout);
+  const stderrUsage = parseStructuredUsage(input.stderr);
+  if (!hasUsageMetrics(stdoutUsage) && hasUsageMetrics(stderrUsage)) {
+    return { parsedUsage: { ...stdoutUsage, ...stderrUsage }, structuredOutputSource: "stderr" };
+  }
+  if (hasUsageMetrics(stdoutUsage)) {
+    return { parsedUsage: stdoutUsage, structuredOutputSource: "stdout" };
+  }
+  if (hasUsageMetrics(stderrUsage)) {
+    return { parsedUsage: stderrUsage, structuredOutputSource: "stderr" };
+  }
+  return {
+    parsedUsage: stdoutUsage ?? stderrUsage ?? input.parsedUsage,
+    structuredOutputSource: input.structuredOutputSource
+  };
+}
+
+function resolveClaudeDefaultRuntimeUsage(input: {
+  stdout: string;
+  stderr: string;
+  parsedUsage?: RuntimeParsedUsage;
+  structuredOutputSource?: "stdout" | "stderr";
+}): AdapterRuntimeUsageResolution {
+  const parsed = parseClaudeStreamOutput(input.stdout);
+  if (parsed?.usage) {
+    return {
+      parsedUsage: {
+        summary: parsed.usage.summary ?? input.parsedUsage?.summary,
+        tokenInput: parsed.usage.tokenInput,
+        tokenOutput: parsed.usage.tokenOutput,
+        usdCost: parsed.usage.usdCost,
+        inputTokens: parsed.usage.tokenInput ?? 0,
+        cachedInputTokens: 0,
+        outputTokens: parsed.usage.tokenOutput ?? 0,
+        costUsd: parsed.usage.usdCost
+      },
+      structuredOutputSource: "stdout"
+    };
+  }
+  return resolveCodexDefaultRuntimeUsage(input);
+}
+
+function resolveCursorDefaultRuntimeUsage(input: {
+  stdout: string;
+  stderr: string;
+  parsedUsage?: RuntimeParsedUsage;
+  structuredOutputSource?: "stdout" | "stderr";
+}): AdapterRuntimeUsageResolution {
+  const parsed = parseCursorStreamOutput(input.stdout);
+  if (parsed?.usage) {
+    return {
+      parsedUsage: {
+        summary: parsed.usage.summary ?? input.parsedUsage?.summary,
+        tokenInput: parsed.usage.tokenInput,
+        tokenOutput: parsed.usage.tokenOutput,
+        usdCost: parsed.usage.usdCost,
+        inputTokens: parsed.usage.tokenInput ?? 0,
+        cachedInputTokens: 0,
+        outputTokens: parsed.usage.tokenOutput ?? 0,
+        costUsd: parsed.usage.usdCost
+      },
+      structuredOutputSource: "stdout"
+    };
+  }
+  return resolveCodexDefaultRuntimeUsage(input);
+}
+
+function resolveGeminiDefaultRuntimeUsage(input: {
+  stdout: string;
+  stderr: string;
+  parsedUsage?: RuntimeParsedUsage;
+  structuredOutputSource?: "stdout" | "stderr";
+}): AdapterRuntimeUsageResolution {
+  const parsed = parseGeminiStreamOutput(input.stdout, input.stderr);
+  if (parsed?.usage) {
+    return {
+      parsedUsage: {
+        summary: parsed.usage.summary ?? input.parsedUsage?.summary,
+        tokenInput: parsed.usage.tokenInput,
+        tokenOutput: parsed.usage.tokenOutput,
+        usdCost: parsed.usage.usdCost,
+        inputTokens: parsed.usage.tokenInput ?? 0,
+        cachedInputTokens: 0,
+        outputTokens: parsed.usage.tokenOutput ?? 0,
+        costUsd: parsed.usage.usdCost
+      },
+      structuredOutputSource: "stdout"
+    };
+  }
+  return resolveCodexDefaultRuntimeUsage(input);
 }
 
 export class ClaudeCodeAdapter implements AgentAdapter {
@@ -699,11 +895,17 @@ export async function testDirectApiEnvironment(
 export async function runProviderWork(
   context: HeartbeatContext,
   provider: "claude_code" | "codex",
-  pricing: { inputRate: number; outputRate: number }
+  pricing: { inputRate: number; outputRate: number },
+  options?: { usageResolver?: AdapterRuntimeUsageResolver }
 ): Promise<AdapterExecutionResult> {
+  const usageResolver =
+    options?.usageResolver ?? (provider === "claude_code" ? resolveClaudeDefaultRuntimeUsage : resolveCodexDefaultRuntimeUsage);
   const pricingProviderType = resolveCanonicalPricingProviderKey(provider);
   const prompt = createPrompt(context);
-  const runtime = await executeAgentRuntime(provider, prompt, context.runtime);
+  const runtime = withResolvedRuntimeUsage(
+    await executeAgentRuntime(provider, prompt, context.runtime),
+    usageResolver
+  );
   const pricingModelId = resolvePricingModelId(context.runtime?.model, runtime);
   if (runtime.ok) {
     if (!runtime.parsedUsage) {
@@ -746,12 +948,14 @@ export async function runProviderWork(
     }
     if (provider === "claude_code" && isClaudeRunIncomplete(runtime)) {
       const detail = "Claude run reached max-turns before completing execution for this issue.";
+      const usage = toNormalizedUsage(runtime.parsedUsage);
       return {
         status: "failed",
         summary: runtime.parsedUsage?.summary ?? `${provider} runtime failed: ${detail}`,
-        tokenInput: runtime.parsedUsage?.tokenInput ?? 0,
-        tokenOutput: runtime.parsedUsage?.tokenOutput ?? 0,
-        usdCost: runtime.parsedUsage?.usdCost ?? 0,
+        tokenInput: usageTokenInputTotal(runtime.parsedUsage),
+        tokenOutput: runtime.parsedUsage?.outputTokens ?? runtime.parsedUsage?.tokenOutput ?? 0,
+        usdCost: runtime.parsedUsage?.costUsd ?? runtime.parsedUsage?.usdCost ?? 0,
+        usage,
         pricingProviderType,
         pricingModelId,
         outcome: toOutcome({
@@ -783,9 +987,10 @@ export async function runProviderWork(
         nextState: context.state
       };
     }
-    const tokenInput = runtime.parsedUsage?.tokenInput ?? 0;
-    const tokenOutput = runtime.parsedUsage?.tokenOutput ?? 0;
-    const usdCost = runtime.parsedUsage?.usdCost ?? 0;
+    const usage = toNormalizedUsage(runtime.parsedUsage);
+    const tokenInput = usageTokenInputTotal(runtime.parsedUsage);
+    const tokenOutput = runtime.parsedUsage?.outputTokens ?? runtime.parsedUsage?.tokenOutput ?? 0;
+    const usdCost = runtime.parsedUsage?.costUsd ?? runtime.parsedUsage?.usdCost ?? 0;
     const summary = runtime.parsedUsage?.summary ?? `${provider} runtime finished in ${runtime.elapsedMs}ms.`;
 
     return {
@@ -794,6 +999,7 @@ export async function runProviderWork(
       tokenInput,
       tokenOutput,
       usdCost,
+      usage,
       pricingProviderType,
       pricingModelId,
       outcome: toOutcome({
@@ -834,6 +1040,7 @@ export async function runProviderWork(
     tokenInput: failedUsage.tokenInput,
     tokenOutput: failedUsage.tokenOutput,
     usdCost: failedUsage.usdCost,
+    usage: failedUsage.usage,
     pricingProviderType,
     pricingModelId,
     outcome: toOutcome({
@@ -872,7 +1079,11 @@ export async function runProviderWork(
   };
 }
 
-export async function runCursorWork(context: HeartbeatContext): Promise<AdapterExecutionResult> {
+export async function runCursorWork(
+  context: HeartbeatContext,
+  options?: { usageResolver?: AdapterRuntimeUsageResolver }
+): Promise<AdapterExecutionResult> {
+  const usageResolver = options?.usageResolver ?? resolveCursorDefaultRuntimeUsage;
   const prompt = createPrompt(context);
   const cursorLaunch = await resolveCursorLaunchConfig(context.runtime);
   const cwd = context.runtime?.cwd?.trim() || process.cwd();
@@ -892,16 +1103,19 @@ export async function runCursorWork(context: HeartbeatContext): Promise<AdapterE
     }
     return [...baseArgs, ...(context.runtime?.args ?? [])];
   };
-  const runtime = await executePromptRuntime(
-    cursorLaunch.command,
-    prompt,
-    {
-      ...context.runtime,
-      timeoutMs: runtimeTimeoutMs,
-      retryCount: 0,
-      args: buildArgs(resumeState.resumeSessionId)
-    },
-    { provider: "cursor" }
+  const runtime = withResolvedRuntimeUsage(
+    await executePromptRuntime(
+      cursorLaunch.command,
+      prompt,
+      {
+        ...context.runtime,
+        timeoutMs: runtimeTimeoutMs,
+        retryCount: 0,
+        args: buildArgs(resumeState.resumeSessionId)
+      },
+      { provider: "cursor" }
+    ),
+    usageResolver
   );
   const initialSessionId = readRuntimeSessionId(
     runtime,
@@ -913,16 +1127,19 @@ export async function runCursorWork(context: HeartbeatContext): Promise<AdapterE
     !isRateLimitedRuntimeFailure(runtime) &&
     isUnknownSessionError(runtime.stderr, runtime.stdout)
   ) {
-    const retry = await executePromptRuntime(
-      cursorLaunch.command,
-      prompt,
-      {
-        ...context.runtime,
-        timeoutMs: runtimeTimeoutMs,
-        retryCount: 0,
-        args: buildArgs(null)
-      },
-      { provider: "cursor" }
+    const retry = withResolvedRuntimeUsage(
+      await executePromptRuntime(
+        cursorLaunch.command,
+        prompt,
+        {
+          ...context.runtime,
+          timeoutMs: runtimeTimeoutMs,
+          retryCount: 0,
+          args: buildArgs(null)
+        },
+        { provider: "cursor" }
+      ),
+      usageResolver
     );
     return toProviderResult(context, "cursor", prompt, retry, {
       inputRate: 0.0000015,
@@ -1066,7 +1283,11 @@ function resolveGeminiResumeState(state: HeartbeatContext["state"], cwd: string,
   return { resumeSessionId: savedSessionId, resumeAttempted: true, resumeSkippedReason: null };
 }
 
-export async function runGeminiCliWork(context: HeartbeatContext): Promise<AdapterExecutionResult> {
+export async function runGeminiCliWork(
+  context: HeartbeatContext,
+  options?: { usageResolver?: AdapterRuntimeUsageResolver }
+): Promise<AdapterExecutionResult> {
+  const usageResolver = options?.usageResolver ?? resolveGeminiDefaultRuntimeUsage;
   const prompt = createPrompt(context);
   const cwd = context.runtime?.cwd?.trim() || process.cwd();
   const command = context.runtime?.command?.trim() || "gemini";
@@ -1089,16 +1310,19 @@ export async function runGeminiCliWork(context: HeartbeatContext): Promise<Adapt
     return base;
   };
 
-  const runtime = await executePromptRuntime(
-    command,
-    prompt,
-    {
-      ...context.runtime,
-      timeoutMs: runtimeTimeoutMs,
-      retryCount: 0,
-      args: buildArgs(resumeState.resumeSessionId)
-    },
-    { provider: "gemini_cli" }
+  const runtime = withResolvedRuntimeUsage(
+    await executePromptRuntime(
+      command,
+      prompt,
+      {
+        ...context.runtime,
+        timeoutMs: runtimeTimeoutMs,
+        retryCount: 0,
+        args: buildArgs(resumeState.resumeSessionId)
+      },
+      { provider: "gemini_cli" }
+    ),
+    usageResolver
   );
 
   const parsed = parseGeminiOutput(runtime.stdout);
@@ -1109,16 +1333,19 @@ export async function runGeminiCliWork(context: HeartbeatContext): Promise<Adapt
     !isRateLimitedRuntimeFailure(runtime) &&
     isGeminiUnknownSessionError(runtime.stdout, runtime.stderr)
   ) {
-    const retry = await executePromptRuntime(
-      command,
-      prompt,
-      {
-        ...context.runtime,
-        timeoutMs: runtimeTimeoutMs,
-        retryCount: 0,
-        args: buildArgs(null)
-      },
-      { provider: "gemini_cli" }
+    const retry = withResolvedRuntimeUsage(
+      await executePromptRuntime(
+        command,
+        prompt,
+        {
+          ...context.runtime,
+          timeoutMs: runtimeTimeoutMs,
+          retryCount: 0,
+          args: buildArgs(null)
+        },
+        { provider: "gemini_cli" }
+      ),
+      usageResolver
     );
     const retryParsed = parseGeminiOutput(retry.stdout);
     return toProviderResult(context, "gemini_cli", prompt, retry, {
@@ -1147,22 +1374,19 @@ export async function runGeminiCliWork(context: HeartbeatContext): Promise<Adapt
 
 export function resolveFailedUsage(
   runtime: {
-    parsedUsage?: {
-      tokenInput?: number;
-      tokenOutput?: number;
-      usdCost?: number;
-      summary?: string;
-    };
+    parsedUsage?: RuntimeParsedUsage;
     failureType?: "timeout" | "spawn_error" | "nonzero_exit";
     stdout: string;
     stderr: string;
   }
 ) {
   if (runtime.parsedUsage) {
+    const usage = toNormalizedUsage(runtime.parsedUsage);
     return {
-      tokenInput: runtime.parsedUsage.tokenInput ?? 0,
-      tokenOutput: runtime.parsedUsage.tokenOutput ?? 0,
-      usdCost: runtime.parsedUsage.usdCost ?? 0,
+      tokenInput: usageTokenInputTotal(runtime.parsedUsage),
+      tokenOutput: runtime.parsedUsage.outputTokens ?? runtime.parsedUsage.tokenOutput ?? 0,
+      usdCost: runtime.parsedUsage.costUsd ?? runtime.parsedUsage.usdCost ?? 0,
+      usage,
       source: "structured" as const
     };
   }
@@ -1171,6 +1395,11 @@ export function resolveFailedUsage(
       tokenInput: 0,
       tokenOutput: 0,
       usdCost: 0,
+      usage: {
+        inputTokens: 0,
+        cachedInputTokens: 0,
+        outputTokens: 0
+      } as AdapterNormalizedUsage,
       source: "none" as const
     };
   }
@@ -1178,6 +1407,11 @@ export function resolveFailedUsage(
     tokenInput: 0,
     tokenOutput: 0,
     usdCost: 0,
+    usage: {
+      inputTokens: 0,
+      cachedInputTokens: 0,
+      outputTokens: 0
+    } as AdapterNormalizedUsage,
     source: "none" as const
   };
 }
@@ -1204,12 +1438,7 @@ export function toProviderResult(
       spawnErrorCode?: string;
       forcedKill: boolean;
     }>;
-    parsedUsage?: {
-      tokenInput?: number;
-      tokenOutput?: number;
-      usdCost?: number;
-      summary?: string;
-    };
+    parsedUsage?: RuntimeParsedUsage;
     structuredOutputSource?: "stdout" | "stderr";
     structuredOutputDiagnostics?: {
       stdoutJsonObjectCount: number;
@@ -1301,16 +1530,17 @@ export function toProviderResult(
         nextState: applyProviderSessionState(context, provider, sessionUpdate)
       };
     }
-    const tokenInput = runtime.parsedUsage?.tokenInput ?? 0;
-    const tokenOutput = runtime.parsedUsage?.tokenOutput ?? 0;
-    const usdCost = runtime.parsedUsage?.usdCost ?? 0;
+    const tokenOutput = runtime.parsedUsage?.outputTokens ?? runtime.parsedUsage?.tokenOutput ?? 0;
+    const usdCost = runtime.parsedUsage?.costUsd ?? runtime.parsedUsage?.usdCost ?? 0;
+    const usage = toNormalizedUsage(runtime.parsedUsage);
     const summary = runtime.parsedUsage?.summary ?? `${provider} runtime finished in ${runtime.elapsedMs}ms.`;
     return {
       status: "ok",
       summary,
-      tokenInput,
+      tokenInput: usageTokenInputTotal(runtime.parsedUsage),
       tokenOutput,
       usdCost,
+      usage,
       pricingProviderType,
       pricingModelId,
       outcome: toOutcome({
@@ -1352,6 +1582,7 @@ export function toProviderResult(
     tokenInput: failedUsage.tokenInput,
     tokenOutput: failedUsage.tokenOutput,
     usdCost: failedUsage.usdCost,
+    usage: failedUsage.usage,
     pricingProviderType,
     pricingModelId,
     outcome: toOutcome({

@@ -274,7 +274,7 @@ export function RunDetailPageClient({
             </Select>
           </div>
           {transcriptRows.length === 0 ? (
-            <p className="run-transcript-empty">No transcript messages yet.</p>
+            <p className="run-transcript-empty">Waiting for transcript messages...</p>
           ) : filteredTranscriptRows.length === 0 ? (
             <p className="run-transcript-empty">No transcript messages match the current filters.</p>
           ) : (
