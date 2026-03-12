@@ -80,6 +80,12 @@ export interface AgentAdapter {
   execute(context: HeartbeatContext): Promise<AdapterExecutionResult>;
 }
 
+export interface AdapterSessionCodec {
+  deserialize(raw: unknown): Record<string, unknown> | null;
+  serialize(params: Record<string, unknown> | null): Record<string, unknown> | null;
+  getDisplayId?(params: Record<string, unknown> | null): string | null;
+}
+
 export type AdapterEnvironmentCheckLevel = "info" | "warn" | "error";
 export type AdapterEnvironmentStatus = "pass" | "warn" | "fail";
 
@@ -111,6 +117,36 @@ export interface AdapterMetadata {
   supportsWebSearch: boolean;
   supportsThinkingEffort: boolean;
   requiresRuntimeCwd: boolean;
+}
+
+export interface ServerAdapterModule {
+  type: AgentProviderType;
+  execute(context: HeartbeatContext): Promise<AdapterExecutionResult>;
+  listModels?(runtime?: AgentRuntimeConfig): Promise<AdapterModelOption[]>;
+  testEnvironment?(runtime?: AgentRuntimeConfig): Promise<AdapterEnvironmentResult>;
+  sessionCodec?: AdapterSessionCodec;
+}
+
+export interface UIAdapterModule {
+  type: AgentProviderType;
+  parseStdoutLine?: (line: string, timestampIso: string) => Array<Record<string, unknown>>;
+  buildAdapterConfig?: (values: Record<string, unknown>) => Record<string, unknown>;
+}
+
+export interface CLIAdapterModule {
+  type: AgentProviderType;
+  formatStdoutEvent?: (line: string, debug: boolean) => void;
+}
+
+export interface AdapterModule {
+  type: AgentProviderType;
+  label: string;
+  metadata: AdapterMetadata;
+  models?: AdapterModelOption[];
+  agentConfigurationDoc?: string;
+  server: ServerAdapterModule;
+  ui?: UIAdapterModule;
+  cli?: CLIAdapterModule;
 }
 
 export interface AgentRuntimeConfig {

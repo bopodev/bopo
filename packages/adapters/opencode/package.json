@@ -1,0 +1,17 @@
+{
+  "name": "bopodev-adapter-opencode",
+  "version": "0.1.12",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./server": "./src/server/index.ts",
+    "./ui": "./src/ui/index.ts",
+    "./cli": "./src/cli/index.ts"
+  }
+}

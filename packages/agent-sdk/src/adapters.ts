@@ -10,7 +10,7 @@ import type {
   HeartbeatContext
 } from "./types";
 import { ExecutionOutcomeSchema, type ExecutionOutcome } from "bopodev-contracts";
-import { checkRuntimeCommandHealth, executeAgentRuntime, executePromptRuntime } from "./runtime";
+import { checkRuntimeCommandHealth, executeAgentRuntime, executePromptRuntime } from "./runtime-core";
 import {
   executeDirectApiRuntime,
   probeDirectApiEnvironment,
@@ -334,6 +334,8 @@ const staticMetadata: AdapterMetadata[] = [
   }
 ];
 
+const metadataByProviderType = new Map(staticMetadata.map((entry) => [entry.providerType, entry] as const));
+
 const modelCatalog: Record<Exclude<AgentProviderType, "http" | "shell">, AdapterModelOption[]> = {
   codex: [
     { id: "gpt-5.3-codex", label: "GPT-5.3 Codex" },
@@ -375,6 +377,14 @@ const modelCatalog: Record<Exclude<AgentProviderType, "http" | "shell">, Adapter
 
 export function listAdapterMetadata(): AdapterMetadata[] {
   return staticMetadata;
+}
+
+export function getAdapterMetadataByProviderType(providerType: AgentProviderType): AdapterMetadata {
+  const metadata = metadataByProviderType.get(providerType);
+  if (!metadata) {
+    throw new Error(`Missing adapter metadata for provider: ${providerType}`);
+  }
+  return metadata;
 }
 
 export async function listAdapterModels(
@@ -494,7 +504,7 @@ export async function testAdapterEnvironment(
   };
 }
 
-function createSkippedResult(providerLabel: string, providerKey: string, context: HeartbeatContext): AdapterExecutionResult {
+export function createSkippedResult(providerLabel: string, providerKey: string, context: HeartbeatContext): AdapterExecutionResult {
   return {
     status: "skipped",
     summary: `${providerLabel} adapter: ${summarizeWork(context)}`,
@@ -513,7 +523,7 @@ function createSkippedResult(providerLabel: string, providerKey: string, context
   };
 }
 
-async function runDirectApiWork(
+export async function runDirectApiWork(
   context: HeartbeatContext,
   provider: "openai_api" | "anthropic_api"
 ): Promise<AdapterExecutionResult> {
@@ -597,7 +607,7 @@ async function runDirectApiWork(
   };
 }
 
-async function testDirectApiEnvironment(
+export async function testDirectApiEnvironment(
   providerType: DirectApiProvider,
   runtime?: AgentRuntimeConfig
 ): Promise<AdapterEnvironmentResult> {
@@ -654,7 +664,7 @@ async function testDirectApiEnvironment(
   };
 }
 
-async function runProviderWork(
+export async function runProviderWork(
   context: HeartbeatContext,
   provider: "claude_code" | "codex",
   pricing: { inputRate: number; outputRate: number }
@@ -817,7 +827,7 @@ async function runProviderWork(
   };
 }
 
-async function runCursorWork(context: HeartbeatContext): Promise<AdapterExecutionResult> {
+export async function runCursorWork(context: HeartbeatContext): Promise<AdapterExecutionResult> {
   const prompt = createPrompt(context);
   const cursorLaunch = await resolveCursorLaunchConfig(context.runtime);
   const cwd = context.runtime?.cwd?.trim() || process.cwd();
@@ -888,7 +898,7 @@ async function runCursorWork(context: HeartbeatContext): Promise<AdapterExecutio
   });
 }
 
-async function runOpenCodeWork(context: HeartbeatContext): Promise<AdapterExecutionResult> {
+export async function runOpenCodeWork(context: HeartbeatContext): Promise<AdapterExecutionResult> {
   const prompt = createPrompt(context);
   const model = context.runtime?.model?.trim();
   const runtimeTimeoutMs =
@@ -977,7 +987,7 @@ async function runOpenCodeWork(context: HeartbeatContext): Promise<AdapterExecut
   });
 }
 
-function resolveFailedUsage(
+export function resolveFailedUsage(
   runtime: {
     parsedUsage?: {
       tokenInput?: number;
@@ -1019,7 +1029,7 @@ function resolveFailedUsage(
   };
 }
 
-function toProviderResult(
+export function toProviderResult(
   context: HeartbeatContext,
   provider: AgentProviderType,
   prompt: string,
@@ -1212,7 +1222,7 @@ function toProviderResult(
   };
 }
 
-function resolveRuntimeFailureDetail(runtime: {
+export function resolveRuntimeFailureDetail(runtime: {
   stderr: string;
   stdout: string;
   code: number | null;
@@ -1243,7 +1253,7 @@ function resolveRuntimeFailureDetail(runtime: {
   return "runtime exited without diagnostic output.";
 }
 
-function parseOpenCodeOutput(stdout: string) {
+export function parseOpenCodeOutput(stdout: string) {
   let sessionId: string | null = null;
   for (const line of stdout.split(/\r?\n/)) {
     const trimmed = line.trim();
@@ -1264,7 +1274,7 @@ function parseOpenCodeOutput(stdout: string) {
   return { sessionId };
 }
 
-function resolveCursorResumeState(state: HeartbeatContext["state"], cwd: string) {
+export function resolveCursorResumeState(state: HeartbeatContext["state"], cwd: string) {
   const savedSessionId = state.cursorSession?.sessionId?.trim() || state.sessionId?.trim() || null;
   const savedCwd = state.cursorSession?.cwd?.trim() || state.cwd?.trim() || null;
   if (!savedSessionId) {
@@ -1288,7 +1298,7 @@ function resolveCursorResumeState(state: HeartbeatContext["state"], cwd: string)
   };
 }
 
-function readRuntimeSessionId(
+export function readRuntimeSessionId(
   runtime: {
     structuredOutputDiagnostics?: {
       claudeSessionId?: string;
@@ -1300,7 +1310,7 @@ function readRuntimeSessionId(
   return runtime.structuredOutputDiagnostics?.cursorSessionId?.trim() || runtime.structuredOutputDiagnostics?.claudeSessionId?.trim() || fallback;
 }
 
-function isUnknownSessionError(stderr: string, stdout: string) {
+export function isUnknownSessionError(stderr: string, stdout: string) {
   const haystack = `${stderr}\n${stdout}`.toLowerCase();
   return (
     haystack.includes("unknown session") ||
@@ -1309,11 +1319,11 @@ function isUnknownSessionError(stderr: string, stdout: string) {
   );
 }
 
-function hasTrustFlag(args: string[]) {
+export function hasTrustFlag(args: string[]) {
   return args.includes("--trust") || args.includes("--yolo") || args.includes("-f");
 }
 
-function resolveRuntimeCommand(providerType: AgentProviderType, runtime?: AgentRuntimeConfig) {
+export function resolveRuntimeCommand(providerType: AgentProviderType, runtime?: AgentRuntimeConfig) {
   if (runtime?.command?.trim()) return runtime.command.trim();
   if (providerType === "claude_code") return "claude";
   if (providerType === "codex") return "codex";
@@ -1322,7 +1332,7 @@ function resolveRuntimeCommand(providerType: AgentProviderType, runtime?: AgentR
   return providerType;
 }
 
-async function runRuntimeProbe(providerType: AgentProviderType, runtime?: AgentRuntimeConfig) {
+export async function runRuntimeProbe(providerType: AgentProviderType, runtime?: AgentRuntimeConfig) {
   const prompt = "Respond with hello.";
   if (providerType === "claude_code" || providerType === "codex") {
     return executeAgentRuntime(providerType, prompt, {
@@ -1369,7 +1379,7 @@ async function runRuntimeProbe(providerType: AgentProviderType, runtime?: AgentR
   });
 }
 
-async function discoverCursorModels(runtime?: AgentRuntimeConfig): Promise<AdapterModelOption[]> {
+export async function discoverCursorModels(runtime?: AgentRuntimeConfig): Promise<AdapterModelOption[]> {
   const cursorLaunch = await resolveCursorLaunchConfig(runtime);
   const probe = await executePromptRuntime(
     cursorLaunch.command,
@@ -1388,7 +1398,7 @@ async function discoverCursorModels(runtime?: AgentRuntimeConfig): Promise<Adapt
   return parseModelLines(`${probe.stdout}\n${probe.stderr}`);
 }
 
-async function discoverOpenCodeModels(runtime?: AgentRuntimeConfig): Promise<AdapterModelOption[]> {
+export async function discoverOpenCodeModels(runtime?: AgentRuntimeConfig): Promise<AdapterModelOption[]> {
   const probe = await executePromptRuntime(
     resolveRuntimeCommand("opencode", runtime),
     "",
@@ -1433,7 +1443,7 @@ function openCodeModelCacheKey(runtime?: AgentRuntimeConfig) {
   return `${command}\n${cwd}\n${envSignature}`;
 }
 
-async function discoverOpenCodeModelsCached(runtime?: AgentRuntimeConfig): Promise<AdapterModelOption[]> {
+export async function discoverOpenCodeModelsCached(runtime?: AgentRuntimeConfig): Promise<AdapterModelOption[]> {
   const key = openCodeModelCacheKey(runtime);
   const now = Date.now();
   for (const [cacheKey, cacheValue] of openCodeModelDiscoveryCache.entries()) {
@@ -1453,7 +1463,7 @@ async function discoverOpenCodeModelsCached(runtime?: AgentRuntimeConfig): Promi
   return models;
 }
 
-async function ensureOpenCodeModelConfiguredAndAvailable(input: {
+export async function ensureOpenCodeModelConfiguredAndAvailable(input: {
   model?: string;
   command?: string;
   cwd?: string;
@@ -1479,7 +1489,7 @@ async function ensureOpenCodeModelConfiguredAndAvailable(input: {
   }
 }
 
-function parseModelLines(text: string): AdapterModelOption[] {
+export function parseModelLines(text: string): AdapterModelOption[] {
   const out: AdapterModelOption[] = [];
   const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   for (const line of lines) {
@@ -1509,7 +1519,7 @@ function parseModelLines(text: string): AdapterModelOption[] {
   return dedupeModels(out);
 }
 
-function dedupeModels(models: AdapterModelOption[]) {
+export function dedupeModels(models: AdapterModelOption[]) {
   const seen = new Set<string>();
   const deduped: AdapterModelOption[] = [];
   for (const model of models) {
@@ -1521,7 +1531,7 @@ function dedupeModels(models: AdapterModelOption[]) {
   return deduped;
 }
 
-async function resolveCursorLaunchConfig(runtime?: AgentRuntimeConfig): Promise<{ command: string; prefixArgs: string[] }> {
+export async function resolveCursorLaunchConfig(runtime?: AgentRuntimeConfig): Promise<{ command: string; prefixArgs: string[] }> {
   const configuredCommand = runtime?.command?.trim();
   if (configuredCommand) {
     const commandToken = configuredCommand.split(/[\\/]/).pop()?.toLowerCase() ?? configuredCommand.toLowerCase();
@@ -1562,13 +1572,13 @@ async function resolveCursorLaunchConfig(runtime?: AgentRuntimeConfig): Promise<
   return { command: "agent", prefixArgs: [] };
 }
 
-function toEnvironmentStatus(checks: AdapterEnvironmentCheck[]): "pass" | "warn" | "fail" {
+export function toEnvironmentStatus(checks: AdapterEnvironmentCheck[]): "pass" | "warn" | "fail" {
   if (checks.some((check) => check.level === "error")) return "fail";
   if (checks.some((check) => check.level === "warn")) return "warn";
   return "pass";
 }
 
-function createPrompt(context: HeartbeatContext) {
+export function createPrompt(context: HeartbeatContext) {
   const bootstrapPrompt = context.runtime?.bootstrapPrompt?.trim();
   const companyGoals = context.goalContext?.companyGoals.length
     ? context.goalContext.companyGoals.map((goal) => `- ${goal}`).join("\n")
@@ -1672,7 +1682,7 @@ At the end of your response, output exactly one JSON object on a single line and
 `;
 }
 
-function withProviderMetadata(
+export function withProviderMetadata(
   context: HeartbeatContext,
   provider: string,
   lastRuntimeMs?: number,
@@ -1690,7 +1700,7 @@ function withProviderMetadata(
   };
 }
 
-function applyProviderSessionState(
+export function applyProviderSessionState(
   context: HeartbeatContext,
   provider: AgentProviderType,
   sessionUpdate?: ProviderSessionUpdate,
@@ -1724,14 +1734,14 @@ function applyProviderSessionState(
   return nextState;
 }
 
-function toPreview(value: string, max = 1600) {
+export function toPreview(value: string, max = 1600) {
   if (value.length <= max) {
     return value;
   }
   return `${value.slice(0, max)}\n...[truncated]`;
 }
 
-function buildMissingStructuredOutputDetail(
+export function buildMissingStructuredOutputDetail(
   provider: string,
   runtime: {
     structuredOutputSource?: "stdout" | "stderr";
@@ -1815,7 +1825,7 @@ function buildMissingStructuredOutputDetail(
   return hints.length > 0 ? `${base} Diagnostics: ${[...hints, ...diagnostics].join("; ")}.` : `${base} Diagnostics: ${diagnostics.join("; ")}.`;
 }
 
-function isClaudeRunIncomplete(runtime: {
+export function isClaudeRunIncomplete(runtime: {
   structuredOutputDiagnostics?: {
     claudeStopReason?: string;
     claudeResultSubtype?: string;

@@ -24,3 +24,4 @@ Use this section to understand internals, APIs, and extension points.
 - Setup guide: [`../getting-started-and-dev.md`](../getting-started-and-dev.md)
 - Adapter overview: [`../adapters/overview.md`](../adapters/overview.md)
 - Adapter authoring: [`../adapter-authoring.md`](../adapter-authoring.md)
+- Adapter package structure: adapters now follow a package-local `root/server/ui/cli` layout documented in the overview and authoring guides.

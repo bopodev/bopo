@@ -1525,7 +1525,7 @@ async function fileExists(path: string) {
   }
 }
 
-function parseStructuredUsage(stdout: string) {
+export function parseStructuredUsage(stdout: string) {
   const whole = stdout.trim();
   if (whole.startsWith("{") && whole.endsWith("}")) {
     const parsedWhole = tryParseUsage(whole);
@@ -1568,7 +1568,7 @@ function parseStructuredUsage(stdout: string) {
   return undefined;
 }
 
-function parseClaudeStreamOutput(stdout: string) {
+export function parseClaudeStreamOutput(stdout: string) {
   let summary = "";
   let tokenInput: number | undefined;
   let tokenOutput: number | undefined;
@@ -1649,7 +1649,7 @@ function parseClaudeStreamOutput(stdout: string) {
   };
 }
 
-function parseCursorStreamOutput(stdout: string): CursorParsedStream | undefined {
+export function parseCursorStreamOutput(stdout: string): CursorParsedStream | undefined {
   let sessionId: string | undefined;
   let errorMessage: string | undefined;
   let resultSubtype: string | undefined;
@@ -1860,7 +1860,7 @@ function parseClaudeTranscript(stdout: string, stderr: string): RuntimeTranscrip
   return events.slice(0, 120);
 }
 
-function parseRuntimeTranscript(
+export function parseRuntimeTranscript(
   provider: LocalProvider | undefined,
   stdout: string,
   stderr: string

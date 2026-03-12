@@ -2,6 +2,78 @@
 
 Adapters connect heartbeat orchestration to a specific runtime provider.
 
+## Architecture
+
+Adapters are package-based modules that implement a shared contract.
+
+```txt
+packages/adapters/<name>/
+  package.json
+  tsconfig.json
+  src/
+    index.ts                # root metadata + assembled AdapterModule
+    server/
+      index.ts              # server exports
+      execute.ts            # runtime execution entrypoint
+      parse.ts              # provider-specific output parsing helpers
+      test.ts               # environment diagnostics
+    ui/
+      index.ts              # UI exports
+      parse-stdout.ts       # transcript parsing for run viewer
+      build-config.ts       # adapter config builder
+    cli/
+      index.ts              # CLI exports
+      format-event.ts       # terminal formatting
+```
+
+Registry and orchestration live in:
+
+- `packages/agent-sdk/src/registry.ts` (module resolution + compatibility wrappers)
+- `apps/api/src/services/heartbeat-service.ts` (heartbeat orchestration)
+- `apps/api/src/routes/agents.ts` (metadata/models/preflight endpoints)
+
+Each adapter package owns its own runtime-specific behavior. The registry and heartbeat service should know how to resolve and call an adapter, but they should not be the place where provider-specific parsing, probing, or launch behavior is implemented.
+
+## Package responsibilities
+
+### Root module
+
+`src/index.ts` is the adapter identity layer. It should define:
+
+- `type`
+- `label`
+- `metadata`
+- optional static `models`
+- `agentConfigurationDoc`
+- assembled `AdapterModule`
+
+This file should stay lightweight and mostly declarative.
+
+### Server module
+
+The `server/` directory is the required execution surface for an adapter.
+
+Each package should provide:
+
+- `execute(context) -> AdapterExecutionResult`
+- optional `listModels(runtime)`
+- optional `testEnvironment(runtime)`
+
+Provider-specific execution logic belongs in `server/execute.ts`.
+Provider-specific stdout/stderr parsing belongs in `server/parse.ts`.
+Provider-specific preflight checks belong in `server/test.ts`.
+
+### UI module
+
+The `ui/` directory owns adapter-specific presentation helpers:
+
+- transcript line parsing for the run viewer
+- adapter-specific config serialization
+
+### CLI module
+
+The `cli/` directory owns adapter-specific terminal formatting for command-line usage.
+
 ## Built-in adapter types
 
 - `claude_code`
@@ -24,11 +96,36 @@ Adapters connect heartbeat orchestration to a specific runtime provider.
 
 ## Runtime contract
 
-Each adapter should provide:
+Each adapter module should provide:
 
-- execution (`execute(context) -> AdapterExecutionResult`)
-- model listing (`listModels`) when model selection is relevant
-- environment diagnostics (`testEnvironment`) with `info|warn|error` checks
+- root metadata describing capabilities and selection behavior
+- execution (`server.execute(context) -> AdapterExecutionResult`)
+- model listing (`server.listModels`) when model selection is relevant
+- environment diagnostics (`server.testEnvironment`) with `info|warn|error` checks
+- optional UI helpers (`ui.parseStdoutLine`, `ui.buildAdapterConfig`)
+- optional CLI helpers (`cli.formatStdoutEvent`)
+
+## Design rule
+
+When adding or changing an adapter:
+
+- put adapter-specific code in that adapter's package
+- keep central registry/orchestration code generic
+- use shared runtime helpers only for cross-adapter primitives such as process spawning, retries, transcript normalization, or common environment handling
+
+If a new behavior only applies to one runtime, it should live in that runtime's package, not in a central switch statement.
+
+## Registration checklist
+
+When adding a new adapter:
+
+1. Add provider type to shared contracts.
+2. Create package at `packages/adapters/<name>/`.
+3. Add the full `root/server/ui/cli` file structure.
+4. Export `AdapterModule` in `src/index.ts`.
+5. Register the module in `packages/agent-sdk/src/registry.ts`.
+6. Add/extend tests in `tests/adapter-platform.test.ts` and `tests/adapter-module-contract.test.ts`.
+7. Verify metadata/models/preflight endpoints in API.
 
 ## Reliability expectations
 
