@@ -5,38 +5,79 @@
 }
 
 .viewport {
-  @apply relative overflow-hidden rounded-2xl border border-dashed border-border bg-muted/20 h-[calc(100dvh-8.5rem)];
-  cursor: grab;
-}
-
-.viewport:active {
-  cursor: grabbing;
+  @apply relative rounded-2xl border  bg-card h-[calc(100dvh-8.5rem)];
 }
 
 .controls {
-  @apply absolute right-3 top-3 z-20 flex gap-2;
+  @apply absolute right-3 top-3 z-20 flex items-center gap-2;
 }
 
 .controlButton {
-  @apply rounded-md border bg-background px-3 py-1 text-xs font-medium text-foreground hover:bg-muted;
+}
+
+.controlButtonFit {
+  @apply gap-1.5 shadow-sm;
+}
+
+.controlButton :global(svg),
+.controlButtonFit :global(svg) {
+  @apply size-4;
+}
+
+.warningBanner {
+  @apply absolute left-3 top-3 z-20 max-w-lg rounded-md border border-amber-200/80 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-700/70 dark:bg-amber-950/60 dark:text-amber-200;
+}
+
+.treeScroller {
+  @apply h-full w-full overflow-hidden p-6 pt-20;
+  cursor: grab;
+}
+
+.treeScroller[data-panning="true"] {
+  cursor: grabbing;
+  user-select: none;
 }
 
 .chartLayer {
-  @apply absolute left-0 top-0 origin-top-left;
+  transform-origin: top center;
+  width: fit-content;
+  margin-inline: auto;
 }
 
-.edgeLayer {
-  @apply absolute left-0 top-0 z-0;
-}
-
-.edgePath {
-  fill: none;
-  stroke: hsl(var(--border));
-  stroke-width: 1.5;
+.forest {
+  @apply flex items-start gap-14;
+  width: fit-content;
+  margin-inline: auto;
 }
 
 .orgCard {
-  @apply absolute z-10 rounded-lg border bg-card px-5 py-4;
+  @apply w-[220px] rounded-lg border bg-card px-5 py-4 text-left;
+}
+
+.treeContainer {
+  @apply inline-block;
+}
+
+.treeContainer :global(li > span) {
+  @apply border-border;
+}
+
+.treeContainer :global(li::before),
+.treeContainer :global(li::after),
+.treeContainer :global(ul ul::before) {
+  border-color: hsl(var(--border)) !important;
+}
+
+.treeContainer :global(li::before),
+.treeContainer :global(li::after) {
+  border-top-width: 2.5px !important;
+  border-top-style: solid !important;
+}
+
+.treeContainer :global(ul ul::before) {
+  border-left-width: 2.5px !important;
+  border-left-style: solid !important;
+  border-color: var(--border) !important;
 }
 
 .orgCardHeader {

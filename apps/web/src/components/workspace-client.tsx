@@ -1733,12 +1733,14 @@ export function WorkspaceClient({
             <div className={styles.formatDurationContainer3}>
               <CreateAgentModal
                 companyId={companyId!}
+                availableAgents={agents.map((entry) => ({ id: entry.id, name: entry.name }))}
                 suggestedRuntimeCwd={suggestedAgentRuntimeCwd}
                 fallbackDefaults={onboardingRuntimeFallback}
                 agent={{
                   id: agent.id,
                   name: agent.name,
                   role: agent.role,
+                  managerAgentId: agent.managerAgentId,
                   providerType: agent.providerType as
                     | "claude_code"
                     | "codex"
@@ -2329,6 +2331,7 @@ export function WorkspaceClient({
           <div className={styles.renderSectionActionsContainer1}>
             <CreateAgentModal
               companyId={scopedCompanyId}
+              availableAgents={agents.map((entry) => ({ id: entry.id, name: entry.name }))}
               suggestedRuntimeCwd={suggestedAgentRuntimeCwd}
               fallbackDefaults={onboardingRuntimeFallback}
             />
@@ -2713,6 +2716,7 @@ export function WorkspaceClient({
               actions={
                 <CreateAgentModal
                   companyId={companyId}
+                  availableAgents={agents.map((entry) => ({ id: entry.id, name: entry.name }))}
                   suggestedRuntimeCwd={suggestedAgentRuntimeCwd}
                   fallbackDefaults={onboardingRuntimeFallback}
                 />

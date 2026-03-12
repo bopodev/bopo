@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { ApiError, apiGet, apiPost, apiPut } from "@/lib/api";
 import { formatArgsInput, formatEnvInput, parseArgsInput, parseEnvInput } from "@/lib/agent-config-form";
@@ -90,6 +90,7 @@ const defaultVisibleProviders: ProviderOption[] = [
 export function CreateAgentModal({
   companyId,
   agent,
+  availableAgents,
   suggestedRuntimeCwd,
   fallbackDefaults,
   triggerLabel,
@@ -101,6 +102,7 @@ export function CreateAgentModal({
     id: string;
     name: string;
     role: string;
+    managerAgentId?: string | null;
     providerType: ProviderType;
     heartbeatCron?: string;
     monthlyBudgetUsd?: number;
@@ -117,6 +119,7 @@ export function CreateAgentModal({
     runPolicyJson?: string | null;
     stateBlob?: string;
   };
+  availableAgents?: Array<{ id: string; name: string }>;
   suggestedRuntimeCwd?: string | null;
   fallbackDefaults?: {
     providerType?: ProviderType | null;
@@ -130,6 +133,7 @@ export function CreateAgentModal({
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(agent?.name ?? "");
   const [role, setRole] = useState(agent?.role ?? "Engineer");
+  const [managerAgentId, setManagerAgentId] = useState<string | null>(agent?.managerAgentId ?? null);
   const [budget, setBudget] = useState(agent?.monthlyBudgetUsd?.toString() ?? "30");
   const [providerType, setProviderType] = useState<ProviderType>(agent?.providerType ?? "claude_code");
   const [heartbeatIntervalSec, setHeartbeatIntervalSec] = useState(
@@ -187,6 +191,17 @@ export function CreateAgentModal({
     providerType === "opencode" ? modelOptions.filter((option) => option.value.trim().length > 0) : modelOptions;
   const providerSupportsWebSearch = providerMetadata?.supportsWebSearch ?? providerType === "codex";
   const sandboxPermissionLabel = providerType === "claude_code" ? "Skip permissions" : "Bypass approvals and sandbox";
+  const managerOptions = useMemo(() => {
+    return (availableAgents ?? [])
+      .filter((candidate) => candidate.id !== agent?.id)
+      .sort((a, b) => {
+        const nameCmp = a.name.localeCompare(b.name);
+        if (nameCmp !== 0) {
+          return nameCmp;
+        }
+        return a.id.localeCompare(b.id);
+      });
+  }, [availableAgents, agent?.id]);
 
   function parseHeartbeatIntervalSeconds(value: string) {
     const parsed = Number(value);
@@ -348,6 +363,7 @@ export function CreateAgentModal({
       })();
       setName(agent.name);
       setRole(agent.role);
+      setManagerAgentId(agent.managerAgentId ?? null);
       setProviderType(agent.providerType);
       setHeartbeatIntervalSec(String(heartbeatCronToIntervalSec(agent.heartbeatCron, 300)));
       setBudget(agent.monthlyBudgetUsd?.toString() ?? "30");
@@ -382,6 +398,7 @@ export function CreateAgentModal({
         : defaults;
     setName("");
     setRole("Engineer");
+    setManagerAgentId(null);
     setProviderType(effectiveDefaults.providerType);
     setHeartbeatIntervalSec(effectiveDefaults.heartbeatIntervalSec);
     setBudget(effectiveDefaults.monthlyBudgetUsd);
@@ -530,6 +547,7 @@ export function CreateAgentModal({
         await apiPut(`/agents/${agent.id}`, companyId, {
           name,
           role,
+          managerAgentId: managerAgentId ?? null,
           providerType,
           heartbeatCron: heartbeatIntervalSecToCron(heartbeatIntervalSeconds),
           monthlyBudgetUsd: Number(budget),
@@ -540,6 +558,7 @@ export function CreateAgentModal({
         await apiPost("/agents", companyId, {
           name,
           role,
+          managerAgentId: managerAgentId ?? undefined,
           providerType,
           heartbeatCron: heartbeatIntervalSecToCron(heartbeatIntervalSeconds),
           monthlyBudgetUsd: Number(budget),
@@ -585,6 +604,24 @@ export function CreateAgentModal({
               <Field>
                 <FieldLabel htmlFor="agent-role">Title</FieldLabel>
                 <Input id="agent-role" value={role} onChange={(e) => setRole(e.target.value)} placeholder="CTO, SEO, Engineer" />
+              </Field>
+              <Field>
+                <FieldLabel>Reports to</FieldLabel>
+                <Select
+                  value={managerAgentId ?? "__none"}
+                  onValueChange={(value) => setManagerAgentId(value === "__none" ? null : value)}>
+                  <SelectTrigger className={styles.createAgentModalSelectTrigger}>
+                    <SelectValue placeholder="No manager (top level)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none">No manager</SelectItem>
+                    {managerOptions.map((entry) => (
+                      <SelectItem key={entry.id} value={entry.id}>
+                        {entry.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </Field>
             </FieldGroup>
           </section>

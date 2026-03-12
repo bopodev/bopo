@@ -566,10 +566,12 @@ export function AgentDetailPageClient({
           ) : null}
           <CreateAgentModal
             companyId={companyId}
+            availableAgents={agents.map((entry) => ({ id: entry.id, name: entry.name }))}
             agent={{
               id: agent.id,
               name: agent.name,
               role: agent.role,
+              managerAgentId: agent.managerAgentId,
               providerType: agent.providerType as
                 | "claude_code"
                 | "codex"
