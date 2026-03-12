@@ -32,6 +32,7 @@ import { createHeartbeatRunsRealtimeEvent } from "../realtime/heartbeat-runs";
 import { publishOfficeOccupantForAgent } from "../realtime/office-space";
 import { checkAgentBudget } from "./budget-service";
 import { appendDurableFact, loadAgentMemoryContext, persistHeartbeatMemory } from "./memory-file-service";
+import { calculateModelPricedUsdCost } from "./model-pricing";
 import { runPluginHook } from "./plugin-runtime";
 
 type HeartbeatRunTrigger = "manual" | "scheduler";
@@ -787,6 +788,22 @@ export async function runHeartbeatForAgent(
     }
     emitCanonicalResultEvent(executionSummary, "completed");
     executionTrace = execution.trace ?? null;
+    const runtimeModelId = resolveRuntimeModelId({
+      runtimeModel: persistedRuntime.runtimeModel,
+      stateBlob: agent.stateBlob
+    });
+    const effectivePricingProviderType = execution.pricingProviderType ?? agent.providerType;
+    const effectivePricingModelId = execution.pricingModelId ?? runtimeModelId;
+    const pricingDecision = await calculateModelPricedUsdCost({
+      db,
+      companyId,
+      providerType: agent.providerType,
+      pricingProviderType: effectivePricingProviderType,
+      modelId: effectivePricingModelId,
+      tokenInput: execution.tokenInput,
+      tokenOutput: execution.tokenOutput
+    });
+    const executionUsdCost = pricingDecision.usdCost;
     const parsedOutcome = ExecutionOutcomeSchema.safeParse(execution.outcome);
     executionOutcome = parsedOutcome.success ? parsedOutcome.data : null;
     const persistedMemory = await persistHeartbeatMemory({
@@ -835,13 +852,17 @@ export async function runHeartbeatForAgent(
       }
     }
 
-    if (execution.tokenInput > 0 || execution.tokenOutput > 0 || execution.usdCost > 0) {
+    if (execution.tokenInput > 0 || execution.tokenOutput > 0 || executionUsdCost > 0) {
       await appendCost(db, {
         companyId,
         providerType: agent.providerType,
+        runtimeModelId: effectivePricingModelId ?? runtimeModelId,
+        pricingProviderType: pricingDecision.pricingProviderType,
+        pricingModelId: pricingDecision.pricingModelId,
+        pricingSource: pricingDecision.pricingSource,
         tokenInput: execution.tokenInput,
         tokenOutput: execution.tokenOutput,
-        usdCost: execution.usdCost.toFixed(6),
+        usdCost: executionUsdCost.toFixed(6),
         issueId: workItems[0]?.id ?? null,
         projectId: workItems[0]?.project_id ?? null,
         agentId
@@ -850,7 +871,7 @@ export async function runHeartbeatForAgent(
 
     if (
       execution.nextState ||
-      execution.usdCost > 0 ||
+      executionUsdCost > 0 ||
       execution.tokenInput > 0 ||
       execution.tokenOutput > 0 ||
       execution.status !== "skipped"
@@ -859,7 +880,7 @@ export async function runHeartbeatForAgent(
         .update(agents)
         .set({
           stateBlob: JSON.stringify(execution.nextState ?? state),
-          usedBudgetUsd: sql`${agents.usedBudgetUsd} + ${execution.usdCost}`,
+          usedBudgetUsd: sql`${agents.usedBudgetUsd} + ${executionUsdCost}`,
           tokenUsage: sql`${agents.tokenUsage} + ${execution.tokenInput + execution.tokenOutput}`,
           updatedAt: new Date()
         })
@@ -870,7 +891,7 @@ export async function runHeartbeatForAgent(
       summary: execution.summary,
       tokenInput: execution.tokenInput,
       tokenOutput: execution.tokenOutput,
-      usdCost: execution.usdCost,
+      usdCost: executionUsdCost,
       trace: executionTrace,
       outcome: executionOutcome
     });
@@ -916,7 +937,7 @@ export async function runHeartbeatForAgent(
           usage: {
             tokenInput: execution.tokenInput,
             tokenOutput: execution.tokenOutput,
-            usdCost: execution.usdCost
+            usdCost: executionUsdCost
           }
         }
       });
@@ -2365,6 +2386,23 @@ function resolveControlPlaneHeaders(runtimeEnv: Record<string, string>):
     };
   }
   return { ok: true, headers: jsonHeadersResult.data };
+}
+
+function resolveRuntimeModelId(input: { runtimeModel?: string; stateBlob?: string | null }) {
+  const runtimeModel = input.runtimeModel?.trim();
+  if (runtimeModel) {
+    return runtimeModel;
+  }
+  if (!input.stateBlob) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(input.stateBlob) as { runtime?: { model?: unknown } };
+    const modelId = parsed.runtime?.model;
+    return typeof modelId === "string" && modelId.trim().length > 0 ? modelId.trim() : null;
+  } catch {
+    return null;
+  }
 }
 
 function isHeartbeatDue(cronExpression: string, lastRunAt: Date | null, now: Date) {

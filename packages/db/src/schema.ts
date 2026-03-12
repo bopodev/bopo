@@ -1,13 +1,5 @@
 import { sql } from "drizzle-orm";
-import {
-  boolean,
-  integer,
-  numeric,
-  pgTable,
-  primaryKey,
-  text,
-  timestamp
-} from "drizzle-orm/pg-core";
+import { boolean, integer, numeric, pgTable, primaryKey, text, timestamp } from "drizzle-orm/pg-core";
 
 export const companies = pgTable("companies", {
   id: text("id").primaryKey(),
@@ -222,6 +214,10 @@ export const costLedger = pgTable("cost_ledger", {
   issueId: text("issue_id").references(() => issues.id, { onDelete: "set null" }),
   agentId: text("agent_id").references(() => agents.id, { onDelete: "set null" }),
   providerType: text("provider_type").notNull(),
+  runtimeModelId: text("runtime_model_id"),
+  pricingProviderType: text("pricing_provider_type"),
+  pricingModelId: text("pricing_model_id"),
+  pricingSource: text("pricing_source"),
   tokenInput: integer("token_input").notNull().default(0),
   tokenOutput: integer("token_output").notNull().default(0),
   usdCost: numeric("usd_cost", { precision: 12, scale: 6 }).notNull().default("0"),
@@ -256,6 +252,24 @@ export const plugins = pgTable("plugins", {
   createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull()
 });
+
+export const modelPricing = pgTable(
+  "model_pricing",
+  {
+    companyId: text("company_id")
+      .notNull()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    providerType: text("provider_type").notNull(),
+    modelId: text("model_id").notNull(),
+    displayName: text("display_name"),
+    inputUsdPer1M: numeric("input_usd_per_1m", { precision: 12, scale: 6 }).notNull().default("0"),
+    outputUsdPer1M: numeric("output_usd_per_1m", { precision: 12, scale: 6 }).notNull().default("0"),
+    currency: text("currency").notNull().default("USD"),
+    updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
+    updatedBy: text("updated_by")
+  },
+  (table) => [primaryKey({ columns: [table.companyId, table.providerType, table.modelId] })]
+);
 
 export const pluginConfigs = pgTable(
   "plugin_configs",
@@ -325,6 +339,7 @@ export const schema = {
   plugins,
   pluginConfigs,
   pluginRuns,
+  modelPricing,
   agentIssueLabels
 };
 

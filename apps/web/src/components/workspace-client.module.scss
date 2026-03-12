@@ -276,3 +276,19 @@
 .dashboardInsightsCardContent {
   @apply space-y-2 text-sm text-muted-foreground;
 }
+
+.modelPricingDialogForm {
+  @apply space-y-4;
+}
+
+.modelPricingDialogPrimaryGroup {
+  @apply grid gap-4;
+}
+
+.modelPricingDialogField {
+  @apply w-full;
+}
+
+.modelPricingDialogPricingGroup {
+  @apply grid gap-4 md:grid-cols-2;
+}

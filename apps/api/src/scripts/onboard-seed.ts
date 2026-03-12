@@ -17,6 +17,7 @@ import {
 } from "bopodev-db";
 import { normalizeRuntimeConfig, runtimeConfigToDb, runtimeConfigToStateBlobPatch } from "../lib/agent-config";
 import { resolveDefaultRuntimeCwdForCompany } from "../lib/workspace-policy";
+import { ensureCompanyModelPricingDefaults } from "../services/model-pricing";
 
 export interface OnboardSeedSummary {
   companyId: string;
@@ -135,6 +136,7 @@ export async function ensureOnboardingSeed(input: {
         ceoId
       });
     }
+    await ensureCompanyModelPricingDefaults(db, companyId);
 
     return {
       companyId,

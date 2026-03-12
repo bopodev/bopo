@@ -6,10 +6,14 @@ import { ApiError, apiGet, apiPost, apiPut } from "@/lib/api";
 import { formatArgsInput, formatEnvInput, parseArgsInput, parseEnvInput } from "@/lib/agent-config-form";
 import { agentDefaultsStorageKey, readAgentRuntimeDefaults } from "@/lib/agent-defaults";
 import {
-  getModelOptionsForProvider,
   heartbeatCronToIntervalSec,
   heartbeatIntervalSecToCron
 } from "@/lib/agent-runtime-options";
+import {
+  buildRegistryModelOptions,
+  getRegistryModelValuesForRuntimeProvider,
+  type ModelRegistryRow
+} from "@/lib/model-registry-options";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -65,11 +69,6 @@ type AdapterMetadataResponse = {
     supportsThinkingEffort: boolean;
     requiresRuntimeCwd: boolean;
   }>;
-};
-
-type AdapterModelsResponse = {
-  providerType: string;
-  models: Array<{ id: string; label: string }>;
 };
 
 type ProviderOption = {
@@ -161,7 +160,7 @@ export function CreateAgentModal({
       >
     >
   >({});
-  const [discoveredModels, setDiscoveredModels] = useState<Array<{ value: string; label: string }> | null>(null);
+  const [modelRegistryRows, setModelRegistryRows] = useState<ModelRegistryRow[]>([]);
   const isEditing = Boolean(agent);
   const providerMetadata = adapterMetadataByProvider[providerType];
   const visibleProviders: ProviderOption[] = (
@@ -185,10 +184,17 @@ export function CreateAgentModal({
     providerType === "opencode" ||
     providerType === "shell"
   );
-  const fallbackModelOptions = getModelOptionsForProvider(providerType, runtimeModel);
-  const modelOptions = discoveredModels ?? fallbackModelOptions;
-  const visibleModelOptions =
-    providerType === "opencode" ? modelOptions.filter((option) => option.value.trim().length > 0) : modelOptions;
+  const modelOptions = useMemo(
+    () =>
+      buildRegistryModelOptions({
+        rows: modelRegistryRows,
+        providerType,
+        currentModel: runtimeModel,
+        includeDefault: false
+      }),
+    [modelRegistryRows, providerType, runtimeModel]
+  );
+  const visibleModelOptions = providerType === "opencode" ? modelOptions.filter((option) => option.value.trim().length > 0) : modelOptions;
   const providerSupportsWebSearch = providerMetadata?.supportsWebSearch ?? providerType === "codex";
   const sandboxPermissionLabel = providerType === "claude_code" ? "Skip permissions" : "Bypass approvals and sandbox";
   const managerOptions = useMemo(() => {
@@ -446,21 +452,14 @@ export function CreateAgentModal({
     if (!open) {
       return;
     }
-    void apiGet<AdapterModelsResponse>(`/agents/adapter-models/${providerType}`, companyId)
+    void apiGet<Array<ModelRegistryRow>>("/observability/models/pricing", companyId)
       .then((result) => {
-        const fromApi = result.data.models.map((model) => ({ value: model.id, label: model.label }));
-        const merged = [...fromApi];
-        for (const fallback of getModelOptionsForProvider(providerType, runtimeModel)) {
-          if (!merged.some((entry) => entry.value === fallback.value)) {
-            merged.push(fallback);
-          }
-        }
-        setDiscoveredModels(merged);
+        setModelRegistryRows(result.data);
       })
       .catch(() => {
-        setDiscoveredModels(null);
+        setModelRegistryRows([]);
       });
-  }, [open, companyId, providerType, runtimeModel]);
+  }, [open, companyId]);
 
   useEffect(() => {
     if (providerType !== "codex" && allowWebSearch) {
@@ -469,14 +468,16 @@ export function CreateAgentModal({
   }, [providerType, allowWebSearch]);
 
   useEffect(() => {
-    if (providerType === "opencode") {
+    const allowedValues = getRegistryModelValuesForRuntimeProvider(modelRegistryRows, providerType);
+    if (runtimeModel && !allowedValues.includes(runtimeModel)) {
+      setRuntimeModel(allowedValues[0] ?? "");
       return;
     }
-    const allowedValues = getModelOptionsForProvider(providerType, runtimeModel).map((option) => option.value);
-    if (runtimeModel && !allowedValues.includes(runtimeModel)) {
-      setRuntimeModel("");
+    const requiresNamedModel = providerType !== "http" && providerType !== "shell";
+    if (requiresNamedModel && !runtimeModel && allowedValues.length > 0) {
+      setRuntimeModel(allowedValues[0] ?? "");
     }
-  }, [providerType, runtimeModel]);
+  }, [modelRegistryRows, providerType, runtimeModel]);
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -517,6 +518,9 @@ export function CreateAgentModal({
           setError("OpenCode model is required and must use provider/model format (for example: openai/gpt-5).");
           return;
         }
+      } else if (providerType !== "http" && providerType !== "shell" && !runtimeModel.trim()) {
+        setError("Select a named model before saving this agent.");
+        return;
       }
 
       const shouldRunPreflight = providerMetadata?.supportsEnvironmentTest ?? providerType !== "http";
@@ -692,27 +696,15 @@ export function CreateAgentModal({
               <Field>
                 <FieldLabel htmlFor="agent-runtime-model">Model</FieldLabel>
                 <Select
-                  value={runtimeModel || (providerType === "opencode" ? "__none" : "__default")}
-                  onValueChange={(value) => {
-                    if (providerType === "opencode") {
-                      setRuntimeModel(value === "__none" ? "" : value);
-                      return;
-                    }
-                    setRuntimeModel(value === "__default" ? "" : value);
-                  }}
+                  value={runtimeModel || undefined}
+                  onValueChange={(value) => setRuntimeModel(value)}
                 >
                   <SelectTrigger id="agent-runtime-model" className={styles.createAgentModalSelectTrigger}>
                     <SelectValue placeholder="Select a model" />
                   </SelectTrigger>
                   <SelectContent>
-                    {providerType === "opencode" ? (
-                      <SelectItem value="__none">Select a model</SelectItem>
-                    ) : null}
                     {visibleModelOptions.map((option) => (
-                      <SelectItem
-                        key={option.value || (providerType === "opencode" ? "__none" : "__default")}
-                        value={option.value || (providerType === "opencode" ? "__none" : "__default")}
-                      >
+                      <SelectItem key={option.value} value={option.value}>
                         {option.label}
                       </SelectItem>
                     ))}

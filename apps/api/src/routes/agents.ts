@@ -122,6 +122,17 @@ function toAgentResponse(agent: Record<string, unknown>) {
   };
 }
 
+function providerRequiresNamedModel(providerType: string) {
+  return providerType !== "http" && providerType !== "shell";
+}
+
+function ensureNamedRuntimeModel(providerType: string, runtimeModel: string | undefined) {
+  if (!providerRequiresNamedModel(providerType)) {
+    return true;
+  }
+  return hasText(runtimeModel);
+}
+
 export function createAgentsRouter(ctx: AppContext) {
   const router = Router();
   router.use(requireCompanyScope);
@@ -265,6 +276,9 @@ export function createAgentsRouter(ctx: AppContext) {
       defaultRuntimeCwd
     });
     runtimeConfig.runtimeModel = await resolveOpencodeRuntimeModel(parsed.data.providerType, runtimeConfig);
+    if (!ensureNamedRuntimeModel(parsed.data.providerType, runtimeConfig.runtimeModel)) {
+      return sendError(res, "A named runtime model is required for this provider.", 422);
+    }
     if (requiresRuntimeCwd(parsed.data.providerType) && !hasText(runtimeConfig.runtimeCwd)) {
       return sendError(res, "Runtime working directory is required for this runtime provider.", 422);
     }
@@ -397,6 +411,9 @@ export function createAgentsRouter(ctx: AppContext) {
         : {})
     };
     nextRuntime.runtimeModel = await resolveOpencodeRuntimeModel(effectiveProviderType, nextRuntime);
+    if (!ensureNamedRuntimeModel(effectiveProviderType, nextRuntime.runtimeModel)) {
+      return sendError(res, "A named runtime model is required for this provider.", 422);
+    }
     if (!nextRuntime.runtimeCwd && defaultRuntimeCwd) {
       nextRuntime.runtimeCwd = defaultRuntimeCwd;
     }

@@ -70,6 +70,8 @@ export interface AdapterExecutionResult {
   tokenInput: number;
   tokenOutput: number;
   usdCost: number;
+  pricingProviderType?: string | null;
+  pricingModelId?: string | null;
   outcome?: ExecutionOutcome;
   nextState?: AgentState;
   trace?: AdapterTrace;
@@ -186,7 +188,7 @@ export interface AdapterTrace {
   timedOut?: boolean;
   failureType?: string;
   timeoutSource?: "runtime" | "watchdog" | null;
-  usageSource?: "structured" | "estimated" | "none" | "unknown";
+  usageSource?: "structured" | "none" | "unknown";
   attemptCount?: number;
   attempts?: Array<{
     attempt: number;

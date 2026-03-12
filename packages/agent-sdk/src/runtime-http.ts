@@ -176,7 +176,6 @@ export async function executeDirectApiRuntime(
       }
       const summary = provider === "openai_api" ? extractOpenAiSummary(parsed) : extractAnthropicSummary(parsed);
       const usage = provider === "openai_api" ? extractOpenAiUsage(parsed) : extractAnthropicUsage(parsed);
-      const estimatedCost = estimateCostFromRates(provider, usage.tokenInput, usage.tokenOutput, runtime);
       attempts.push({
         attempt,
         statusCode: response.status,
@@ -192,7 +191,7 @@ export async function executeDirectApiRuntime(
         summary,
         tokenInput: usage.tokenInput,
         tokenOutput: usage.tokenOutput,
-        usdCost: usage.usdCost > 0 ? usage.usdCost : estimatedCost,
+        usdCost: usage.usdCost ?? 0,
         responsePreview: preview,
         attemptCount: attempts.length,
         attempts
@@ -423,31 +422,6 @@ function toNumber(value: unknown) {
     if (Number.isFinite(parsed)) return parsed;
   }
   return undefined;
-}
-
-function estimateCostFromRates(
-  provider: DirectApiProvider,
-  tokenInput: number,
-  tokenOutput: number,
-  runtime?: AgentRuntimeConfig
-) {
-  const env = runtime?.env ?? {};
-  const inputRate =
-    toNumber(
-      provider === "openai_api"
-        ? env.BOPO_OPENAI_INPUT_USD_PER_1M ?? process.env.BOPO_OPENAI_INPUT_USD_PER_1M
-        : env.BOPO_ANTHROPIC_INPUT_USD_PER_1M ?? process.env.BOPO_ANTHROPIC_INPUT_USD_PER_1M
-    ) ?? 0;
-  const outputRate =
-    toNumber(
-      provider === "openai_api"
-        ? env.BOPO_OPENAI_OUTPUT_USD_PER_1M ?? process.env.BOPO_OPENAI_OUTPUT_USD_PER_1M
-        : env.BOPO_ANTHROPIC_OUTPUT_USD_PER_1M ?? process.env.BOPO_ANTHROPIC_OUTPUT_USD_PER_1M
-    ) ?? 0;
-  if (inputRate <= 0 && outputRate <= 0) {
-    return 0;
-  }
-  return Number((((tokenInput * inputRate) + (tokenOutput * outputRate)) / 1_000_000).toFixed(6));
 }
 
 function sleep(ms: number) {

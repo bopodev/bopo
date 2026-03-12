@@ -279,10 +279,44 @@ export async function bootstrapDatabase(dbPath?: string) {
       issue_id TEXT REFERENCES issues(id) ON DELETE SET NULL,
       agent_id TEXT REFERENCES agents(id) ON DELETE SET NULL,
       provider_type TEXT NOT NULL,
+      runtime_model_id TEXT,
+      pricing_provider_type TEXT,
+      pricing_model_id TEXT,
+      pricing_source TEXT,
       token_input INTEGER NOT NULL DEFAULT 0,
       token_output INTEGER NOT NULL DEFAULT 0,
       usd_cost NUMERIC(12, 6) NOT NULL DEFAULT 0,
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+  await db.execute(sql`
+    ALTER TABLE cost_ledger
+    ADD COLUMN IF NOT EXISTS runtime_model_id TEXT;
+  `);
+  await db.execute(sql`
+    ALTER TABLE cost_ledger
+    ADD COLUMN IF NOT EXISTS pricing_provider_type TEXT;
+  `);
+  await db.execute(sql`
+    ALTER TABLE cost_ledger
+    ADD COLUMN IF NOT EXISTS pricing_model_id TEXT;
+  `);
+  await db.execute(sql`
+    ALTER TABLE cost_ledger
+    ADD COLUMN IF NOT EXISTS pricing_source TEXT;
+  `);
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS model_pricing (
+      company_id TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+      provider_type TEXT NOT NULL,
+      model_id TEXT NOT NULL,
+      display_name TEXT,
+      input_usd_per_1m NUMERIC(12, 6) NOT NULL DEFAULT 0,
+      output_usd_per_1m NUMERIC(12, 6) NOT NULL DEFAULT 0,
+      currency TEXT NOT NULL DEFAULT 'USD',
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_by TEXT,
+      PRIMARY KEY (company_id, provider_type, model_id)
     );
   `);
   await db.execute(sql`

@@ -28,7 +28,7 @@ export function DataTablePagination<TData>({ table }: DataTablePaginationProps<T
       </div>
       <div className="ui-data-table-pagination-controls">
         <div className="ui-data-table-pagination-size-group">
-          <p className="ui-data-table-pagination-label">Rows per page</p>
+          <p className="ui-data-table-pagination-label">Rows</p>
           <Select
             value={`${table.getState().pagination.pageSize}`}
             onValueChange={(value) => {

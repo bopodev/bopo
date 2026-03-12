@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { apiGet } from "@/lib/api";
 import {
   agentDefaultsStorageKey,
   defaultAgentRuntimeDefaults,
@@ -29,11 +30,17 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
-import { getSupportedModelOptionsForProvider } from "@/lib/agent-runtime-options";
+import {
+  buildRegistryModelOptions,
+  getRegistryModelValuesForRuntimeProvider,
+  type ModelRegistryRow
+} from "@/lib/model-registry-options";
 
 export function AgentRuntimeDefaultsCard({
+  companyId,
   fallbackDefaults
 }: {
+  companyId?: string | null;
   fallbackDefaults?: {
     providerType?: AgentRuntimeDefaults["providerType"] | null;
     runtimeModel?: string | null;
@@ -41,7 +48,13 @@ export function AgentRuntimeDefaultsCard({
 }) {
   const [defaults, setDefaults] = useState<AgentRuntimeDefaults>(defaultAgentRuntimeDefaults);
   const [saved, setSaved] = useState(false);
-  const modelOptions = getSupportedModelOptionsForProvider(defaults.providerType);
+  const [modelRegistryRows, setModelRegistryRows] = useState<ModelRegistryRow[]>([]);
+  const modelOptions = buildRegistryModelOptions({
+    rows: modelRegistryRows,
+    providerType: defaults.providerType,
+    currentModel: defaults.runtimeModel,
+    includeDefault: false
+  });
 
   function buildFallbackDefaults(): AgentRuntimeDefaults {
     if (!fallbackDefaults?.providerType) {
@@ -55,18 +68,23 @@ export function AgentRuntimeDefaultsCard({
   }
 
   useEffect(() => {
+    if (!companyId) {
+      setModelRegistryRows([]);
+      return;
+    }
+    void apiGet<Array<ModelRegistryRow>>("/observability/models/pricing", companyId)
+      .then((result) => setModelRegistryRows(result.data))
+      .catch(() => setModelRegistryRows([]));
+  }, [companyId]);
+
+  useEffect(() => {
     const stored = readAgentRuntimeDefaults();
     const hasStoredDefaults = window.localStorage.getItem(agentDefaultsStorageKey) !== null;
     if (!hasStoredDefaults && fallbackDefaults?.providerType) {
-      const next = {
+      setDefaults({
         ...stored,
         providerType: fallbackDefaults.providerType,
         runtimeModel: fallbackDefaults.runtimeModel ?? ""
-      };
-      const allowedValues = getSupportedModelOptionsForProvider(next.providerType).map((option) => option.value);
-      setDefaults({
-        ...next,
-        runtimeModel: next.runtimeModel && allowedValues.includes(next.runtimeModel) ? next.runtimeModel : ""
       });
       return;
     }
@@ -79,13 +97,19 @@ export function AgentRuntimeDefaultsCard({
   }
 
   useEffect(() => {
-    const allowedValues = getSupportedModelOptionsForProvider(defaults.providerType).map((option) => option.value);
-    if (!defaults.runtimeModel || allowedValues.includes(defaults.runtimeModel)) {
+    const allowedValues = getRegistryModelValuesForRuntimeProvider(modelRegistryRows, defaults.providerType);
+    if (defaults.runtimeModel && !allowedValues.includes(defaults.runtimeModel)) {
+      setDefaults((current) => ({ ...current, runtimeModel: allowedValues[0] ?? "" }));
+      setSaved(false);
       return;
     }
-    setDefaults((current) => ({ ...current, runtimeModel: "" }));
+    const requiresNamedModel = defaults.providerType !== "http" && defaults.providerType !== "shell";
+    if (!requiresNamedModel || defaults.runtimeModel || allowedValues.length === 0) {
+      return;
+    }
+    setDefaults((current) => ({ ...current, runtimeModel: allowedValues[0] ?? "" }));
     setSaved(false);
-  }, [defaults.providerType, defaults.runtimeModel]);
+  }, [defaults.providerType, defaults.runtimeModel, modelRegistryRows]);
 
   function save() {
     writeAgentRuntimeDefaults(defaults);
@@ -167,15 +191,15 @@ export function AgentRuntimeDefaultsCard({
           <Field>
             <FieldLabel htmlFor="defaults-runtime-model">Model</FieldLabel>
             <Select
-              value={defaults.runtimeModel || "__default"}
-              onValueChange={(value) => update("runtimeModel", value === "__default" ? "" : value)}
+              value={defaults.runtimeModel || undefined}
+              onValueChange={(value) => update("runtimeModel", value)}
             >
               <SelectTrigger id="defaults-runtime-model" className={styles.runtimeDefaultsSelectTrigger}>
                 <SelectValue placeholder="Select a model" />
               </SelectTrigger>
               <SelectContent>
                 {modelOptions.map((option) => (
-                  <SelectItem key={option.value || "__default"} value={option.value || "__default"}>
+                  <SelectItem key={option.value} value={option.value}>
                     {option.label}
                   </SelectItem>
                 ))}

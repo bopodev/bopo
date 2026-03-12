@@ -195,6 +195,9 @@ async function applyApprovalAction(db: BopoDb, companyId: string, action: string
       defaultRuntimeCwd
     });
     runtimeConfig.runtimeModel = await resolveOpencodeRuntimeModel(parsed.data.providerType, runtimeConfig);
+    if (providerRequiresNamedModel(parsed.data.providerType) && !hasText(runtimeConfig.runtimeModel)) {
+      throw new GovernanceError("Approval payload for agent hiring must include a named runtime model.");
+    }
     if (requiresRuntimeCwd(parsed.data.providerType) && !hasText(runtimeConfig.runtimeCwd)) {
       throw new GovernanceError("Approval payload for agent hiring is missing runtime working directory.");
     }
@@ -346,6 +349,10 @@ async function applyApprovalAction(db: BopoDb, companyId: string, action: string
   }
 
   throw new GovernanceError(`Unsupported approval action: ${action}`);
+}
+
+function providerRequiresNamedModel(providerType: string) {
+  return providerType !== "http" && providerType !== "shell";
 }
 
 function parsePayload(payloadJson: string) {

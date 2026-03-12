@@ -3,6 +3,7 @@ import { z } from "zod";
 import { createCompany, deleteCompany, listCompanies, updateCompany } from "bopodev-db";
 import type { AppContext } from "../context";
 import { sendError, sendOk } from "../http";
+import { ensureCompanyModelPricingDefaults } from "../services/model-pricing";
 import { ensureCompanyBuiltinPluginDefaults } from "../services/plugin-runtime";
 
 const createCompanySchema = z.object({
@@ -32,6 +33,7 @@ export function createCompaniesRouter(ctx: AppContext) {
     }
     const company = await createCompany(ctx.db, parsed.data);
     await ensureCompanyBuiltinPluginDefaults(ctx.db, company.id);
+    await ensureCompanyModelPricingDefaults(ctx.db, company.id);
     return sendOk(res, company);
   });
 

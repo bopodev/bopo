@@ -1,4 +1,4 @@
-import { apiGet } from "@/lib/api";
+import { ApiError, apiGet } from "@/lib/api";
 import type { ExecutionOutcome } from "bopodev-contracts";
 
 const defaultCompanyId = process.env.NEXT_PUBLIC_DEFAULT_COMPANY_ID ?? "demo-company";
@@ -106,6 +106,10 @@ export interface WorkspaceData {
     projectId?: string | null;
     agentId?: string | null;
     providerType: string;
+    runtimeModelId?: string | null;
+    pricingProviderType?: string | null;
+    pricingModelId?: string | null;
+    pricingSource?: "exact" | "missing" | null;
     tokenInput: number;
     tokenOutput: number;
     usdCost: number;
@@ -282,7 +286,30 @@ export async function loadWorkspaceData(
     projects: true,
     ...options.include
   } satisfies Record<WorkspaceDataSection, boolean>;
-  const companies = await loadCompanies(defaultCompanyId);
+  const emptyWorkspaceData = (): WorkspaceData => ({
+    companyId: null,
+    activeCompany: null,
+    companies: [],
+    issues: [],
+    agents: [],
+    heartbeatRuns: [],
+    goals: [],
+    approvals: [],
+    governanceInbox: [],
+    auditEvents: [],
+    costEntries: [],
+    projects: []
+  });
+  let companies: WorkspaceData["companies"] = [];
+  try {
+    companies = await loadCompanies(defaultCompanyId);
+  } catch (error) {
+    // During local startup the API can be briefly unavailable; return an empty workspace instead of crashing SSR.
+    if (error instanceof ApiError || error instanceof TypeError) {
+      return emptyWorkspaceData();
+    }
+    throw error;
+  }
   const activeCompany =
     companies.find((company) => company.id === requestedCompanyId) ??
     companies.find((company) => company.id === defaultCompanyId) ??
@@ -290,20 +317,7 @@ export async function loadWorkspaceData(
     null;
 
   if (!activeCompany) {
-    return {
-      companyId: null,
-      activeCompany: null,
-      companies: [],
-      issues: [],
-      agents: [],
-      heartbeatRuns: [],
-      goals: [],
-      approvals: [],
-      governanceInbox: [],
-      auditEvents: [],
-      costEntries: [],
-      projects: []
-    };
+    return emptyWorkspaceData();
   }
 
   const companyId = activeCompany.id;

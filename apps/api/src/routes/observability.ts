@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { z } from "zod";
 import {
   getHeartbeatRun,
   listAgents,
@@ -6,7 +7,9 @@ import {
   listCostEntries,
   listHeartbeatRunMessages,
   listHeartbeatRuns,
-  listPluginRuns
+  listModelPricing,
+  listPluginRuns,
+  upsertModelPricing
 } from "bopodev-db";
 import type { AppContext } from "../context";
 import { sendError, sendOk } from "../http";
@@ -37,6 +40,52 @@ export function createObservabilityRouter(ctx: AppContext) {
         usdCost: typeof row.usdCost === "number" ? row.usdCost : Number(row.usdCost ?? 0)
       }))
     );
+  });
+
+  const modelPricingUpdateSchema = z.object({
+    providerType: z.string().min(1),
+    modelId: z.string().min(1),
+    displayName: z.string().min(1).optional(),
+    inputUsdPer1M: z.number().min(0),
+    outputUsdPer1M: z.number().min(0),
+    currency: z.string().min(1).optional()
+  });
+
+  router.get("/models/pricing", async (req, res) => {
+    const rows = await listModelPricing(ctx.db, req.companyId!);
+    return sendOk(
+      res,
+      rows.map((row) => ({
+        companyId: row.companyId,
+        providerType: row.providerType,
+        modelId: row.modelId,
+        displayName: row.displayName,
+        inputUsdPer1M: typeof row.inputUsdPer1M === "number" ? row.inputUsdPer1M : Number(row.inputUsdPer1M ?? 0),
+        outputUsdPer1M: typeof row.outputUsdPer1M === "number" ? row.outputUsdPer1M : Number(row.outputUsdPer1M ?? 0),
+        currency: row.currency,
+        updatedAt: row.updatedAt?.toISOString?.() ?? null,
+        updatedBy: row.updatedBy ?? null
+      }))
+    );
+  });
+
+  router.put("/models/pricing", async (req, res) => {
+    const parsed = modelPricingUpdateSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return sendError(res, parsed.error.message, 422);
+    }
+    const payload = parsed.data;
+    await upsertModelPricing(ctx.db, {
+      companyId: req.companyId!,
+      providerType: payload.providerType,
+      modelId: payload.modelId,
+      displayName: payload.displayName ?? null,
+      inputUsdPer1M: payload.inputUsdPer1M.toFixed(6),
+      outputUsdPer1M: payload.outputUsdPer1M.toFixed(6),
+      currency: payload.currency ?? "USD",
+      updatedBy: req.actor?.id ?? null
+    });
+    return sendOk(res, { ok: true });
   });
 
   router.get("/heartbeats", async (req, res) => {

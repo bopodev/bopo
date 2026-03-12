@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -21,6 +21,7 @@ import { ApiError, apiDelete, apiGet, apiPost, apiPut } from "@/lib/api";
 import { agentAvatarSeed } from "@/lib/agent-avatar";
 import { cn } from "@/lib/utils";
 import { getStatusBadgeClassName } from "@/lib/status-presentation";
+import { getSupportedModelOptionsForProvider } from "@/lib/agent-runtime-options";
 import { isNoAssignedWorkRun, isStoppedRun, resolveWindowStart, summarizeCosts } from "@/lib/workspace-logic";
 import type { SectionLabel } from "@/lib/sections";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -43,6 +44,28 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
+import type { ModelPricingRow } from "@/components/workspace/types";
+
+const MODELS_PROVIDER_FALLBACKS = ["openai_api", "anthropic_api", "opencode"] as const;
+
+function resolveModelCatalogProvider(providerType: string) {
+  const normalizedProvider = providerType.trim();
+  if (normalizedProvider === "opencode") {
+    return "opencode";
+  }
+  if (normalizedProvider === "anthropic_api" || normalizedProvider === "claude_code") {
+    return "anthropic_api";
+  }
+  if (
+    normalizedProvider === "openai_api" ||
+    normalizedProvider === "codex" ||
+    normalizedProvider === "opencode" ||
+    normalizedProvider === "cursor"
+  ) {
+    return "openai_api";
+  }
+  return null;
+}
 
 const AgentRuntimeDefaultsCard = dynamic(
   () => import("@/components/agent-runtime-defaults-card").then((module) => module.AgentRuntimeDefaultsCard),
@@ -257,6 +280,10 @@ interface CostRow {
   projectId?: string | null;
   agentId?: string | null;
   providerType: string;
+  runtimeModelId?: string | null;
+  pricingProviderType?: string | null;
+  pricingModelId?: string | null;
+  pricingSource?: "exact" | "missing" | null;
   tokenInput: number;
   tokenOutput: number;
   usdCost: number;
@@ -353,6 +380,16 @@ function SectionHeading({
 
 function formatDateTime(value: string) {
   return new Date(value).toLocaleString();
+}
+
+function formatUsdCost(value: number) {
+  if (!Number.isFinite(value) || value <= 0) {
+    return "$0.00";
+  }
+  if (value < 0.01) {
+    return `$${value.toFixed(6)}`;
+  }
+  return `$${value.toFixed(2)}`;
 }
 
 function formatDate(value: string | null) {
@@ -510,6 +547,16 @@ export function WorkspaceClient({
   const [pluginBuilderHook, setPluginBuilderHook] = useState<(typeof pluginBuilderHooks)[number]>("beforeAdapterExecute");
   const [pluginBuilderCapabilities, setPluginBuilderCapabilities] = useState("emit_audit");
   const [pluginBuilderPromptTemplate, setPluginBuilderPromptTemplate] = useState("");
+  const [modelPricing, setModelPricing] = useState<ModelPricingRow[]>([]);
+  const [modelProviderFilter, setModelProviderFilter] = useState<string>("all");
+  const [modelQuery, setModelQuery] = useState("");
+  const [modelDialogOpen, setModelDialogOpen] = useState(false);
+  const [modelDialogValue, setModelDialogValue] = useState<{
+    providerType: string;
+    modelId: string;
+    inputUsdPer1M: string;
+    outputUsdPer1M: string;
+  } | null>(null);
   const onboardingRuntimeFallback = useMemo(() => {
     const ceo = agents.find((entry) => entry.role === "CEO" || entry.name === "CEO");
     if (!ceo || !isRuntimeDefaultsProviderType(ceo.providerType)) {
@@ -530,6 +577,7 @@ export function WorkspaceClient({
   const isRunsNav = activeNav === "Runs";
   const isCostsNav = activeNav === "Costs";
   const isPluginsNav = activeNav === "Plugins";
+  const isModelsNav = activeNav === "Models";
   const includeCostAggregations = isCostsNav || isDashboardNav;
 
   const isActionPending = useCallback(
@@ -537,7 +585,12 @@ export function WorkspaceClient({
     [pendingActionKeys]
   );
 
-  async function runCrudAction(action: () => Promise<void>, fallbackMessage: string, actionKey?: string) {
+  async function runCrudAction(
+    action: () => Promise<void>,
+    fallbackMessage: string,
+    actionKey?: string,
+    options?: { refresh?: boolean }
+  ) {
     setActionError(null);
     if (!companyId) {
       setActionError("Create or select a company first.");
@@ -551,7 +604,9 @@ export function WorkspaceClient({
     }
     try {
       await action();
-      router.refresh();
+      if (options?.refresh !== false) {
+        router.refresh();
+      }
     } catch (error) {
       if (error instanceof ApiError) {
         setActionError(error.message);
@@ -1388,6 +1443,147 @@ export function WorkspaceClient({
     }
     return null;
   }, [pluginBuilderId, pluginBuilderName, pluginBuilderPromptTemplate]);
+  const agentModelPairs = useMemo(() => {
+    const pairs: Array<{ providerType: string; modelId: string }> = [];
+    for (const agent of agents) {
+      const provider = resolveModelCatalogProvider(agent.providerType?.trim() ?? "");
+      if (!provider) continue;
+      const model =
+        agent.runtimeModel?.trim() ||
+        parseRuntimeModelFromStateBlob(agent.stateBlob);
+      if (!model) continue;
+      pairs.push({ providerType: provider, modelId: model });
+    }
+    const seen = new Set<string>();
+    const deduped: Array<{ providerType: string; modelId: string }> = [];
+    for (const pair of pairs) {
+      const key = `${pair.providerType}::${pair.modelId}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      deduped.push(pair);
+    }
+    return deduped;
+  }, [agents]);
+
+  const mergedModelPricing = useMemo<ModelPricingRow[]>(() => {
+    const byKey = new Map<string, ModelPricingRow>();
+    // Start with derived entries from agent models.
+    for (const pair of agentModelPairs) {
+      const key = `${pair.providerType}::${pair.modelId}`;
+      if (byKey.has(key)) continue;
+      byKey.set(key, {
+        providerType: pair.providerType,
+        modelId: pair.modelId,
+        displayName: null,
+        inputUsdPer1M: 0,
+        outputUsdPer1M: 0,
+        currency: "USD",
+        updatedAt: null,
+        updatedBy: null
+      });
+    }
+    // Overlay persisted pricing from API.
+    for (const row of modelPricing) {
+      const key = `${row.providerType}::${row.modelId}`;
+      byKey.set(key, row);
+    }
+    return Array.from(byKey.values()).sort((a, b) => {
+      if (a.providerType === b.providerType) {
+        return a.modelId.localeCompare(b.modelId);
+      }
+      return a.providerType.localeCompare(b.providerType);
+    });
+  }, [agentModelPairs, modelPricing]);
+
+  const configuredModelPricingKeys = useMemo(() => {
+    return new Set(modelPricing.map((row) => `${row.providerType.trim()}::${row.modelId.trim()}`));
+  }, [modelPricing]);
+
+  const missingModelPricingPairs = useMemo(() => {
+    return agentModelPairs.filter((pair) => !configuredModelPricingKeys.has(`${pair.providerType}::${pair.modelId}`));
+  }, [agentModelPairs, configuredModelPricingKeys]);
+
+  const availableModelProviders = useMemo(() => {
+    return [...MODELS_PROVIDER_FALLBACKS];
+  }, []);
+
+  const availableModelsByProvider = useMemo(() => {
+    const modelsByProvider = new Map<string, Set<string>>();
+    const addModel = (providerType: string, modelId: string | null | undefined) => {
+      const provider = resolveModelCatalogProvider(providerType);
+      const model = modelId?.trim();
+      if (!provider || !model) {
+        return;
+      }
+      const existing = modelsByProvider.get(provider) ?? new Set<string>();
+      existing.add(model);
+      modelsByProvider.set(provider, existing);
+    };
+    for (const row of mergedModelPricing) {
+      addModel(row.providerType, row.modelId);
+    }
+    for (const pair of agentModelPairs) {
+      addModel(pair.providerType, pair.modelId);
+    }
+    for (const providerType of MODELS_PROVIDER_FALLBACKS) {
+      const sourceProvider = providerType === "opencode" ? "openai_api" : providerType;
+      const defaults = getSupportedModelOptionsForProvider(sourceProvider).filter((option) => option.value.trim().length > 0);
+      for (const option of defaults) {
+        addModel(providerType, option.value);
+      }
+      if (providerType === "opencode") {
+        addModel("opencode", "big-pickle");
+      }
+    }
+    const normalized = new Map<string, string[]>();
+    for (const [providerType, models] of modelsByProvider.entries()) {
+      normalized.set(providerType, Array.from(models).sort());
+    }
+    return normalized;
+  }, [agentModelPairs, mergedModelPricing]);
+
+  const filteredModelPricing = useMemo(() => {
+    const rows = mergedModelPricing;
+    if (!isModelsNav) {
+      return rows;
+    }
+    const normalizedQuery = modelQuery.trim().toLowerCase();
+    return rows.filter((row) => {
+      if (modelProviderFilter !== "all" && row.providerType !== modelProviderFilter) {
+        return false;
+      }
+      if (!normalizedQuery) {
+        return true;
+      }
+      return (
+        row.modelId.toLowerCase().includes(normalizedQuery) ||
+        row.providerType.toLowerCase().includes(normalizedQuery)
+      );
+    });
+  }, [isModelsNav, mergedModelPricing, modelProviderFilter, modelQuery]);
+
+  useEffect(() => {
+    if (!companyId || !isModelsNav) {
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = (await apiGet("/observability/models/pricing", companyId)) as {
+          ok: true;
+          data: ModelPricingRow[];
+        };
+        if (!cancelled) {
+          setModelPricing(response.data);
+        }
+      } catch {
+        // Best-effort fetch; errors are surfaced via runCrudAction when saving.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId, isModelsNav]);
   const dashboardIssueStatusData = useMemo(() => {
     if (!isDashboardNav) {
       return [];
@@ -2115,15 +2311,36 @@ export function WorkspaceClient({
       {
         accessorKey: "usdCost",
         header: ({ column }) => <DataTableColumnHeader column={column} title="Cost" />,
-        cell: ({ row }) => <div className={styles.formatDurationContainer5}>${row.original.usdCost.toFixed(2)}</div>
+        cell: ({ row }) => <div className={styles.formatDurationContainer5}>{formatUsdCost(row.original.usdCost)}</div>
+      },
+      {
+        accessorKey: "pricingSource",
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Pricing" />,
+        cell: ({ row }) => {
+          const source = row.original.pricingSource ?? "missing";
+          return <Badge variant="outline">{source === "exact" ? "exact" : "missing"}</Badge>;
+        }
       },
       {
         id: "scope",
         header: "Scope",
         cell: ({ row }) => (
           <div className={styles.formatDurationContainer5}>
-            {row.original.agentId ? `agent:${shortId(row.original.agentId)}` : "agent:unscoped"}
-            {row.original.issueId ? ` · issue:${shortId(row.original.issueId)}` : ""}
+            {row.original.agentId && companyId ? (
+              <Link href={`/agents/${row.original.agentId}?companyId=${companyId}` as Route}>
+                {`Agent`}
+              </Link>
+            ) : (
+              "agent:unscoped"
+            )}
+            {row.original.issueId && companyId ? (
+              <>
+                {" · "}
+                <Link href={`/issues/${row.original.issueId}?companyId=${companyId}` as Route}>
+                  {`Issue`}
+                </Link>
+              </>
+            ) : null}
           </div>
         )
       },
@@ -2131,6 +2348,74 @@ export function WorkspaceClient({
         accessorKey: "createdAt",
         header: ({ column }) => <DataTableColumnHeader column={column} title="Created" />,
         cell: ({ row }) => <div className={styles.formatDurationContainer5}>{formatDateTime(row.original.createdAt)}</div>
+      }
+    ],
+    [companyId]
+  );
+
+  const modelPricingColumns = useMemo<ColumnDef<ModelPricingRow>[]>(
+    () => [
+      {
+        accessorKey: "providerType",
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Provider" />,
+        cell: ({ row }) => <div className={styles.formatDurationContainer1}>{row.original.providerType}</div>
+      },
+      {
+        accessorKey: "modelId",
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Model" />,
+        cell: ({ row }) => <div className={styles.formatDurationContainer1}>{row.original.modelId}</div>
+      },
+      {
+        accessorKey: "inputUsdPer1M",
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Input USD / 1M" />,
+        cell: ({ row }) => (
+          <div className={styles.formatDurationContainer5}>${row.original.inputUsdPer1M.toFixed(6)}</div>
+        )
+      },
+      {
+        accessorKey: "outputUsdPer1M",
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Output USD / 1M" />,
+        cell: ({ row }) => (
+          <div className={styles.formatDurationContainer5}>${row.original.outputUsdPer1M.toFixed(6)}</div>
+        )
+      },
+      {
+        id: "updated",
+        header: "Last updated",
+        cell: ({ row }) => (
+          <div className={styles.formatDurationContainer5}>
+            {row.original.updatedAt ? formatDateTime(row.original.updatedAt) : "n/a"}
+          </div>
+        )
+      },
+      {
+        id: "actions",
+        header: "Actions",
+        enableSorting: false,
+        cell: ({ row }) => {
+          const entry = row.original;
+          return (
+            <div className={styles.formatDurationContainer3}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const normalizedProvider =
+                    resolveModelCatalogProvider(entry.providerType) ?? "openai_api";
+                  setModelDialogValue({
+                    providerType: normalizedProvider,
+                    modelId: entry.modelId,
+                    inputUsdPer1M: entry.inputUsdPer1M.toString(),
+                    outputUsdPer1M: entry.outputUsdPer1M.toString()
+                  });
+                  setModelDialogOpen(true);
+                }}
+              >
+                Edit
+              </Button>
+            </div>
+          );
+        }
       }
     ],
     []
@@ -3224,7 +3509,7 @@ export function WorkspaceClient({
                   <MetricCard
                     label="Today · Output Tokens"
                     value={todayCostSummary.output.toLocaleString()}
-                    hint={`$${todayCostSummary.usd.toFixed(2)} spent`}
+                    hint={`${formatUsdCost(todayCostSummary.usd)} spent`}
                   />
                   <MetricCard
                     label={`${selectedMonthLabel} · Total Tokens`}
@@ -3233,7 +3518,7 @@ export function WorkspaceClient({
                   />
                   <MetricCard
                     label={`${selectedMonthLabel} · USD`}
-                    value={`$${selectedMonthSummary.usd.toFixed(2)}`}
+                    value={formatUsdCost(selectedMonthSummary.usd)}
                     hint={
                       activeCostMonth === "all"
                         ? "Across all recorded entries."
@@ -3399,7 +3684,7 @@ export function WorkspaceClient({
                 </div>
               </CardContent>
             </Card>
-            <AgentRuntimeDefaultsCard fallbackDefaults={onboardingRuntimeFallback} />
+            <AgentRuntimeDefaultsCard companyId={companyId} fallbackDefaults={onboardingRuntimeFallback} />
           </>
         );
       case "Plugins": {
@@ -3575,6 +3860,247 @@ export function WorkspaceClient({
           </>
         );
       }
+      case "Models":
+        return (
+          <>
+            <SectionHeading
+              title="Models"
+              description="Manage per-model input and output pricing used for LLM cost estimation."
+              actions={
+                <Button
+                  variant="default"
+                  size="sm"
+                  disabled={!companyId}
+                  onClick={() => {
+                    setModelDialogValue({
+                      providerType: "openai_api",
+                      modelId: "",
+                      inputUsdPer1M: "",
+                      outputUsdPer1M: ""
+                    });
+                    setModelDialogOpen(true);
+                  }}
+                >
+                  Add model
+                </Button>
+              }
+            />
+            {!companyId ? (
+              <EmptyState>Create or select a company to configure model pricing.</EmptyState>
+            ) : (
+              <>
+                {missingModelPricingPairs.length > 0 ? (
+                  <Alert>
+                    <AlertTitle>Missing pricing rows detected</AlertTitle>
+                    <AlertDescription>
+                      {missingModelPricingPairs.length} observed model
+                      {missingModelPricingPairs.length === 1 ? "" : "s"} do not have an exact pricing row yet.
+                      Runs are allowed, but those costs will be marked as missing pricing until rows are added.
+                    </AlertDescription>
+                  </Alert>
+                ) : null}
+                <DataTable
+                  columns={modelPricingColumns}
+                  data={filteredModelPricing}
+                  emptyMessage="No model pricing configured yet."
+                  toolbarActions={
+                    <div className={styles.governanceFiltersCardContent}>
+                      <Input
+                        value={modelQuery}
+                        onChange={(event) => setModelQuery(event.target.value)}
+                        placeholder="Search by model or provider..."
+                        className={styles.governanceFiltersInput}
+                      />
+                      <Select value={modelProviderFilter} onValueChange={setModelProviderFilter}>
+                        <SelectTrigger className={styles.governanceFiltersSelect}>
+                          <SelectValue placeholder="Provider" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All providers</SelectItem>
+                          {availableModelProviders.map((provider) => (
+                            <SelectItem key={provider} value={provider}>
+                              {provider}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  }
+                />
+                <Dialog
+                  open={modelDialogOpen}
+                  onOpenChange={(open) => {
+                    setModelDialogOpen(open);
+                    if (!open) {
+                      setModelDialogValue(null);
+                    }
+                  }}
+                >
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>{modelDialogValue && modelPricing.some((row) => row.providerType === modelDialogValue.providerType && row.modelId === modelDialogValue.modelId) ? "Edit pricing" : "Add model pricing"}</DialogTitle>
+                      <DialogDescription>Configure USD pricing per 1M tokens.</DialogDescription>
+                    </DialogHeader>
+                    {modelDialogValue ? (
+                      <form
+                        className={styles.modelPricingDialogForm}
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          const trimmedProvider = modelDialogValue.providerType.trim();
+                          const trimmedModelId = modelDialogValue.modelId.trim();
+                          if (!trimmedProvider || !trimmedModelId || !companyId) {
+                            return;
+                          }
+                          const inputRate = Number(modelDialogValue.inputUsdPer1M);
+                          const outputRate = Number(modelDialogValue.outputUsdPer1M);
+                          if (!Number.isFinite(inputRate) || inputRate < 0 || !Number.isFinite(outputRate) || outputRate < 0) {
+                            setActionError("Input and output rates must be valid non-negative numbers.");
+                            return;
+                          }
+                          void runCrudAction(
+                            async () => {
+                              await apiPut("/observability/models/pricing", companyId, {
+                                providerType: trimmedProvider,
+                                modelId: trimmedModelId,
+                                inputUsdPer1M: inputRate,
+                                outputUsdPer1M: outputRate
+                              });
+                              const response = (await apiGet("/observability/models/pricing", companyId)) as {
+                                ok: true;
+                                data: ModelPricingRow[];
+                              };
+                              setModelPricing(response.data);
+                              setModelDialogOpen(false);
+                              setModelDialogValue(null);
+                            },
+                            "Failed to save model pricing.",
+                            "models:save-pricing",
+                            { refresh: false }
+                          );
+                        }}
+                      >
+                        <FieldGroup className={styles.modelPricingDialogPrimaryGroup}>
+                          <Field>
+                            <FieldLabel>Provider</FieldLabel>
+                            <Select
+                              value={modelDialogValue.providerType.trim() ? modelDialogValue.providerType : undefined}
+                              onValueChange={(value) =>
+                                setModelDialogValue((current) =>
+                                  current
+                                    ? {
+                                        ...current,
+                                        providerType: value,
+                                        modelId: ""
+                                      }
+                                    : current
+                                )
+                              }
+                            >
+                              <SelectTrigger id="model-pricing-provider">
+                                <SelectValue placeholder="Select provider" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {availableModelProviders.map((provider) => (
+                                  <SelectItem key={provider} value={provider}>
+                                    {provider}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </Field>
+                          <Field>
+                            <FieldLabel>Model ID</FieldLabel>
+                            <Select
+                              value={modelDialogValue.modelId.trim() ? modelDialogValue.modelId : undefined}
+                              onValueChange={(value) =>
+                                setModelDialogValue((current) =>
+                                  current
+                                    ? {
+                                        ...current,
+                                        modelId: value
+                                      }
+                                    : current
+                                )
+                              }
+                              disabled={!modelDialogValue.providerType.trim()}
+                            >
+                              <SelectTrigger id="model-pricing-model-id">
+                                <SelectValue placeholder="Select model" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {(availableModelsByProvider.get(modelDialogValue.providerType.trim()) ?? []).map((modelId) => (
+                                  <SelectItem key={modelId} value={modelId}>
+                                    {modelId}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </Field>
+                        </FieldGroup>
+                        <FieldGroup className={styles.modelPricingDialogPricingGroup}>
+                          <Field>
+                            <FieldLabel htmlFor="model-pricing-input-rate">Input / 1M</FieldLabel>
+                            <Input
+                              id="model-pricing-input-rate"
+                              type="number"
+                              step="0.000001"
+                              min="0"
+                              value={modelDialogValue.inputUsdPer1M}
+                              onChange={(event) =>
+                                setModelDialogValue((current) =>
+                                  current
+                                    ? {
+                                        ...current,
+                                        inputUsdPer1M: event.target.value
+                                      }
+                                    : current
+                                )
+                              }
+                              required
+                            />
+                          </Field>
+                          <Field className={styles.modelPricingDialogField}>
+                            <FieldLabel htmlFor="model-pricing-output-rate">Output / 1M</FieldLabel>
+                            <Input
+                              id="model-pricing-output-rate"
+                              type="number"
+                              step="0.000001"
+                              min="0"
+                              value={modelDialogValue.outputUsdPer1M}
+                              onChange={(event) =>
+                                setModelDialogValue((current) =>
+                                  current
+                                    ? {
+                                        ...current,
+                                        outputUsdPer1M: event.target.value
+                                      }
+                                    : current
+                                )
+                              }
+                              required
+                            />
+                          </Field>
+                        </FieldGroup>
+                        <DialogFooter showCloseButton>
+                          <Button
+                            type="submit"
+                            disabled={
+                              !modelDialogValue.providerType.trim() ||
+                              !modelDialogValue.modelId.trim() ||
+                              isActionPending("models:save-pricing")
+                            }
+                          >
+                            Save
+                          </Button>
+                        </DialogFooter>
+                      </form>
+                    ) : null}
+                  </DialogContent>
+                </Dialog>
+              </>
+            )}
+          </>
+        );
       default:
         return (
           <>

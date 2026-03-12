@@ -208,10 +208,7 @@ export class GenericHeartbeatAdapter implements AgentAdapter {
       };
     }
 
-    const failedUsage = resolveFailedUsage(runtime, prompt, {
-      inputRate: 0.000001,
-      outputRate: 0.000004
-    });
+    const failedUsage = resolveFailedUsage(runtime);
     const failureDetail = resolveRuntimeFailureDetail(runtime);
     return {
       status: "failed",
@@ -511,6 +508,8 @@ export function createSkippedResult(providerLabel: string, providerKey: string, 
     tokenInput: 0,
     tokenOutput: 0,
     usdCost: 0,
+    pricingProviderType: resolveCanonicalPricingProviderKey(providerKey),
+    pricingModelId: context.runtime?.model?.trim() || null,
     outcome: toOutcome({
       kind: "skipped",
       issueIdsTouched: issueIdsTouched(context),
@@ -536,6 +535,8 @@ export async function runDirectApiWork(
       tokenInput: runtime.tokenInput ?? 0,
       tokenOutput: runtime.tokenOutput ?? 0,
       usdCost: runtime.usdCost ?? 0,
+      pricingProviderType: runtime.provider,
+      pricingModelId: runtime.model,
       outcome: toOutcome({
         kind: "completed",
         issueIdsTouched: issueIdsTouched(context),
@@ -572,6 +573,8 @@ export async function runDirectApiWork(
     tokenInput: 0,
     tokenOutput: 0,
     usdCost: 0,
+    pricingProviderType: provider,
+    pricingModelId: context.runtime?.model?.trim() || null,
     outcome: toOutcome({
       kind: "failed",
       issueIdsTouched: issueIdsTouched(context),
@@ -669,8 +672,10 @@ export async function runProviderWork(
   provider: "claude_code" | "codex",
   pricing: { inputRate: number; outputRate: number }
 ): Promise<AdapterExecutionResult> {
+  const pricingProviderType = resolveCanonicalPricingProviderKey(provider);
   const prompt = createPrompt(context);
   const runtime = await executeAgentRuntime(provider, prompt, context.runtime);
+  const pricingModelId = resolvePricingModelId(context.runtime?.model, runtime);
   if (runtime.ok) {
     if (!runtime.parsedUsage) {
       const detail = buildMissingStructuredOutputDetail(provider, runtime);
@@ -680,6 +685,8 @@ export async function runProviderWork(
         tokenInput: 0,
         tokenOutput: 0,
         usdCost: 0,
+        pricingProviderType,
+        pricingModelId,
         outcome: toOutcome({
           kind: "failed",
           issueIdsTouched: issueIdsTouched(context),
@@ -716,6 +723,8 @@ export async function runProviderWork(
         tokenInput: runtime.parsedUsage?.tokenInput ?? 0,
         tokenOutput: runtime.parsedUsage?.tokenOutput ?? 0,
         usdCost: runtime.parsedUsage?.usdCost ?? 0,
+        pricingProviderType,
+        pricingModelId,
         outcome: toOutcome({
           kind: "failed",
           issueIdsTouched: issueIdsTouched(context),
@@ -745,13 +754,9 @@ export async function runProviderWork(
         nextState: context.state
       };
     }
-    const fallbackOutputTokens = Math.max(Math.round(runtime.stdout.length / 4), 80);
-    const fallbackInputTokens = Math.max(Math.round(prompt.length / 4), 120);
-    const tokenInput = runtime.parsedUsage?.tokenInput ?? fallbackInputTokens;
-    const tokenOutput = runtime.parsedUsage?.tokenOutput ?? fallbackOutputTokens;
-    const usdCost =
-      runtime.parsedUsage?.usdCost ??
-      Number((tokenInput * pricing.inputRate + tokenOutput * pricing.outputRate).toFixed(6));
+    const tokenInput = runtime.parsedUsage?.tokenInput ?? 0;
+    const tokenOutput = runtime.parsedUsage?.tokenOutput ?? 0;
+    const usdCost = runtime.parsedUsage?.usdCost ?? 0;
     const summary = runtime.parsedUsage?.summary ?? `${provider} runtime finished in ${runtime.elapsedMs}ms.`;
 
     return {
@@ -760,6 +765,8 @@ export async function runProviderWork(
       tokenInput,
       tokenOutput,
       usdCost,
+      pricingProviderType,
+      pricingModelId,
       outcome: toOutcome({
         kind: "completed",
         issueIdsTouched: issueIdsTouched(context),
@@ -789,7 +796,7 @@ export async function runProviderWork(
       nextState: withProviderMetadata(context, provider, runtime.elapsedMs, runtime.code)
     };
   }
-  const failedUsage = resolveFailedUsage(runtime, prompt, pricing);
+  const failedUsage = resolveFailedUsage(runtime);
   const failureDetail = resolveRuntimeFailureDetail(runtime);
   return {
     status: "failed",
@@ -797,6 +804,8 @@ export async function runProviderWork(
     tokenInput: failedUsage.tokenInput,
     tokenOutput: failedUsage.tokenOutput,
     usdCost: failedUsage.usdCost,
+    pricingProviderType,
+    pricingModelId,
     outcome: toOutcome({
       kind: "failed",
       issueIdsTouched: issueIdsTouched(context),
@@ -901,6 +910,7 @@ export async function runCursorWork(context: HeartbeatContext): Promise<AdapterE
 export async function runOpenCodeWork(context: HeartbeatContext): Promise<AdapterExecutionResult> {
   const prompt = createPrompt(context);
   const model = context.runtime?.model?.trim();
+  const pricingIdentity = resolveOpenCodePricingIdentity(model);
   const runtimeTimeoutMs =
     context.runtime?.timeoutMs && context.runtime.timeoutMs > 0 ? context.runtime.timeoutMs : 5 * 60 * 1000;
   if (!model) {
@@ -910,6 +920,8 @@ export async function runOpenCodeWork(context: HeartbeatContext): Promise<Adapte
       tokenInput: 0,
       tokenOutput: 0,
       usdCost: 0,
+      pricingProviderType: pricingIdentity.pricingProviderType,
+      pricingModelId: pricingIdentity.pricingModelId,
       outcome: toOutcome({
         kind: "blocked",
         issueIdsTouched: issueIdsTouched(context),
@@ -936,6 +948,8 @@ export async function runOpenCodeWork(context: HeartbeatContext): Promise<Adapte
       tokenInput: 0,
       tokenOutput: 0,
       usdCost: 0,
+      pricingProviderType: pricingIdentity.pricingProviderType,
+      pricingModelId: pricingIdentity.pricingModelId,
       outcome: toOutcome({
         kind: "blocked",
         issueIdsTouched: issueIdsTouched(context),
@@ -977,14 +991,14 @@ export async function runOpenCodeWork(context: HeartbeatContext): Promise<Adapte
     return toProviderResult(context, "opencode", prompt, retry, {
       inputRate: 0.0000015,
       outputRate: 0.000008
-    });
+    }, undefined, pricingIdentity);
   }
   return toProviderResult(context, "opencode", prompt, runtime, {
     inputRate: 0.0000015,
     outputRate: 0.000008
   }, {
     currentSessionId: parsed.sessionId ?? null
-  });
+  }, pricingIdentity);
 }
 
 export function resolveFailedUsage(
@@ -998,9 +1012,7 @@ export function resolveFailedUsage(
     failureType?: "timeout" | "spawn_error" | "nonzero_exit";
     stdout: string;
     stderr: string;
-  },
-  prompt: string,
-  pricing: { inputRate: number; outputRate: number }
+  }
 ) {
   if (runtime.parsedUsage) {
     return {
@@ -1018,14 +1030,11 @@ export function resolveFailedUsage(
       source: "none" as const
     };
   }
-  const estimatedInput = Math.max(1, Math.floor(prompt.length / 4));
-  const estimatedOutput = Math.max(1, Math.floor((runtime.stdout.length + runtime.stderr.length) / 8));
-  const estimatedCost = Number((estimatedInput * pricing.inputRate + estimatedOutput * pricing.outputRate).toFixed(6));
   return {
-    tokenInput: estimatedInput,
-    tokenOutput: estimatedOutput,
-    usdCost: estimatedCost,
-    source: "estimated" as const
+    tokenInput: 0,
+    tokenOutput: 0,
+    usdCost: 0,
+    source: "none" as const
   };
 }
 
@@ -1099,8 +1108,15 @@ export function toProviderResult(
     }>;
   },
   pricing: { inputRate: number; outputRate: number },
-  sessionUpdate?: ProviderSessionUpdate
+  sessionUpdate?: ProviderSessionUpdate,
+  pricingIdentity?: {
+    pricingProviderType?: string | null;
+    pricingModelId?: string | null;
+  }
 ): AdapterExecutionResult {
+  const pricingProviderType = pricingIdentity?.pricingProviderType ?? resolveCanonicalPricingProviderKey(provider);
+  const pricingModelId =
+    pricingIdentity?.pricingModelId ?? resolvePricingModelId(context.runtime?.model, runtime);
   if (runtime.ok) {
     if (!runtime.parsedUsage) {
       const detail = buildMissingStructuredOutputDetail(provider, runtime);
@@ -1110,6 +1126,8 @@ export function toProviderResult(
         tokenInput: 0,
         tokenOutput: 0,
         usdCost: 0,
+        pricingProviderType,
+        pricingModelId,
         outcome: toOutcome({
           kind: "failed",
           issueIdsTouched: issueIdsTouched(context),
@@ -1139,13 +1157,9 @@ export function toProviderResult(
         nextState: applyProviderSessionState(context, provider, sessionUpdate)
       };
     }
-    const fallbackOutputTokens = Math.max(Math.round(runtime.stdout.length / 4), 80);
-    const fallbackInputTokens = Math.max(Math.round(prompt.length / 4), 120);
-    const tokenInput = runtime.parsedUsage?.tokenInput ?? fallbackInputTokens;
-    const tokenOutput = runtime.parsedUsage?.tokenOutput ?? fallbackOutputTokens;
-    const usdCost =
-      runtime.parsedUsage?.usdCost ??
-      Number((tokenInput * pricing.inputRate + tokenOutput * pricing.outputRate).toFixed(6));
+    const tokenInput = runtime.parsedUsage?.tokenInput ?? 0;
+    const tokenOutput = runtime.parsedUsage?.tokenOutput ?? 0;
+    const usdCost = runtime.parsedUsage?.usdCost ?? 0;
     const summary = runtime.parsedUsage?.summary ?? `${provider} runtime finished in ${runtime.elapsedMs}ms.`;
     return {
       status: "ok",
@@ -1153,6 +1167,8 @@ export function toProviderResult(
       tokenInput,
       tokenOutput,
       usdCost,
+      pricingProviderType,
+      pricingModelId,
       outcome: toOutcome({
         kind: "completed",
         issueIdsTouched: issueIdsTouched(context),
@@ -1183,7 +1199,7 @@ export function toProviderResult(
       nextState: applyProviderSessionState(context, provider, sessionUpdate, runtime.elapsedMs, runtime.code)
     };
   }
-  const failedUsage = resolveFailedUsage(runtime, prompt, pricing);
+  const failedUsage = resolveFailedUsage(runtime);
   const failureDetail = resolveRuntimeFailureDetail(runtime);
   return {
     status: "failed",
@@ -1191,6 +1207,8 @@ export function toProviderResult(
     tokenInput: failedUsage.tokenInput,
     tokenOutput: failedUsage.tokenOutput,
     usdCost: failedUsage.usdCost,
+    pricingProviderType,
+    pricingModelId,
     outcome: toOutcome({
       kind: "failed",
       issueIdsTouched: issueIdsTouched(context),
@@ -1330,6 +1348,107 @@ export function resolveRuntimeCommand(providerType: AgentProviderType, runtime?:
   if (providerType === "cursor") return "cursor";
   if (providerType === "opencode") return "opencode";
   return providerType;
+}
+
+function resolveCanonicalPricingProviderKey(providerType: string) {
+  if (providerType === "codex" || providerType === "cursor") {
+    return "openai_api";
+  }
+  if (providerType === "claude_code") {
+    return "anthropic_api";
+  }
+  if (providerType === "openai_api" || providerType === "anthropic_api" || providerType === "opencode") {
+    return providerType;
+  }
+  return null;
+}
+
+function resolveOpenCodePricingIdentity(model: string | null | undefined) {
+  const normalizedModel = model?.trim() || null;
+  if (!normalizedModel) {
+    return {
+      pricingProviderType: "opencode",
+      pricingModelId: null
+    };
+  }
+  const slashIndex = normalizedModel.indexOf("/");
+  if (slashIndex <= 0 || slashIndex >= normalizedModel.length - 1) {
+    return {
+      pricingProviderType: "opencode",
+      pricingModelId: normalizedModel
+    };
+  }
+  const upstreamProvider = normalizedModel.slice(0, slashIndex).toLowerCase();
+  const upstreamModelId = normalizedModel.slice(slashIndex + 1).trim();
+  if (upstreamProvider === "openai" || upstreamProvider === "openai_api") {
+    return {
+      pricingProviderType: "openai_api",
+      pricingModelId: upstreamModelId || normalizedModel
+    };
+  }
+  if (upstreamProvider === "anthropic" || upstreamProvider === "anthropic_api") {
+    return {
+      pricingProviderType: "anthropic_api",
+      pricingModelId: upstreamModelId || normalizedModel
+    };
+  }
+  return {
+    pricingProviderType: "opencode",
+    pricingModelId: normalizedModel
+  };
+}
+
+function resolvePricingModelId(
+  configuredModel: string | null | undefined,
+  runtime: {
+    transcript?: Array<{ kind: string; text?: string }>;
+    stderr?: string;
+    stdout?: string;
+  } | null | undefined
+) {
+  const normalizedConfigured = configuredModel?.trim();
+  if (normalizedConfigured) {
+    return normalizedConfigured;
+  }
+  return extractModelIdFromTranscript(runtime?.transcript) ?? extractModelIdFromText(runtime?.stderr, runtime?.stdout) ?? null;
+}
+
+function extractModelIdFromTranscript(transcript: Array<{ kind: string; text?: string }> | undefined) {
+  if (!transcript) {
+    return null;
+  }
+  for (const event of transcript) {
+    if (event.kind !== "system" || typeof event.text !== "string") {
+      continue;
+    }
+    const markerIndex = event.text.indexOf("model:");
+    if (markerIndex < 0) {
+      continue;
+    }
+    const afterMarker = event.text.slice(markerIndex + "model:".length).trim();
+    if (!afterMarker) {
+      continue;
+    }
+    const modelToken = afterMarker.split(/\s+/)[0]?.trim();
+    if (modelToken) {
+      return modelToken;
+    }
+  }
+  return null;
+}
+
+function extractModelIdFromText(...chunks: Array<string | undefined>) {
+  for (const chunk of chunks) {
+    if (!chunk) {
+      continue;
+    }
+    const match = chunk.match(/(?:^|\n)\s*model:\s*([^\s\n]+)/i);
+    const modelId = match?.[1]?.trim();
+    if (modelId) {
+      return modelId;
+    }
+  }
+  return null;
 }
 
 export async function runRuntimeProbe(providerType: AgentProviderType, runtime?: AgentRuntimeConfig) {

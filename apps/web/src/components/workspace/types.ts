@@ -132,10 +132,26 @@ export interface CostRow {
   projectId?: string | null;
   agentId?: string | null;
   providerType: string;
+  runtimeModelId?: string | null;
+  pricingProviderType?: string | null;
+  pricingModelId?: string | null;
+  pricingSource?: "exact" | "missing" | null;
   tokenInput: number;
   tokenOutput: number;
   usdCost: number;
   createdAt: string;
+}
+
+export interface ModelPricingRow {
+  companyId?: string;
+  providerType: string;
+  modelId: string;
+  displayName: string | null;
+  inputUsdPer1M: number;
+  outputUsdPer1M: number;
+  currency: string;
+  updatedAt: string | null;
+  updatedBy: string | null;
 }
 
 export interface ProjectRow {
