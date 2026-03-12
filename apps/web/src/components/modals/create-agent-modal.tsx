@@ -803,6 +803,8 @@ export function CreateAgentModal({
                 </FieldContent>
               </Field>
             </FieldGroup>
+            </section>
+            <section className={styles.createAgentModalSection}>
             <FieldGroup>
               <Field>
                 <FieldLabel htmlFor="agent-bootstrap-prompt">Bootstrap prompt (first run)</FieldLabel>

@@ -1710,6 +1710,26 @@ export function WorkspaceClient({
         header: ({ column }) => <DataTableColumnHeader column={column} title="Role" />
       },
       {
+        id: "reportTo",
+        accessorFn: (row) => (row.managerAgentId ? (agentNameById.get(row.managerAgentId) ?? "Unknown") : "None"),
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Report to" />,
+        cell: ({ row }) => {
+          const managerId = row.original.managerAgentId;
+          if (!managerId) {
+            return <span>None</span>;
+          }
+          const managerName = agentNameById.get(managerId);
+          if (!managerName) {
+            return <span>Unknown</span>;
+          }
+          return (
+            <Link href={`/agents/${managerId}?companyId=${companyId || ""}` as Route} className={styles.renderSectionActionsLink}>
+              {managerName}
+            </Link>
+          );
+        }
+      },
+      {
         accessorKey: "providerType",
         header: ({ column }) => <DataTableColumnHeader column={column} title="Provider" />,
         cell: ({ row }) => <Badge variant="outline">{row.original.providerType}</Badge>
@@ -1782,7 +1802,7 @@ export function WorkspaceClient({
         }
       }
     ],
-    [companyId, isActionPending]
+    [agentNameById, agents, companyId, isActionPending, onboardingRuntimeFallback, suggestedAgentRuntimeCwd]
   );
 
   const approvalColumns = useMemo<ColumnDef<ApprovalRow>[]>(
