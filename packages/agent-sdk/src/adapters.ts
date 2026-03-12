@@ -2201,6 +2201,8 @@ export function createPrompt(context: HeartbeatContext) {
   const controlPlaneApiBaseUrl =
     context.runtime?.env?.BOPODEV_API_BASE_URL?.trim() || context.runtime?.env?.BOPODEV_API_URL?.trim() || "";
   const hasControlPlaneHeaders = Boolean(context.runtime?.env?.BOPODEV_REQUEST_HEADERS_JSON?.trim());
+  const safeControlPlaneCurl =
+    'curl -sS -H "x-company-id: $BOPODEV_COMPANY_ID" -H "x-actor-type: $BOPODEV_ACTOR_TYPE" -H "x-actor-id: $BOPODEV_ACTOR_ID" -H "x-actor-companies: $BOPODEV_ACTOR_COMPANIES" -H "x-actor-permissions: $BOPODEV_ACTOR_PERMISSIONS" "$BOPODEV_API_BASE_URL/agents"';
   const controlPlaneDirectives = [
     "Control-plane API directives:",
     controlPlaneApiBaseUrl
@@ -2209,6 +2211,8 @@ export function createPrompt(context: HeartbeatContext) {
     "- Never guess fallback URLs such as localhost:3000.",
     "- For curl requests, pass control-plane headers directly from env vars (`BOPODEV_COMPANY_ID`, `BOPODEV_ACTOR_TYPE`, `BOPODEV_ACTOR_ID`, `BOPODEV_ACTOR_COMPANIES`, `BOPODEV_ACTOR_PERMISSIONS`).",
     "- Use BOPODEV_REQUEST_HEADERS_JSON only as a compatibility fallback when direct vars are unavailable.",
+    `- Safe example command (copy and edit path only): ${safeControlPlaneCurl}`,
+    "- Avoid building curl headers by parsing JSON in shell unless direct header env vars are unavailable.",
     hasControlPlaneHeaders
       ? "- BOPODEV_REQUEST_HEADERS_JSON is present in env."
       : "- BOPODEV_REQUEST_HEADERS_JSON is missing. Report this as blocker."
