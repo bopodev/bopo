@@ -254,8 +254,13 @@ export function ProjectDetailPageClient({
           <MetricCard label="Status" value={project.status} />
           <MetricCard label="Total issues" value={issues.length} />
           <MetricCard label="Open issues" value={issues.filter((issue) => issue.status !== "done" && issue.status !== "canceled").length} />
-          <MetricCard label="Total cost" value={costSummary.usd.toFixed(2)} />
+          <MetricCard label="Total cost" value={'$' + costSummary.usd.toFixed(2)} />
       </div>
+
+      <SectionHeading
+        title="Issues"
+        description={"View and manage project issues."}
+      />
 
       <DataTable
             columns={issueColumns}
@@ -309,9 +314,8 @@ export function ProjectDetailPageClient({
           <PropertyRow label="Description" value={projectDescription} />
           <PropertyRow label="Goals" value={linkedGoals.length ? linkedGoals.map((goal) => goal.title).join(", ") : "No linked goals"} />
           <PropertyRow label="Planned start" value={formatDate(project.plannedStartAt)} />
-          <PropertyRow label="Primary workspace" value={project.primaryWorkspace?.name ?? "Not set"} />
-          <PropertyRow label="Workspace location" value={project.primaryWorkspace?.cwd ?? project.primaryWorkspace?.repoUrl ?? "Not set"} />
-          <PropertyRow label="Workspaces" value={workspaceSummary} />
+          <PropertyRow label="Workspace" value={project.primaryWorkspace?.name ?? "Not set"} />
+          <PropertyRow label="Workspace path" value={project.primaryWorkspace?.cwd ?? project.primaryWorkspace?.repoUrl ?? "Not set"} />
         </CardContent>
       </Card>
     </div>
