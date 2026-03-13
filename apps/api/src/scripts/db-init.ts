@@ -1,7 +1,8 @@
 import { bootstrapDatabase } from "bopodev-db";
 
 async function main() {
-  const { client } = await bootstrapDatabase(process.env.BOPO_DB_PATH);
+  const dbPath = normalizeOptionalDbPath(process.env.BOPO_DB_PATH);
+  const { client } = await bootstrapDatabase(dbPath);
   const maybeClose = (client as { close?: () => Promise<void> }).close;
   if (maybeClose) {
     await maybeClose.call(client);
@@ -11,3 +12,8 @@ async function main() {
 }
 
 void main();
+
+function normalizeOptionalDbPath(value: string | undefined) {
+  const normalized = value?.trim();
+  return normalized && normalized.length > 0 ? normalized : undefined;
+}

@@ -14,6 +14,7 @@ import {
   createIssue,
   createProject
 } from "../packages/db/src/index";
+import { issueActorToken } from "../apps/api/src/security/actor-token";
 
 type RouteCase = {
   name: string;
@@ -221,6 +222,44 @@ describe("authorization route matrix", { timeout: 30_000 }, () => {
       .set("x-actor-id", "member-observability-allowed")
       .set("x-actor-companies", companyId);
     expect(allowed.status).toBe(200);
+  });
+
+  it("requires actor identity in authenticated mode and accepts bearer actor token", async () => {
+    const previousMode = process.env.BOPO_DEPLOYMENT_MODE;
+    const previousSecret = process.env.BOPO_AUTH_TOKEN_SECRET;
+    process.env.BOPO_DEPLOYMENT_MODE = "authenticated_private";
+    process.env.BOPO_AUTH_TOKEN_SECRET = "authz-test-secret";
+    try {
+      const missingIdentity = await request(app).get("/companies").set("x-company-id", companyId);
+      expect(missingIdentity.status).toBe(401);
+
+      const token = issueActorToken(
+        {
+          actorType: "member",
+          actorId: "member-token",
+          actorCompanies: [companyId],
+          actorPermissions: []
+        },
+        process.env.BOPO_AUTH_TOKEN_SECRET
+      );
+      const tokenRequest = await request(app)
+        .get("/companies")
+        .set("x-company-id", companyId)
+        .set("authorization", `Bearer ${token}`);
+      expect(tokenRequest.status).toBe(200);
+      expect(tokenRequest.body.ok).toBe(true);
+    } finally {
+      if (previousMode === undefined) {
+        delete process.env.BOPO_DEPLOYMENT_MODE;
+      } else {
+        process.env.BOPO_DEPLOYMENT_MODE = previousMode;
+      }
+      if (previousSecret === undefined) {
+        delete process.env.BOPO_AUTH_TOKEN_SECRET;
+      } else {
+        process.env.BOPO_AUTH_TOKEN_SECRET = previousSecret;
+      }
+    }
   });
 
   async function send(

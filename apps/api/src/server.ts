@@ -11,13 +11,25 @@ import { loadGovernanceRealtimeSnapshot } from "./realtime/governance";
 import { loadOfficeSpaceRealtimeSnapshot } from "./realtime/office-space";
 import { loadHeartbeatRunsRealtimeSnapshot } from "./realtime/heartbeat-runs";
 import { attachRealtimeHub } from "./realtime/hub";
+import {
+  isAuthenticatedMode,
+  resolveAllowedHostnames,
+  resolveAllowedOrigins,
+  resolveDeploymentMode,
+  resolvePublicBaseUrl
+} from "./security/deployment-mode";
 import { ensureBuiltinPluginsRegistered } from "./services/plugin-runtime";
 import { createHeartbeatScheduler } from "./worker/scheduler";
 
 loadApiEnv();
 
 async function main() {
-  const dbPath = process.env.BOPO_DB_PATH;
+  const deploymentMode = resolveDeploymentMode();
+  const allowedOrigins = resolveAllowedOrigins(deploymentMode);
+  const allowedHostnames = resolveAllowedHostnames(deploymentMode);
+  const publicBaseUrl = resolvePublicBaseUrl();
+  validateDeploymentConfiguration(deploymentMode, allowedOrigins, allowedHostnames, publicBaseUrl);
+  const dbPath = normalizeOptionalDbPath(process.env.BOPO_DB_PATH);
   const port = Number(process.env.PORT ?? 4020);
   const { db } = await bootstrapDatabase(dbPath);
   const existingCompanies = await listCompanies(db);
@@ -92,17 +104,20 @@ async function main() {
       "heartbeat-runs": (companyId) => loadHeartbeatRunsRealtimeSnapshot(db, companyId)
     }
   });
-  const app = createApp({ db, getRuntimeHealth, realtimeHub });
+  const app = createApp({ db, deploymentMode, allowedOrigins, getRuntimeHealth, realtimeHub });
   server.on("request", app);
   server.listen(port, () => {
     // eslint-disable-next-line no-console
-    console.log(`BopoDev API running on http://localhost:${port}`);
+    console.log(`BopoDev API running in ${deploymentMode} mode on port ${port}`);
   });
 
   const defaultCompanyId = process.env.BOPO_DEFAULT_COMPANY_ID;
   const schedulerCompanyId = await resolveSchedulerCompanyId(db, defaultCompanyId ?? null);
-  if (schedulerCompanyId) {
+  if (schedulerCompanyId && shouldStartScheduler()) {
     createHeartbeatScheduler(db, schedulerCompanyId, realtimeHub);
+  } else if (schedulerCompanyId) {
+    // eslint-disable-next-line no-console
+    console.log("[startup] Scheduler disabled for this instance (BOPO_SCHEDULER_ROLE is follower/off).");
   }
 }
 
@@ -184,6 +199,49 @@ function emitOpenCodePreflightWarning(health: RuntimeCommandHealth) {
   }
 }
 
+function validateDeploymentConfiguration(
+  deploymentMode: ReturnType<typeof resolveDeploymentMode>,
+  allowedOrigins: string[],
+  allowedHostnames: string[],
+  publicBaseUrl: URL | null
+) {
+  if (deploymentMode === "authenticated_public" && !publicBaseUrl) {
+    throw new Error("BOPO_PUBLIC_BASE_URL is required in authenticated_public mode.");
+  }
+  if (isAuthenticatedMode(deploymentMode) && process.env.BOPO_AUTH_TOKEN_SECRET?.trim() === "") {
+    throw new Error("BOPO_AUTH_TOKEN_SECRET must not be empty when set.");
+  }
+  if (isAuthenticatedMode(deploymentMode) && !process.env.BOPO_AUTH_TOKEN_SECRET?.trim()) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      "[startup] BOPO_AUTH_TOKEN_SECRET is not set. Authenticated modes will require BOPO_TRUST_ACTOR_HEADERS=1 behind a trusted proxy."
+    );
+  }
+  if (isAuthenticatedMode(deploymentMode) && process.env.BOPO_TRUST_ACTOR_HEADERS !== "1" && !process.env.BOPO_AUTH_TOKEN_SECRET?.trim()) {
+    throw new Error(
+      "Authenticated mode requires either BOPO_AUTH_TOKEN_SECRET (token identity) or BOPO_TRUST_ACTOR_HEADERS=1 (trusted proxy headers)."
+    );
+  }
+  if (isAuthenticatedMode(deploymentMode) && process.env.BOPO_ALLOW_LOCAL_BOARD_FALLBACK === "1") {
+    throw new Error("BOPO_ALLOW_LOCAL_BOARD_FALLBACK cannot be enabled in authenticated modes.");
+  }
+  // eslint-disable-next-line no-console
+  console.log(
+    `[startup] Deployment config: mode=${deploymentMode} origins=${allowedOrigins.join(",")} hosts=${allowedHostnames.join(",")}`
+  );
+}
+
+function shouldStartScheduler() {
+  const rawRole = (process.env.BOPO_SCHEDULER_ROLE ?? "auto").trim().toLowerCase();
+  if (rawRole === "off" || rawRole === "follower") {
+    return false;
+  }
+  if (rawRole === "leader" || rawRole === "auto") {
+    return true;
+  }
+  throw new Error(`Invalid BOPO_SCHEDULER_ROLE '${rawRole}'. Expected one of: auto, leader, follower, off.`);
+}
+
 function loadApiEnv() {
   const sourceDir = dirname(fileURLToPath(import.meta.url));
   const repoRoot = resolve(sourceDir, "../../../");
@@ -191,4 +249,9 @@ function loadApiEnv() {
   for (const path of candidates) {
     loadDotenv({ path, override: false, quiet: true });
   }
+}
+
+function normalizeOptionalDbPath(value: string | undefined) {
+  const normalized = value?.trim();
+  return normalized && normalized.length > 0 ? normalized : undefined;
 }

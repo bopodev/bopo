@@ -5,6 +5,8 @@ import {
   type RealtimeMessage
 } from "bopodev-contracts";
 import { WebSocket, WebSocketServer } from "ws";
+import { verifyActorToken } from "../security/actor-token";
+import { isAuthenticatedMode, resolveDeploymentMode } from "../security/deployment-mode";
 
 type RealtimeEventMessage = Extract<RealtimeMessage, { kind: "event" }>;
 type RealtimeBootstrapLoader = (companyId: string) => Promise<RealtimeEventMessage>;
@@ -25,7 +27,7 @@ export function attachRealtimeHub(
 
   wss.on("connection", async (socket, request) => {
     const subscription = getSubscription(request.url);
-    if (!subscription || !canSubscribeToCompany(request.headers, subscription.companyId)) {
+    if (!subscription || !canSubscribeToCompany(request.url, request.headers, subscription.companyId)) {
       socket.close(1008, "Invalid realtime subscription");
       return;
     }
@@ -132,13 +134,31 @@ function getSubscription(requestUrl: string | undefined) {
 }
 
 function canSubscribeToCompany(
+  requestUrl: string | undefined,
   headers: Record<string, string | string[] | undefined>,
   companyId: string
 ) {
+  const deploymentMode = resolveDeploymentMode();
+  const tokenSecret = process.env.BOPO_AUTH_TOKEN_SECRET?.trim() || "";
+  const tokenIdentity = tokenSecret ? verifyActorToken(readRealtimeTokenFromUrl(requestUrl), tokenSecret) : null;
+  if (tokenIdentity) {
+    if (tokenIdentity.type === "board") {
+      return true;
+    }
+    return tokenIdentity.companyIds?.includes(companyId) ?? false;
+  }
   const actorType = readHeader(headers, "x-actor-type")?.toLowerCase();
   const actorCompanies = parseCommaList(readHeader(headers, "x-actor-companies"));
   const hasActorHeaders = Boolean(actorType || actorCompanies.length > 0);
-  const allowLocalBoardFallback = process.env.NODE_ENV !== "production" && process.env.BOPO_ALLOW_LOCAL_BOARD_FALLBACK !== "0";
+  const allowLocalBoardFallback =
+    deploymentMode === "local" && process.env.NODE_ENV !== "production" && process.env.BOPO_ALLOW_LOCAL_BOARD_FALLBACK !== "0";
+  const trustActorHeaders = deploymentMode === "local" || process.env.BOPO_TRUST_ACTOR_HEADERS === "1";
+  if (isAuthenticatedMode(deploymentMode) && !hasActorHeaders) {
+    return false;
+  }
+  if (isAuthenticatedMode(deploymentMode) && hasActorHeaders && !trustActorHeaders) {
+    return false;
+  }
 
   if (!hasActorHeaders) {
     return allowLocalBoardFallback;
@@ -147,6 +167,15 @@ function canSubscribeToCompany(
     return true;
   }
   return actorCompanies.includes(companyId);
+}
+
+function readRealtimeTokenFromUrl(requestUrl: string | undefined) {
+  if (!requestUrl) {
+    return null;
+  }
+  const url = new URL(requestUrl, "http://localhost");
+  const token = url.searchParams.get("authToken")?.trim();
+  return token && token.length > 0 ? token : null;
 }
 
 function readHeader(headers: Record<string, string | string[] | undefined>, name: string) {

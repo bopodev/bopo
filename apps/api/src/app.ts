@@ -6,6 +6,7 @@ import { RepositoryValidationError } from "bopodev-db";
 import { nanoid } from "nanoid";
 import type { AppContext } from "./context";
 import { createAgentsRouter } from "./routes/agents";
+import { createAuthRouter } from "./routes/auth";
 import { createCompaniesRouter } from "./routes/companies";
 import { createGoalsRouter } from "./routes/goals";
 import { createGovernanceRouter } from "./routes/governance";
@@ -16,10 +17,37 @@ import { createProjectsRouter } from "./routes/projects";
 import { createPluginsRouter } from "./routes/plugins";
 import { sendError } from "./http";
 import { attachRequestActor } from "./middleware/request-actor";
+import { resolveAllowedOrigins, resolveDeploymentMode } from "./security/deployment-mode";
 
 export function createApp(ctx: AppContext) {
   const app = express();
-  app.use(cors());
+  const deploymentMode = ctx.deploymentMode ?? resolveDeploymentMode();
+  const allowedOrigins = ctx.allowedOrigins ?? resolveAllowedOrigins(deploymentMode);
+  app.use(
+    cors({
+      origin(origin, callback) {
+        if (!origin) {
+          callback(null, true);
+          return;
+        }
+        if (
+          deploymentMode === "local" &&
+          (origin.startsWith("http://localhost:") || origin.startsWith("http://127.0.0.1:"))
+        ) {
+          callback(null, true);
+          return;
+        }
+        if (allowedOrigins.includes(origin)) {
+          callback(null, true);
+          return;
+        }
+        callback(new Error(`CORS origin denied: ${origin}`));
+      },
+      credentials: true,
+      methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+      allowedHeaders: ["content-type", "x-company-id", "authorization", "x-client-trace-id", "x-bopo-actor-token"]
+    })
+  );
   app.use(express.json());
   app.use(attachRequestActor);
 
@@ -55,6 +83,7 @@ export function createApp(ctx: AppContext) {
     });
   });
 
+  app.use("/auth", createAuthRouter(ctx));
   app.use("/companies", createCompaniesRouter(ctx));
   app.use("/projects", createProjectsRouter(ctx));
   app.use("/issues", createIssuesRouter(ctx));

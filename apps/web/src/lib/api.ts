@@ -102,6 +102,10 @@ export function getRealtimeUrl(companyId: string, channels: RealtimeChannel[]) {
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   url.searchParams.set("companyId", companyId);
   url.searchParams.set("channels", channels.join(","));
+  const token = readActorToken();
+  if (token) {
+    url.searchParams.set("authToken", token);
+  }
   return url.toString();
 }
 
@@ -123,7 +127,8 @@ async function requestWithRetry<T>(
         headers: {
           ...(body && !(body instanceof FormData) ? { "content-type": "application/json" } : {}),
           "x-company-id": companyId,
-          "x-client-trace-id": traceId
+          "x-client-trace-id": traceId,
+          ...(readActorToken() ? { authorization: `Bearer ${readActorToken()}` } : {})
         },
         ...(method === "GET" ? { cache: "no-store" } : {}),
         ...(body ? { body: body instanceof FormData ? body : JSON.stringify(body) } : {})
@@ -142,6 +147,15 @@ async function requestWithRetry<T>(
       await delay(attempt * 200);
     }
   }
+}
+
+function readActorToken() {
+  const fromEnv = process.env.NEXT_PUBLIC_BOPO_ACTOR_TOKEN?.trim();
+  if (typeof window === "undefined") {
+    return fromEnv || "";
+  }
+  const fromStorage = window.localStorage.getItem("bopo.actorToken")?.trim();
+  return fromStorage || fromEnv || "";
 }
 
 function createTraceId() {

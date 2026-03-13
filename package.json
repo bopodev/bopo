@@ -19,6 +19,7 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
+    "smoke:vps": "sh scripts/smoke-vps.sh",
     "publish:all:only": "pnpm -r --filter bopodev-contracts --filter bopodev-db --filter bopodev-agent-sdk --filter bopodev-ui --filter bopodev-api --filter bopodev publish --access public --no-git-checks",
     "publish:all": "pnpm build && pnpm run publish:all:only",
     "publish:all:dry": "pnpm build && pnpm run publish:all:only -- --dry-run"

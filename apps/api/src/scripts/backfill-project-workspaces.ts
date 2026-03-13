@@ -105,8 +105,9 @@ async function isDirectoryWritable(path: string) {
 }
 
 async function main() {
+  const dbPath = normalizeOptionalDbPath(process.env.BOPO_DB_PATH);
   const summary = await backfillProjectWorkspaces({
-    dbPath: process.env.BOPO_DB_PATH,
+    dbPath,
     dryRun: process.env.BOPO_BACKFILL_DRY_RUN !== "0"
   });
   // eslint-disable-next-line no-console
@@ -115,4 +116,9 @@ async function main() {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   void main();
+}
+
+function normalizeOptionalDbPath(value: string | undefined) {
+  const normalized = value?.trim();
+  return normalized && normalized.length > 0 ? normalized : undefined;
 }

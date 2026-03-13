@@ -53,6 +53,7 @@ const DEFAULT_COMPANY_NAME_ENV = "BOPO_DEFAULT_COMPANY_NAME";
 const DEFAULT_COMPANY_ID_ENV = "BOPO_DEFAULT_COMPANY_ID";
 const DEFAULT_PUBLIC_COMPANY_ID_ENV = "NEXT_PUBLIC_DEFAULT_COMPANY_ID";
 const DEFAULT_AGENT_PROVIDER_ENV = "BOPO_DEFAULT_AGENT_PROVIDER";
+const DEFAULT_DEPLOYMENT_MODE_ENV = "BOPO_DEPLOYMENT_MODE";
 const DEFAULT_ENV_TEMPLATE = "NEXT_PUBLIC_API_URL=http://localhost:4020\n";
 const CLI_ONBOARD_VISIBLE_PROVIDERS: Array<{ value: AgentProvider; label: string }> = [
   { value: "codex", label: "Codex" },
@@ -172,8 +173,27 @@ export async function runOnboardFlow(options: OnboardOptions, deps: OnboardDeps 
     envSpin.stop("Created .env with defaults (.env.example not found)");
   }
   const envPath = join(workspaceRoot, ".env");
+  await sanitizeBlankDbPathEnvEntry(envPath);
   dotenv.config({ path: envPath });
   const envValues = await readEnvValues(envPath);
+  const configuredDbPath = normalizeOptionalEnvValue(process.env.BOPO_DB_PATH);
+  if (configuredDbPath) {
+    process.env.BOPO_DB_PATH = configuredDbPath;
+  } else {
+    delete process.env.BOPO_DB_PATH;
+  }
+  const deploymentMode = envValues[DEFAULT_DEPLOYMENT_MODE_ENV]?.trim() ?? "";
+  if (deploymentMode.length === 0 || deploymentMode !== "local") {
+    await updateEnvFile(envPath, { [DEFAULT_DEPLOYMENT_MODE_ENV]: "local" });
+    process.env[DEFAULT_DEPLOYMENT_MODE_ENV] = "local";
+    printCheck(
+      "ok",
+      "Deployment mode",
+      deploymentMode.length === 0 ? "local (defaulted for local onboarding)" : `local (was ${deploymentMode})`
+    );
+  } else {
+    printCheck("ok", "Deployment mode", "local");
+  }
 
   let companyName = envValues[DEFAULT_COMPANY_NAME_ENV]?.trim() ?? "";
   if (companyName.length > 0) {
@@ -196,13 +216,13 @@ export async function runOnboardFlow(options: OnboardOptions, deps: OnboardDeps 
 
   const dbSpin = spinner();
   dbSpin.start("Initializing local database");
-  await deps.initializeDatabase(workspaceRoot, process.env.BOPO_DB_PATH);
+  await deps.initializeDatabase(workspaceRoot, configuredDbPath);
   dbSpin.stop("Database initialized");
 
   const seedSpin = spinner();
   seedSpin.start("Ensuring default company and CEO agent");
   const seedResult = await deps.seedOnboardingDatabase(workspaceRoot, {
-    dbPath: process.env.BOPO_DB_PATH,
+    dbPath: configuredDbPath,
     companyName,
     companyId: envValues[DEFAULT_COMPANY_ID_ENV]?.trim() || undefined,
     agentProvider
@@ -312,8 +332,35 @@ async function updateEnvFile(envPath: string, updates: Record<string, string>) {
   await writeFile(envPath, nextContent.endsWith("\n") ? nextContent : `${nextContent}\n`, "utf8");
 }
 
+async function sanitizeBlankDbPathEnvEntry(envPath: string) {
+  const existingContent = await readFile(envPath, "utf8");
+  const lines = existingContent.split(/\r?\n/);
+  let changed = false;
+  const nextLines = lines.map((line) => {
+    if (!line.startsWith("BOPO_DB_PATH=")) {
+      return line;
+    }
+    const value = line.slice("BOPO_DB_PATH=".length).trim();
+    if (value.length > 0) {
+      return line;
+    }
+    changed = true;
+    return "# BOPO_DB_PATH=  # optional override; leave unset to use default instance path";
+  });
+  if (!changed) {
+    return;
+  }
+  const nextContent = nextLines.join("\n");
+  await writeFile(envPath, nextContent.endsWith("\n") ? nextContent : `${nextContent}\n`, "utf8");
+}
+
 function serializeEnvValue(value: string) {
   return /[\s#"'`]/.test(value) ? JSON.stringify(value) : value;
+}
+
+function normalizeOptionalEnvValue(value: string | undefined) {
+  const normalized = value?.trim();
+  return normalized && normalized.length > 0 ? normalized : undefined;
 }
 
 function parseSeedResult(stdout: string): OnboardSeedResult {

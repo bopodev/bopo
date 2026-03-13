@@ -21,6 +21,10 @@ Give contributors and operators one reference for key environment variables and 
 | `BOPO_DEFAULT_COMPANY_ID` | API/CLI | unset | Default company for scheduler or startup behavior. |
 | `BOPO_DEFAULT_COMPANY_NAME` | CLI seed | unset | Written during onboarding seed. |
 | `BOPO_DEFAULT_AGENT_PROVIDER` | CLI seed | unset | Initial provider for bootstrapped CEO agent. |
+| `BOPO_DEPLOYMENT_MODE` | API | `local` | Deployment profile: `local`, `authenticated_private`, or `authenticated_public`. |
+| `BOPO_PUBLIC_BASE_URL` | API/Web | unset | Required in `authenticated_public`; canonical external API URL. |
+| `BOPO_ALLOWED_ORIGINS` | API | unset in auth modes | Comma-separated CORS allowlist; required in authenticated modes. |
+| `BOPO_ALLOWED_HOSTNAMES` | API | unset in auth modes | Comma-separated hostname allowlist for runtime and realtime host validation. |
 
 ## Persistence and Instance Paths
 
@@ -54,6 +58,7 @@ Give contributors and operators one reference for key environment variables and 
 | `BOPO_HEARTBEAT_SWEEP_MS` | `60000` | Scheduler interval for heartbeat sweeps. |
 | `BOPO_HEARTBEAT_STALE_RUN_MS` | `600000` | Recovery threshold for stale `started` runs. |
 | `BOPO_HEARTBEAT_EXECUTION_TIMEOUT_MS` | computed by service | Execution timeout fallback when runtime config omits explicit timeout. |
+| `BOPO_SCHEDULER_ROLE` | `auto` | Scheduler ownership: `auto`, `leader`, `follower`, `off`. |
 | `BOPO_PLUGIN_SYSTEM_DISABLED` | `0` (plugin system enabled) | Global emergency kill switch for plugin hook execution when `1`/`true`. |
 | `BOPO_PLUGIN_SYSTEM_ENABLED` | legacy compatibility | If explicitly set to `0`/`false`, plugin hooks are disabled. |
 | `BOPO_PLUGIN_MANIFESTS_DIR` | `<repo>/plugins` | Filesystem directory scanned at API startup for `*/plugin.json` manifests. |
@@ -84,6 +89,15 @@ Injected per run by heartbeat services:
 - `BOPODEV_CAN_HIRE_AGENTS`
 
 These variables are required for control-plane aware skill execution and approval-safe delegation.
+
+## Auth Identity and Actor Token Settings
+
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `BOPO_AUTH_TOKEN_SECRET` | unset | HMAC secret used to validate signed actor tokens for API + realtime auth. |
+| `BOPO_TRUST_ACTOR_HEADERS` | `0` in authenticated modes | Set to `1` only when a trusted proxy injects validated `x-actor-*` headers. |
+| `BOPO_AUTH_BOOTSTRAP_SECRET` | unset | Optional secret required by `POST /auth/actor-token` in authenticated modes. |
+| `NEXT_PUBLIC_BOPO_ACTOR_TOKEN` | unset | Optional browser-side actor token for API and websocket authentication. |
 
 ## Provider Credential Variables
 

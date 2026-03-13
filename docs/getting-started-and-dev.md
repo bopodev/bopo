@@ -62,6 +62,15 @@ pnpm onboard
 3. Start all apps:
    - `pnpm start`
 
+### VPS/Container Shortcut
+
+```bash
+export BOPO_AUTH_TOKEN_SECRET="$(openssl rand -hex 32)"
+docker compose -f docker-compose.quickstart.yml up --build
+```
+
+For full VPS guidance, see [`operations/deployment.md`](./operations/deployment.md).
+
 ### Default Local Ports
 
 - Web: `http://localhost:4010`
@@ -70,6 +79,7 @@ pnpm onboard
 ## Environment and Runtime Details
 
 - The web app reads API URL from `NEXT_PUBLIC_API_URL`.
+- Deployment profile is controlled by `BOPO_DEPLOYMENT_MODE` (`local`, `authenticated_private`, `authenticated_public`).
 - Agent runtime working directories are auto-filled from project local folder hints when possible.
 - `NEXT_PUBLIC_DEFAULT_RUNTIME_CWD` is an optional fallback.
 - Embedded DB defaults to `~/.bopodev/instances/default/db/bopodev.db`; set `BOPO_DB_PATH` only to override.

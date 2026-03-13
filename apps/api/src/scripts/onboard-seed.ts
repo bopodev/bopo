@@ -242,8 +242,9 @@ async function main() {
   const companyName = process.env[DEFAULT_COMPANY_NAME_ENV]?.trim() ?? "";
   const companyId = process.env[DEFAULT_COMPANY_ID_ENV]?.trim() || undefined;
   const agentProvider = parseAgentProvider(process.env[DEFAULT_AGENT_PROVIDER_ENV]) ?? undefined;
+  const dbPath = normalizeOptionalDbPath(process.env.BOPO_DB_PATH);
   const result = await ensureOnboardingSeed({
-    dbPath: process.env.BOPO_DB_PATH,
+    dbPath,
     companyName,
     companyId,
     agentProvider
@@ -254,6 +255,11 @@ async function main() {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   void main();
+}
+
+function normalizeOptionalDbPath(value: string | undefined) {
+  const normalized = value?.trim();
+  return normalized && normalized.length > 0 ? normalized : undefined;
 }
 
 function parseAgentProvider(value: unknown): AgentProvider | null {

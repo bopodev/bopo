@@ -13,6 +13,11 @@ Reduce mean time to diagnose failures across API, runtime, and UI surfaces.
 ## First Response Checklist
 
 1. Verify API health: `GET /health`.
+2. Verify deployment mode/env baseline:
+   - `BOPO_DEPLOYMENT_MODE`
+   - `BOPO_ALLOWED_ORIGINS`
+   - `BOPO_ALLOWED_HOSTNAMES`
+   - `BOPO_AUTH_TOKEN_SECRET` or trusted proxy header mode
 2. Confirm request scoping:
    - `x-company-id`
    - actor headers (`x-actor-*`)
@@ -31,7 +36,7 @@ Reduce mean time to diagnose failures across API, runtime, and UI surfaces.
 - **Governance action appears unresolved**
   - inbox state (`dismissed`/`seen`) vs actual approval status mismatch.
 - **Missing realtime updates**
-  - websocket reconnect gaps, snapshot application ordering, or company scope mismatch.
+  - websocket reconnect gaps, snapshot application ordering, company scope mismatch, or missing `authToken` in authenticated modes.
 - **Attachment upload errors**
   - file count/size/mime/extension limits exceeded.
 
@@ -39,6 +44,12 @@ Reduce mean time to diagnose failures across API, runtime, and UI surfaces.
 
 - Runtime configuration:
   - provider type, command, args, cwd, env, timeout.
+- Deployment mode:
+  - in authenticated modes, verify actor identity source (Bearer actor token or trusted proxy-injected actor headers).
+- Realtime auth:
+  - verify websocket URL includes `authToken` when using token mode.
+- CORS/hosts:
+  - verify browser origin appears in `BOPO_ALLOWED_ORIGINS` and host appears in `BOPO_ALLOWED_HOSTNAMES`.
 - Policy and security:
   - sandbox mode, web-search allowance, approval defaults.
 - Data integrity:
@@ -52,6 +63,7 @@ Reduce mean time to diagnose failures across API, runtime, and UI surfaces.
 - Clear malformed state env values and retry.
 - Resolve pending approvals blocking expected side effects.
 - Use `redo` only after root cause is understood.
+- If running multiple API instances, verify scheduler ownership (`BOPO_SCHEDULER_ROLE`) and keep only one leader.
 
 ## Related Runbooks
 

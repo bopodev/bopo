@@ -1,0 +1,27 @@
+services:
+  bopo:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${BOPO_WEB_PORT:-4010}:4010"
+      - "${BOPO_API_PORT:-4020}:4020"
+    environment:
+      WEB_PORT: "4010"
+      API_PORT: "4020"
+      PORT: "4020"
+      NEXT_PUBLIC_API_URL: "${NEXT_PUBLIC_API_URL:-http://localhost:4020}"
+      BOPO_DEPLOYMENT_MODE: "${BOPO_DEPLOYMENT_MODE:-authenticated_private}"
+      BOPO_ALLOWED_ORIGINS: "${BOPO_ALLOWED_ORIGINS:-http://localhost:4010}"
+      BOPO_ALLOWED_HOSTNAMES: "${BOPO_ALLOWED_HOSTNAMES:-localhost,127.0.0.1}"
+      BOPO_PUBLIC_BASE_URL: "${BOPO_PUBLIC_BASE_URL:-}"
+      BOPO_AUTH_TOKEN_SECRET: "${BOPO_AUTH_TOKEN_SECRET:?BOPO_AUTH_TOKEN_SECRET must be set}"
+      BOPO_TRUST_ACTOR_HEADERS: "${BOPO_TRUST_ACTOR_HEADERS:-0}"
+      BOPO_AUTH_BOOTSTRAP_SECRET: "${BOPO_AUTH_BOOTSTRAP_SECRET:-}"
+      BOPO_SCHEDULER_ROLE: "${BOPO_SCHEDULER_ROLE:-auto}"
+      BOPO_DB_PATH: "/var/lib/bopo/db/bopodev.db"
+      BOPO_HOME: "/var/lib/bopo"
+      BOPO_OPENAI_API_KEY: "${BOPO_OPENAI_API_KEY:-}"
+      BOPO_ANTHROPIC_API_KEY: "${BOPO_ANTHROPIC_API_KEY:-}"
+    volumes:
+      - "${BOPO_DATA_DIR:-./data/docker-bopo}:/var/lib/bopo"

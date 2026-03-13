@@ -3,6 +3,7 @@ import { WebSocket } from "ws";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { RealtimeMessage } from "../packages/contracts/src";
 import { attachRealtimeHub, type RealtimeHub } from "../apps/api/src/realtime/hub";
+import { issueActorToken } from "../apps/api/src/security/actor-token";
 
 describe("realtime hub", () => {
   let server: ReturnType<typeof createServer>;
@@ -204,6 +205,52 @@ describe("realtime hub", () => {
         delete process.env.BOPO_ALLOW_LOCAL_BOARD_FALLBACK;
       } else {
         process.env.BOPO_ALLOW_LOCAL_BOARD_FALLBACK = previousFallback;
+      }
+    }
+  });
+
+  it("accepts token-authenticated websocket subscriptions in authenticated mode", async () => {
+    const previousMode = process.env.BOPO_DEPLOYMENT_MODE;
+    const previousSecret = process.env.BOPO_AUTH_TOKEN_SECRET;
+    process.env.BOPO_DEPLOYMENT_MODE = "authenticated_private";
+    process.env.BOPO_AUTH_TOKEN_SECRET = "realtime-test-secret";
+    try {
+      const token = issueActorToken(
+        {
+          actorType: "member",
+          actorId: "member-realtime",
+          actorCompanies: ["demo-company"],
+          actorPermissions: ["heartbeats:run"]
+        },
+        process.env.BOPO_AUTH_TOKEN_SECRET
+      );
+      const socket = new WebSocket(`${baseWsUrl}?companyId=demo-company&channels=governance&authToken=${encodeURIComponent(token)}`);
+      const subscribed = await new Promise<boolean>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error("Timed out waiting for token-auth subscribed event.")), 2_000);
+        socket.on("message", (raw) => {
+          const parsed = JSON.parse(String(raw)) as RealtimeMessage;
+          if (parsed.kind === "subscribed") {
+            clearTimeout(timer);
+            resolve(true);
+          }
+        });
+        socket.on("error", (error) => {
+          clearTimeout(timer);
+          reject(error);
+        });
+      });
+      expect(subscribed).toBe(true);
+      socket.close();
+    } finally {
+      if (previousMode === undefined) {
+        delete process.env.BOPO_DEPLOYMENT_MODE;
+      } else {
+        process.env.BOPO_DEPLOYMENT_MODE = previousMode;
+      }
+      if (previousSecret === undefined) {
+        delete process.env.BOPO_AUTH_TOKEN_SECRET;
+      } else {
+        process.env.BOPO_AUTH_TOKEN_SECRET = previousSecret;
       }
     }
   });
