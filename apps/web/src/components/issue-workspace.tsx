@@ -174,12 +174,12 @@ export function IssueWorkspace({
     [filteredIssues]
   );
   const issueSummary = useMemo(() => {
-    const total = filteredIssues.length;
-    const open = filteredIssues.filter((issue) => issue.status !== "done" && issue.status !== "canceled").length;
-    const done = filteredIssues.filter((issue) => issue.status === "done").length;
-    const unassigned = filteredIssues.filter((issue) => !issue.assigneeAgentId).length;
+    const total = issues.length;
+    const open = issues.filter((issue) => issue.status !== "done" && issue.status !== "canceled").length;
+    const done = issues.filter((issue) => issue.status === "done").length;
+    const unassigned = issues.filter((issue) => !issue.assigneeAgentId).length;
     return { total, open, done, unassigned };
-  }, [filteredIssues]);
+  }, [issues]);
 
   async function runIssueAction(action: () => Promise<void>, fallbackMessage: string) {
     setActionError(null);

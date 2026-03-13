@@ -548,6 +548,27 @@ function formatMonthLabel(monthKey: string) {
   return new Date(year, month - 1, 1).toLocaleString(undefined, { month: "long", year: "numeric" });
 }
 
+function dayKeyFromDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+  date.setHours(0, 0, 0, 0);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function buildRecentDayKeys(days: number) {
+  const now = new Date();
+  const dayKeys: string[] = [];
+  for (let i = days - 1; i >= 0; i -= 1) {
+    const day = new Date(now);
+    day.setHours(0, 0, 0, 0);
+    day.setDate(day.getDate() - i);
+    dayKeys.push(`${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`);
+  }
+  return dayKeys;
+}
+
 export function WorkspaceClient({
   activeNav,
   companyId,
@@ -606,6 +627,8 @@ export function WorkspaceClient({
   const [projectsActivityFilter, setProjectsActivityFilter] = useState<"all" | "active" | "no_open_issues" | "no_issues">("all");
   const [agentsStatusFilter, setAgentsStatusFilter] = useState<string>("all");
   const [agentsProviderFilter, setAgentsProviderFilter] = useState<string>("all");
+  const [agentsReportToFilter, setAgentsReportToFilter] = useState<string>("all");
+  const [agentsModelFilter, setAgentsModelFilter] = useState<string>("all");
   const [agentsQuery, setAgentsQuery] = useState("");
   const [inboxQuery, setInboxQuery] = useState("");
   const [inboxStateFilter, setInboxStateFilter] = useState<"all" | "pending" | "resolved">("all");
@@ -909,13 +932,13 @@ export function WorkspaceClient({
     });
   }, [inboxDismissedFilter, inboxQuery, inboxSeenFilter, inboxStateFilter, isInboxNav, sortedInboxItems]);
   const inboxSummary = useMemo(() => {
-    const total = filteredInboxItems.length;
-    const pending = filteredInboxItems.filter((item) => item.isPending).length;
+    const total = governanceInbox.length;
+    const pending = governanceInbox.filter((item) => item.isPending).length;
     const resolved = total - pending;
-    const dismissed = filteredInboxItems.filter((item) => item.dismissedAt).length;
-    const unseen = filteredInboxItems.filter((item) => !item.seenAt).length;
+    const dismissed = governanceInbox.filter((item) => item.dismissedAt).length;
+    const unseen = governanceInbox.filter((item) => !item.seenAt).length;
     return { total, pending, resolved, dismissed, unseen };
-  }, [filteredInboxItems]);
+  }, [governanceInbox]);
   const agentNameById = useMemo(() => new Map(agents.map((agent) => [agent.id, agent.name])), [agents]);
   const costMonthOptions = useMemo(() => {
     if (!includeCostAggregations) {
@@ -1110,11 +1133,11 @@ export function WorkspaceClient({
       .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
   }, [agentNameById, heartbeatRuns, isRunsNav, runsAgentFilter, runsQuery, runsStatusFilter, runsTypeFilter, runsWindowFilter]);
   const runsSummary = useMemo(() => {
-    const total = filteredHeartbeatRuns.length;
-    const completed = filteredHeartbeatRuns.filter((run) => run.status === "completed").length;
-    const failed = filteredHeartbeatRuns.filter((run) => run.status === "failed").length;
-    const running = filteredHeartbeatRuns.filter((run) => !run.finishedAt).length;
-    const durations = filteredHeartbeatRuns
+    const total = heartbeatRuns.length;
+    const completed = heartbeatRuns.filter((run) => run.status === "completed").length;
+    const failed = heartbeatRuns.filter((run) => run.status === "failed").length;
+    const running = heartbeatRuns.filter((run) => !run.finishedAt).length;
+    const durations = heartbeatRuns
       .filter((run) => run.finishedAt)
       .map((run) => new Date(run.finishedAt!).getTime() - new Date(run.startedAt).getTime())
       .filter((value) => Number.isFinite(value) && value >= 0);
@@ -1122,7 +1145,7 @@ export function WorkspaceClient({
     const avgDuration = avgMs < 1000 ? `${Math.round(avgMs)}ms` : `${(avgMs / 1000).toFixed(1)}s`;
     const successRate = total > 0 ? (completed / total) * 100 : 0;
     return { total, completed, failed, running, avgDuration, successRate };
-  }, [filteredHeartbeatRuns]);
+  }, [heartbeatRuns]);
   const runsDailyChartData = useMemo(() => {
     const now = new Date();
     const days = 14;
@@ -1222,11 +1245,11 @@ export function WorkspaceClient({
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [auditEvents, isLogsNav, traceEntityFilter, traceEventFilter, traceQuery, traceWindowFilter]);
   const traceSummary = useMemo(() => {
-    const total = filteredAuditEvents.length;
-    const entitySet = new Set(filteredAuditEvents.map((event) => `${event.entityType}:${event.entityId}`));
+    const total = auditEvents.length;
+    const entitySet = new Set(auditEvents.map((event) => `${event.entityType}:${event.entityId}`));
     const eventTypeCounts = new Map<string, number>();
     let anomalies = 0;
-    for (const event of filteredAuditEvents) {
+    for (const event of auditEvents) {
       eventTypeCounts.set(event.eventType, (eventTypeCounts.get(event.eventType) ?? 0) + 1);
       if (/(fail|error|reject|timeout)/i.test(event.eventType)) {
         anomalies += 1;
@@ -1242,7 +1265,7 @@ export function WorkspaceClient({
       anomalies,
       topEventType
     };
-  }, [filteredAuditEvents]);
+  }, [auditEvents]);
   const traceDailyChartData = useMemo(() => {
     const now = new Date();
     const days = 14;
@@ -1340,12 +1363,12 @@ export function WorkspaceClient({
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [approvals, governanceActionFilter, governanceQuery, governanceStatusFilter, governanceWindowFilter, isGovernanceNav]);
   const governanceSummary = useMemo(() => {
-    const total = filteredApprovals.length;
-    const pending = filteredApprovals.filter((approval) => approval.status === "pending").length;
-    const approved = filteredApprovals.filter((approval) => approval.status === "approved").length;
-    const rejected = filteredApprovals.filter((approval) => approval.status === "rejected").length;
-    const overridden = filteredApprovals.filter((approval) => approval.status === "overridden").length;
-    const resolved = filteredApprovals.filter((approval) => approval.status !== "pending");
+    const total = approvals.length;
+    const pending = approvals.filter((approval) => approval.status === "pending").length;
+    const approved = approvals.filter((approval) => approval.status === "approved").length;
+    const rejected = approvals.filter((approval) => approval.status === "rejected").length;
+    const overridden = approvals.filter((approval) => approval.status === "overridden").length;
+    const resolved = approvals.filter((approval) => approval.status !== "pending");
     const avgResolutionMs =
       resolved.length > 0
         ? resolved
@@ -1365,7 +1388,7 @@ export function WorkspaceClient({
           ? `${(avgResolutionMs / 1_000).toFixed(1)}s`
           : `${(avgResolutionMs / 60_000).toFixed(1)}m`;
     return { total, pending, approved, rejected, overridden, avgResolutionLabel };
-  }, [filteredApprovals]);
+  }, [approvals]);
   const goalsLevelOptions = useMemo(
     () =>
       isGoalsNav ? Array.from(new Set(goals.map((goal) => goal.level))).sort((a, b) => a.localeCompare(b)) : [],
@@ -1459,15 +1482,15 @@ export function WorkspaceClient({
     });
   }, [isProjectsNav, projectIssueSummaryById, projects, projectsActivityFilter, projectsQuery]);
   const projectsSummary = useMemo(() => {
-    const total = filteredProjects.length;
-    const withOpenIssues = filteredProjects.filter((project) => (projectIssueSummaryById.get(project.id)?.open ?? 0) > 0).length;
-    const noOpenIssues = filteredProjects.filter((project) => {
+    const total = projects.length;
+    const withOpenIssues = projects.filter((project) => (projectIssueSummaryById.get(project.id)?.open ?? 0) > 0).length;
+    const noOpenIssues = projects.filter((project) => {
       const summary = projectIssueSummaryById.get(project.id) ?? { total: 0, open: 0 };
       return summary.total > 0 && summary.open === 0;
     }).length;
-    const noIssues = filteredProjects.filter((project) => (projectIssueSummaryById.get(project.id)?.total ?? 0) === 0).length;
+    const noIssues = projects.filter((project) => (projectIssueSummaryById.get(project.id)?.total ?? 0) === 0).length;
     return { total, withOpenIssues, noOpenIssues, noIssues };
-  }, [filteredProjects, projectIssueSummaryById]);
+  }, [projectIssueSummaryById, projects]);
   const suggestedAgentRuntimeCwd = useMemo(() => {
     const uniqueWorkspacePaths = Array.from(
       new Set(
@@ -1486,6 +1509,25 @@ export function WorkspaceClient({
     () => Array.from(new Set(agents.map((agent) => agent.providerType))).sort((a, b) => a.localeCompare(b)),
     [agents]
   );
+  const agentReportToOptions = useMemo(() => {
+    const managerIds = Array.from(
+      new Set(
+        agents
+          .map((agent) => agent.managerAgentId)
+          .filter((managerId): managerId is string => typeof managerId === "string")
+      )
+    );
+    return managerIds
+      .map((managerId) => ({
+        value: managerId,
+        label: agentNameById.get(managerId) ?? `Unknown (${shortId(managerId)})`
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [agentNameById, agents]);
+  const agentModelOptions = useMemo(() => {
+    const models = Array.from(new Set(agents.map((agent) => resolveNamedModelForAgent(agent) ?? "unconfigured")));
+    return models.sort((a, b) => a.localeCompare(b));
+  }, [agents]);
   const filteredAgents = useMemo(() => {
     if (!isAgentsNav) {
       return [];
@@ -1498,6 +1540,21 @@ export function WorkspaceClient({
       if (agentsProviderFilter !== "all" && agent.providerType !== agentsProviderFilter) {
         return false;
       }
+      if (agentsReportToFilter !== "all") {
+        if (agentsReportToFilter === "none") {
+          if (agent.managerAgentId) {
+            return false;
+          }
+        } else if (agent.managerAgentId !== agentsReportToFilter) {
+          return false;
+        }
+      }
+      if (agentsModelFilter !== "all") {
+        const model = resolveNamedModelForAgent(agent) ?? "unconfigured";
+        if (model !== agentsModelFilter) {
+          return false;
+        }
+      }
       if (!normalizedQuery) {
         return true;
       }
@@ -1508,7 +1565,97 @@ export function WorkspaceClient({
         agent.providerType.toLowerCase().includes(normalizedQuery)
       );
     });
-  }, [agents, agentsProviderFilter, agentsQuery, agentsStatusFilter, isAgentsNav]);
+  }, [agents, agentsModelFilter, agentsProviderFilter, agentsQuery, agentsReportToFilter, agentsStatusFilter, isAgentsNav]);
+  const agentsInScopeForCharts = useMemo(() => {
+    if (!isAgentsNav) {
+      return [];
+    }
+    return filteredAgents;
+  }, [filteredAgents, isAgentsNav]);
+  const agentIdsInScopeForCharts = useMemo(
+    () => new Set(agentsInScopeForCharts.map((agent) => agent.id)),
+    [agentsInScopeForCharts]
+  );
+  const agentsRunsTrendData = useMemo(() => {
+    if (!isAgentsNav) {
+      return [];
+    }
+    const dayKeys = buildRecentDayKeys(14);
+    const byDay = new Map(dayKeys.map((key) => [key, { total: 0, failed: 0, completed: 0 }]));
+    for (const run of heartbeatRuns) {
+      if (!agentIdsInScopeForCharts.has(run.agentId)) {
+        continue;
+      }
+      const key = dayKeyFromDate(run.startedAt);
+      if (!key) {
+        continue;
+      }
+      const current = byDay.get(key);
+      if (!current) {
+        continue;
+      }
+      current.total += 1;
+      if (run.status === "failed") {
+        current.failed += 1;
+      }
+      if (run.status === "completed") {
+        current.completed += 1;
+      }
+    }
+    return dayKeys.map((key) => {
+      const current = byDay.get(key) ?? { total: 0, failed: 0, completed: 0 };
+      const relevant = current.completed + current.failed;
+      return {
+        label: key.slice(5),
+        total: current.total,
+        failed: current.failed,
+        successRate: relevant > 0 ? Number(((current.completed / relevant) * 100).toFixed(1)) : 0
+      };
+    });
+  }, [agentIdsInScopeForCharts, heartbeatRuns, isAgentsNav]);
+  const agentsSpendTrendData = useMemo(() => {
+    if (!isAgentsNav) {
+      return [];
+    }
+    const dayKeys = buildRecentDayKeys(30);
+    const byDay = new Map(dayKeys.map((key) => [key, 0]));
+    for (const entry of costEntries) {
+      if (!entry.agentId || !agentIdsInScopeForCharts.has(entry.agentId)) {
+        continue;
+      }
+      const key = dayKeyFromDate(entry.createdAt);
+      if (!key) {
+        continue;
+      }
+      const current = byDay.get(key);
+      if (typeof current !== "number") {
+        continue;
+      }
+      byDay.set(key, current + entry.usdCost);
+    }
+    return dayKeys.map((key) => ({
+      label: key.slice(5),
+      usd: Number((byDay.get(key) ?? 0).toFixed(4))
+    }));
+  }, [agentIdsInScopeForCharts, costEntries, isAgentsNav]);
+  const agentsInsightsHasData = useMemo(() => {
+    if (!isAgentsNav) {
+      return false;
+    }
+    const hasRunData = agentsRunsTrendData.some((entry) => entry.total > 0);
+    const hasSpendData = agentsSpendTrendData.some((entry) => entry.usd > 0);
+    return hasRunData || hasSpendData;
+  }, [agentsRunsTrendData, agentsSpendTrendData, isAgentsNav]);
+  const agentsRunsTrendConfig = {
+    total: { label: "Total runs", color: "var(--chart-2)" },
+    failed: { label: "Failed runs", color: "var(--chart-5)" }
+  } satisfies ChartConfig;
+  const agentsSpendTrendConfig = {
+    usd: { label: "USD", color: "var(--chart-1)" }
+  } satisfies ChartConfig;
+  const agentsSuccessTrendConfig = {
+    successRate: { label: "Success rate %", color: "var(--chart-3)" }
+  } satisfies ChartConfig;
   const pluginKindOptions = useMemo(
     () => Array.from(new Set(plugins.map((plugin) => plugin.kind))).sort((a, b) => a.localeCompare(b)),
     [plugins]
@@ -1546,16 +1693,16 @@ export function WorkspaceClient({
     });
   }, [isPluginsNav, plugins, pluginsKindFilter, pluginsQuery, pluginsStatusFilter]);
   const pluginsSummary = useMemo(() => {
-    const total = filteredPlugins.length;
-    const installed = filteredPlugins.filter((plugin) => Boolean(plugin.companyConfig)).length;
-    const active = filteredPlugins.filter((plugin) => Boolean(plugin.companyConfig?.enabled)).length;
-    const kinds = new Set(filteredPlugins.map((plugin) => plugin.kind)).size;
-    const grantedCapabilities = filteredPlugins.reduce(
+    const total = plugins.length;
+    const installed = plugins.filter((plugin) => Boolean(plugin.companyConfig)).length;
+    const active = plugins.filter((plugin) => Boolean(plugin.companyConfig?.enabled)).length;
+    const kinds = new Set(plugins.map((plugin) => plugin.kind)).size;
+    const grantedCapabilities = plugins.reduce(
       (sum, plugin) => sum + (plugin.companyConfig?.grantedCapabilities.length ?? 0),
       0
     );
     return { total, installed, active, kinds, grantedCapabilities };
-  }, [filteredPlugins]);
+  }, [plugins]);
   const filteredTemplates = useMemo(() => {
     if (!isTemplatesNav) {
       return [];
@@ -1580,15 +1727,15 @@ export function WorkspaceClient({
     });
   }, [isTemplatesNav, templates, templatesQuery, templatesStatusFilter, templatesVisibilityFilter]);
   const templatesSummary = useMemo(() => {
-    const total = filteredTemplates.length;
-    const published = filteredTemplates.filter((template) => template.status === "published").length;
-    const draft = filteredTemplates.filter((template) => template.status === "draft").length;
-    const archived = filteredTemplates.filter((template) => template.status === "archived").length;
-    const companyVisible = filteredTemplates.filter((template) => template.visibility === "company").length;
-    const privateVisible = filteredTemplates.filter((template) => template.visibility === "private").length;
-    const variables = filteredTemplates.reduce((sum, template) => sum + template.variables.length, 0);
+    const total = templates.length;
+    const published = templates.filter((template) => template.status === "published").length;
+    const draft = templates.filter((template) => template.status === "draft").length;
+    const archived = templates.filter((template) => template.status === "archived").length;
+    const companyVisible = templates.filter((template) => template.visibility === "company").length;
+    const privateVisible = templates.filter((template) => template.visibility === "private").length;
+    const variables = templates.reduce((sum, template) => sum + template.variables.length, 0);
     return { total, published, draft, archived, companyVisible, privateVisible, variables };
-  }, [filteredTemplates]);
+  }, [templates]);
   const pluginBuilderManifestJson = useMemo(() => {
     const capabilities = pluginBuilderCapabilities
       .split(",")
@@ -3527,47 +3674,146 @@ export function WorkspaceClient({
             {agents.length === 0 ? (
               <EmptyState>Hire your first agent to populate the org chart and issue assignees.</EmptyState>
             ) : (
-              <DataTable
-                columns={agentColumns}
-                data={filteredAgents}
-                emptyMessage="No agents match current filters."
-                toolbarActions={
-                  <div className={styles.agentsFiltersCardContent}>
-                    <Input
-                      value={agentsQuery}
-                      onChange={(event) => setAgentsQuery(event.target.value)}
-                      placeholder="Search name, role, status, or provider..."
-                      className={styles.agentsFiltersInput}
-                    />
-                    <Select value={agentsStatusFilter} onValueChange={setAgentsStatusFilter}>
-                      <SelectTrigger className={styles.agentsFiltersSelect}>
-                        <SelectValue placeholder="Status" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All statuses</SelectItem>
-                        {agentStatusOptions.map((status) => (
-                          <SelectItem key={status} value={status}>
-                            {status}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Select value={agentsProviderFilter} onValueChange={setAgentsProviderFilter}>
-                      <SelectTrigger className={styles.agentsFiltersSelect}>
-                        <SelectValue placeholder="Provider" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All providers</SelectItem>
-                        {agentProviderOptions.map((provider) => (
-                          <SelectItem key={provider} value={provider}>
-                            {provider}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+              <>
+                {agentsInsightsHasData ? (
+                  <div className={styles.agentsInsightsChartsGrid}>
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Run volume trend</CardTitle>
+                        <CardDescription>Daily total and failed runs over the last 14 days.</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <ChartContainer config={agentsRunsTrendConfig} className={styles.agentsInsightsChartContainer}>
+                          <LineChart accessibilityLayer data={agentsRunsTrendData} margin={{ top: 8, left: -8, right: -8 }}>
+                            <CartesianGrid vertical={false} strokeDasharray="4 4" strokeOpacity={0.3} />
+                            <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={10} minTickGap={20} />
+                            <YAxis hide />
+                            <ChartTooltip content={<ChartTooltipContent indicator="line" />} cursor={false} />
+                            <Line type="monotone" dataKey="total" stroke="var(--color-total)" strokeWidth={2.2} dot={false} />
+                            <Line type="monotone" dataKey="failed" stroke="var(--color-failed)" strokeWidth={2} dot={false} />
+                          </LineChart>
+                        </ChartContainer>
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Spend trend</CardTitle>
+                        <CardDescription>Daily USD spend over the last 30 days.</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <ChartContainer config={agentsSpendTrendConfig} className={styles.agentsInsightsChartContainer}>
+                          <LineChart accessibilityLayer data={agentsSpendTrendData} margin={{ top: 8, left: -8, right: -8 }}>
+                            <CartesianGrid vertical={false} strokeDasharray="4 4" strokeOpacity={0.3} />
+                            <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={10} minTickGap={20} />
+                            <YAxis hide />
+                            <ChartTooltip content={<ChartTooltipContent indicator="line" />} cursor={false} />
+                            <Line type="monotone" dataKey="usd" stroke="var(--color-usd)" strokeWidth={2.2} dot={false} />
+                          </LineChart>
+                        </ChartContainer>
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Success-rate trend</CardTitle>
+                        <CardDescription>Daily completion quality from completed vs failed runs.</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <ChartContainer config={agentsSuccessTrendConfig} className={styles.agentsInsightsChartContainer}>
+                          <LineChart accessibilityLayer data={agentsRunsTrendData} margin={{ top: 8, left: -8, right: -8 }}>
+                            <CartesianGrid vertical={false} strokeDasharray="4 4" strokeOpacity={0.3} />
+                            <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={10} minTickGap={20} />
+                            <YAxis hide />
+                            <ChartTooltip content={<ChartTooltipContent indicator="line" />} cursor={false} />
+                            <Line
+                              type="monotone"
+                              dataKey="successRate"
+                              stroke="var(--color-successRate)"
+                              strokeWidth={2.2}
+                              dot={false}
+                            />
+                          </LineChart>
+                        </ChartContainer>
+                      </CardContent>
+                    </Card>
                   </div>
-                }
-              />
+                ) : (
+                  <Card className={styles.agentsInsightsEmptyCard}>
+                    <CardContent>
+                      <p className="text-sm text-muted-foreground">
+                        No recent run or spend activity for the selected agent filters.
+                      </p>
+                    </CardContent>
+                  </Card>
+                )}
+                <DataTable
+                  columns={agentColumns}
+                  data={filteredAgents}
+                  emptyMessage="No agents match current filters."
+                  toolbarActions={
+                    <div className={styles.agentsFiltersCardContent}>
+                      <Input
+                        value={agentsQuery}
+                        onChange={(event) => setAgentsQuery(event.target.value)}
+                        placeholder="Search name, role, status, or provider..."
+                        className={styles.agentsFiltersInput}
+                      />
+                      <Select value={agentsStatusFilter} onValueChange={setAgentsStatusFilter}>
+                        <SelectTrigger className={styles.agentsFiltersSelect}>
+                          <SelectValue placeholder="Status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All statuses</SelectItem>
+                          {agentStatusOptions.map((status) => (
+                            <SelectItem key={status} value={status}>
+                              {status}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Select value={agentsProviderFilter} onValueChange={setAgentsProviderFilter}>
+                        <SelectTrigger className={styles.agentsFiltersSelect}>
+                          <SelectValue placeholder="Provider" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All providers</SelectItem>
+                          {agentProviderOptions.map((provider) => (
+                            <SelectItem key={provider} value={provider}>
+                              {provider}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Select value={agentsReportToFilter} onValueChange={setAgentsReportToFilter}>
+                        <SelectTrigger className={styles.agentsFiltersSelect}>
+                          <SelectValue placeholder="Report to" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All managers</SelectItem>
+                          <SelectItem value="none">No manager</SelectItem>
+                          {agentReportToOptions.map((manager) => (
+                            <SelectItem key={manager.value} value={manager.value}>
+                              {manager.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Select value={agentsModelFilter} onValueChange={setAgentsModelFilter}>
+                        <SelectTrigger className={styles.agentsFiltersSelect}>
+                          <SelectValue placeholder="Model" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All models</SelectItem>
+                          {agentModelOptions.map((model) => (
+                            <SelectItem key={model} value={model}>
+                              {model === "unconfigured" ? "Unconfigured" : model}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  }
+                />
+              </>
             )}
           </>
         );

@@ -133,6 +133,18 @@
   @apply w-[170px];
 }
 
+.agentsInsightsChartsGrid {
+  @apply mt-4 mb-6 grid gap-6 md:grid-cols-2 xl:grid-cols-3;
+}
+
+.agentsInsightsChartContainer {
+  @apply h-44 w-full;
+}
+
+.agentsInsightsEmptyCard {
+  @apply mb-6;
+}
+
 .agentTableIdentity {
   @apply flex items-center gap-4;
 }
