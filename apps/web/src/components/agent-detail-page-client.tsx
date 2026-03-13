@@ -503,25 +503,6 @@ export function AgentDetailPageClient({
     });
   }, [agentRuns]);
 
-  const issuesByPriority = useMemo(() => {
-    const priorityOrder = ["critical", "high", "medium", "low"];
-    const counts = new Map<string, number>();
-    for (const issue of agentIssues) {
-      const key = issue.priority.toLowerCase();
-      counts.set(key, (counts.get(key) ?? 0) + 1);
-    }
-    return priorityOrder.map((key) => ({ label: key, value: counts.get(key) ?? 0 }));
-  }, [agentIssues]);
-
-  const issuesByStatus = useMemo(() => {
-    const statusOrder = ["todo", "in_progress", "in_review", "blocked", "done"];
-    const counts = new Map<string, number>();
-    for (const issue of agentIssues) {
-      counts.set(issue.status, (counts.get(issue.status) ?? 0) + 1);
-    }
-    return statusOrder.map((key) => ({ label: key, value: counts.get(key) ?? 0 }));
-  }, [agentIssues]);
-
   const capabilityHints = useMemo(() => {
     const capabilities = new Set<string>();
     capabilities.add(`${agent.role} execution ownership`);
@@ -807,24 +788,6 @@ export function AgentDetailPageClient({
           </CardHeader>
           <CardContent className={styles.chartCardContent}>
             <BarMetricChart data={runActivityBars} label="Runs" colorToken="var(--chart-1)" />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Issues by Priority</CardTitle>
-            <CardDescription>Assigned backlog</CardDescription>
-          </CardHeader>
-          <CardContent className={styles.chartCardContent}>
-            <BarMetricChart data={issuesByPriority} label="Issues" colorToken="var(--chart-4)" />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Issues by Status</CardTitle>
-            <CardDescription>Execution state</CardDescription>
-          </CardHeader>
-          <CardContent className={styles.chartCardContent}>
-            <BarMetricChart data={issuesByStatus} label="Issues" colorToken="var(--chart-2)" />
           </CardContent>
         </Card>
         <Card>

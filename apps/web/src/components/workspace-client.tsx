@@ -35,7 +35,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Area, AreaChart, Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
+import { Area, AreaChart, Bar, BarChart, CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
 import styles from "./workspace-client.module.scss";
 import {
   Select,
@@ -1158,6 +1158,32 @@ export function WorkspaceClient({
     completed: { label: "Completed", color: "var(--chart-1)" },
     failed: { label: "Failed", color: "var(--chart-5)" }
   } satisfies ChartConfig;
+  const runsTopAgentsChartData = useMemo(() => {
+    const byAgent = new Map<string, { total: number; failed: number }>();
+    for (const run of filteredHeartbeatRuns) {
+      const current = byAgent.get(run.agentId) ?? { total: 0, failed: 0 };
+      current.total += 1;
+      if (run.status === "failed") {
+        current.failed += 1;
+      }
+      byAgent.set(run.agentId, current);
+    }
+    return Array.from(byAgent.entries())
+      .sort((a, b) => b[1].total - a[1].total)
+      .slice(0, 6)
+      .map(([agentId, values]) => {
+        const agentName = agentNameById.get(agentId) ?? shortId(agentId);
+        return {
+          agent: agentName.length > 18 ? `${agentName.slice(0, 15)}...` : agentName,
+          total: values.total,
+          failed: values.failed
+        };
+      });
+  }, [agentNameById, filteredHeartbeatRuns]);
+  const runsTopAgentsChartConfig = {
+    total: { label: "Total runs", color: "var(--chart-2)" },
+    failed: { label: "Failed runs", color: "var(--chart-5)" }
+  } satisfies ChartConfig;
   const traceEventOptions = useMemo(
     () => (isLogsNav ? Array.from(new Set(auditEvents.map((event) => event.eventType))).sort((a, b) => a.localeCompare(b)) : []),
     [auditEvents, isLogsNav]
@@ -1249,6 +1275,29 @@ export function WorkspaceClient({
   }, [filteredAuditEvents]);
   const traceChartConfig = {
     total: { label: "Events", color: "var(--chart-2)" },
+    anomalies: { label: "Anomalies", color: "var(--chart-5)" }
+  } satisfies ChartConfig;
+  const traceEventTypeChartData = useMemo(() => {
+    const counts = new Map<string, { total: number; anomalies: number }>();
+    for (const event of filteredAuditEvents) {
+      const current = counts.get(event.eventType) ?? { total: 0, anomalies: 0 };
+      current.total += 1;
+      if (/(fail|error|reject|timeout)/i.test(event.eventType)) {
+        current.anomalies += 1;
+      }
+      counts.set(event.eventType, current);
+    }
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1].total - a[1].total)
+      .slice(0, 8)
+      .map(([eventType, values]) => ({
+        eventType: eventType.length > 22 ? `${eventType.slice(0, 19)}...` : eventType,
+        total: values.total,
+        anomalies: values.anomalies
+      }));
+  }, [filteredAuditEvents]);
+  const traceEventTypeChartConfig = {
+    total: { label: "Total", color: "var(--chart-2)" },
     anomalies: { label: "Anomalies", color: "var(--chart-5)" }
   } satisfies ChartConfig;
   const governanceStatusOptions = useMemo(
@@ -1520,6 +1569,16 @@ export function WorkspaceClient({
       );
     });
   }, [isTemplatesNav, templates, templatesQuery, templatesStatusFilter, templatesVisibilityFilter]);
+  const templatesSummary = useMemo(() => {
+    const total = filteredTemplates.length;
+    const published = filteredTemplates.filter((template) => template.status === "published").length;
+    const draft = filteredTemplates.filter((template) => template.status === "draft").length;
+    const archived = filteredTemplates.filter((template) => template.status === "archived").length;
+    const companyVisible = filteredTemplates.filter((template) => template.visibility === "company").length;
+    const privateVisible = filteredTemplates.filter((template) => template.visibility === "private").length;
+    const variables = filteredTemplates.reduce((sum, template) => sum + template.variables.length, 0);
+    return { total, published, draft, archived, companyVisible, privateVisible, variables };
+  }, [filteredTemplates]);
   const pluginBuilderManifestJson = useMemo(() => {
     const capabilities = pluginBuilderCapabilities
       .split(",")
@@ -1764,13 +1823,13 @@ export function WorkspaceClient({
       return [];
     }
     const now = new Date();
-    const byDay = new Map<string, { completed: number; failed: number }>();
+    const byDay = new Map<string, { completed: number; failed: number; skipped: number; total: number }>();
     for (let i = 13; i >= 0; i -= 1) {
       const day = new Date(now);
       day.setHours(0, 0, 0, 0);
       day.setDate(day.getDate() - i);
       const key = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
-      byDay.set(key, { completed: 0, failed: 0 });
+      byDay.set(key, { completed: 0, failed: 0, skipped: 0, total: 0 });
     }
     for (const run of heartbeatRuns) {
       const day = new Date(run.startedAt);
@@ -1784,31 +1843,34 @@ export function WorkspaceClient({
         current.completed += 1;
       } else if (run.status === "failed") {
         current.failed += 1;
+      } else if (run.status === "skipped") {
+        current.skipped += 1;
       }
+      current.total += 1;
     }
     return Array.from(byDay.entries()).map(([date, values]) => ({
       label: date.slice(5),
       completed: values.completed,
-      failed: values.failed
+      failed: values.failed,
+      skipped: values.skipped,
+      total: values.total
     }));
   }, [heartbeatRuns, isDashboardNav]);
   const dashboardCostTrendData = useMemo(
     () => monthlyCostChartData.map((entry) => ({ label: entry.label, usd: entry.usd })),
     [monthlyCostChartData]
   );
+  const dashboardOpenIssues = useMemo(
+    () => (isDashboardNav ? issues.filter((issue) => issue.status !== "done" && issue.status !== "canceled") : []),
+    [issues, isDashboardNav]
+  );
   const staleIssueCount = useMemo(() => {
     if (!isDashboardNav) {
       return 0;
     }
     const now = Date.now();
-    return issues.filter((issue) => {
-      if (issue.status === "done" || issue.status === "canceled") {
-        return false;
-      }
-      const updatedAgeMs = now - new Date(issue.updatedAt).getTime();
-      return updatedAgeMs > 7 * 24 * 60 * 60 * 1000;
-    }).length;
-  }, [issues, isDashboardNav]);
+    return dashboardOpenIssues.filter((issue) => now - new Date(issue.updatedAt).getTime() > 7 * 24 * 60 * 60 * 1000).length;
+  }, [dashboardOpenIssues, isDashboardNav]);
   const oldestPendingApprovalAge = useMemo(() => {
     if (!isDashboardNav) {
       return "none";
@@ -1894,15 +1956,247 @@ export function WorkspaceClient({
     }
     return `${agentNameById.get(top[0]) ?? shortId(top[0])} ($${top[1].toFixed(2)})`;
   }, [agentNameById, costEntries, isDashboardNav]);
+  const dashboardRunHealth = useMemo(() => {
+    if (!isDashboardNav) {
+      return {
+        runsLast24h: 0,
+        completedLast24h: 0,
+        failedLast24h: 0,
+        skippedLast24h: 0,
+        successRate24h: 0
+      };
+    }
+    const now = Date.now();
+    const last24hMs = 24 * 60 * 60 * 1000;
+    const recentRuns = heartbeatRuns.filter((run) => now - new Date(run.startedAt).getTime() <= last24hMs);
+    const completedLast24h = recentRuns.filter((run) => run.status === "completed").length;
+    const failedLast24h = recentRuns.filter((run) => run.status === "failed").length;
+    const skippedLast24h = recentRuns.filter((run) => run.status === "skipped").length;
+    const relevantRuns = completedLast24h + failedLast24h;
+    const successRate24h = relevantRuns > 0 ? (completedLast24h / relevantRuns) * 100 : 0;
+    return {
+      runsLast24h: recentRuns.length,
+      completedLast24h,
+      failedLast24h,
+      skippedLast24h,
+      successRate24h
+    };
+  }, [heartbeatRuns, isDashboardNav]);
+  const dashboardAgentStatusData = useMemo(() => {
+    if (!isDashboardNav) {
+      return [];
+    }
+    const counts = new Map<string, number>();
+    for (const agent of agents) {
+      counts.set(agent.status, (counts.get(agent.status) ?? 0) + 1);
+    }
+    return Array.from(counts.entries())
+      .map(([status, total]) => ({ label: status.replaceAll("_", " "), total }))
+      .sort((a, b) => (b.total === a.total ? a.label.localeCompare(b.label) : b.total - a.total));
+  }, [agents, isDashboardNav]);
+  const dashboardAgentProviderData = useMemo(() => {
+    if (!isDashboardNav) {
+      return [];
+    }
+    const counts = new Map<string, number>();
+    for (const agent of agents) {
+      counts.set(agent.providerType, (counts.get(agent.providerType) ?? 0) + 1);
+    }
+    return Array.from(counts.entries())
+      .map(([label, total]) => ({ label, total }))
+      .sort((a, b) => (b.total === a.total ? a.label.localeCompare(b.label) : b.total - a.total));
+  }, [agents, isDashboardNav]);
+  const dashboardIssueAgingData = useMemo(() => {
+    if (!isDashboardNav) {
+      return [];
+    }
+    const now = Date.now();
+    const buckets = [
+      { label: "<24h", min: 0, max: 24 },
+      { label: "1-3d", min: 24, max: 72 },
+      { label: "3-7d", min: 72, max: 168 },
+      { label: ">7d", min: 168, max: Number.POSITIVE_INFINITY }
+    ];
+    const totals = new Map<string, number>(buckets.map((bucket) => [bucket.label, 0]));
+    for (const issue of dashboardOpenIssues) {
+      const ageHours = (now - new Date(issue.updatedAt).getTime()) / (1000 * 60 * 60);
+      const bucket = buckets.find((entry) => ageHours >= entry.min && ageHours < entry.max);
+      if (!bucket) {
+        continue;
+      }
+      totals.set(bucket.label, (totals.get(bucket.label) ?? 0) + 1);
+    }
+    return buckets.map((bucket) => ({ label: bucket.label, total: totals.get(bucket.label) ?? 0 }));
+  }, [dashboardOpenIssues, isDashboardNav]);
+  const dashboardAssignmentCoverageData = useMemo(() => {
+    if (!isDashboardNav) {
+      return [];
+    }
+    const assigned = dashboardOpenIssues.filter((issue) => Boolean(issue.assigneeAgentId)).length;
+    const unassigned = dashboardOpenIssues.length - assigned;
+    const blocked = dashboardOpenIssues.filter((issue) => issue.status === "blocked").length;
+    return [
+      { label: "Assigned", total: assigned },
+      { label: "Unassigned", total: unassigned },
+      { label: "Blocked", total: blocked }
+    ];
+  }, [dashboardOpenIssues, isDashboardNav]);
+  const dashboardApprovalAgingData = useMemo(() => {
+    if (!isDashboardNav) {
+      return [];
+    }
+    const now = Date.now();
+    const buckets = [
+      { label: "<1h", minHours: 0, maxHours: 1 },
+      { label: "1-6h", minHours: 1, maxHours: 6 },
+      { label: "6-24h", minHours: 6, maxHours: 24 },
+      { label: ">24h", minHours: 24, maxHours: Number.POSITIVE_INFINITY }
+    ];
+    const totals = new Map<string, number>(buckets.map((bucket) => [bucket.label, 0]));
+    for (const approval of pendingApprovals) {
+      const ageHours = (now - new Date(approval.createdAt).getTime()) / (1000 * 60 * 60);
+      const bucket = buckets.find((entry) => ageHours >= entry.minHours && ageHours < entry.maxHours);
+      if (!bucket) {
+        continue;
+      }
+      totals.set(bucket.label, (totals.get(bucket.label) ?? 0) + 1);
+    }
+    return buckets.map((bucket) => ({ label: bucket.label, total: totals.get(bucket.label) ?? 0 }));
+  }, [isDashboardNav, pendingApprovals]);
+  const dashboardApprovalsByActionData = useMemo(
+    () =>
+      dashboardPendingApprovalsByAction.map((entry) => ({
+        label: entry.label,
+        total: entry.total
+      })),
+    [dashboardPendingApprovalsByAction]
+  );
+  const dashboardCostByAgentData = useMemo(() => {
+    if (!isDashboardNav) {
+      return [];
+    }
+    const byAgent = new Map<string, number>();
+    for (const entry of costEntries) {
+      if (!entry.agentId) {
+        continue;
+      }
+      byAgent.set(entry.agentId, (byAgent.get(entry.agentId) ?? 0) + entry.usdCost);
+    }
+    return Array.from(byAgent.entries())
+      .map(([agentId, usd]) => ({
+        label: agentNameById.get(agentId) ?? shortId(agentId),
+        usd: Number(usd.toFixed(4))
+      }))
+      .sort((a, b) => b.usd - a.usd)
+      .slice(0, 6);
+  }, [agentNameById, costEntries, isDashboardNav]);
+  const dashboardAgentSnapshots = useMemo(() => {
+    if (!isDashboardNav) {
+      return [];
+    }
+    const now = new Date();
+    const dayKeys: string[] = [];
+    for (let i = 13; i >= 0; i -= 1) {
+      const day = new Date(now);
+      day.setHours(0, 0, 0, 0);
+      day.setDate(day.getDate() - i);
+      dayKeys.push(`${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`);
+    }
+    const pendingApprovalsByRequester = new Map<string, number>();
+    for (const inboxItem of governanceInbox) {
+      if (inboxItem.approval.status !== "pending") {
+        continue;
+      }
+      const requester = inboxItem.approval.requestedByAgentId;
+      if (!requester) {
+        continue;
+      }
+      pendingApprovalsByRequester.set(requester, (pendingApprovalsByRequester.get(requester) ?? 0) + 1);
+    }
+    const runWindowStart = Date.now() - 24 * 60 * 60 * 1000;
+    const spendWindowStart = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    return agents
+      .filter((agent) => agent.status !== "terminated")
+      .map((agent) => {
+        const assignedOpenIssues = dashboardOpenIssues.filter((issue) => issue.assigneeAgentId === agent.id);
+        const blockedAssignedIssues = assignedOpenIssues.filter((issue) => issue.status === "blocked").length;
+        const needsApproval = pendingApprovalsByRequester.get(agent.id) ?? 0;
+        const runs24h = heartbeatRuns.filter((run) => run.agentId === agent.id && new Date(run.startedAt).getTime() >= runWindowStart);
+        const completed24h = runs24h.filter((run) => run.status === "completed").length;
+        const failed24h = runs24h.filter((run) => run.status === "failed").length;
+        const spend30d = costEntries
+          .filter((entry) => entry.agentId === agent.id && new Date(entry.createdAt).getTime() >= spendWindowStart)
+          .reduce((sum, entry) => sum + entry.usdCost, 0);
+        const byDay = new Map(dayKeys.map((key) => [key, { total: 0, failed: 0 }]));
+        for (const run of heartbeatRuns) {
+          if (run.agentId !== agent.id) {
+            continue;
+          }
+          const day = new Date(run.startedAt);
+          day.setHours(0, 0, 0, 0);
+          const key = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
+          const current = byDay.get(key);
+          if (!current) {
+            continue;
+          }
+          current.total += 1;
+          if (run.status === "failed") {
+            current.failed += 1;
+          }
+        }
+        const trend = Array.from(byDay.entries()).map(([key, values]) => ({
+          label: key.slice(5),
+          total: values.total,
+          failed: values.failed
+        }));
+        return {
+          id: agent.id,
+          name: agent.name,
+          role: agent.role,
+          status: agent.status,
+          openAssigned: assignedOpenIssues.length,
+          blockedAssigned: blockedAssignedIssues,
+          needsApproval,
+          runs24h: runs24h.length,
+          completed24h,
+          failed24h,
+          spend30d,
+          trend
+        };
+      })
+      .sort((a, b) => {
+        if (b.openAssigned !== a.openAssigned) {
+          return b.openAssigned - a.openAssigned;
+        }
+        if (b.needsApproval !== a.needsApproval) {
+          return b.needsApproval - a.needsApproval;
+        }
+        return b.runs24h - a.runs24h;
+      });
+  }, [agents, costEntries, dashboardOpenIssues, governanceInbox, heartbeatRuns, isDashboardNav]);
   const dashboardIssueConfig = {
     total: { label: "Issues", color: "var(--chart-1)" }
   } satisfies ChartConfig;
   const dashboardRunsConfig = {
     completed: { label: "Completed", color: "var(--chart-1)" },
-    failed: { label: "Failed", color: "var(--chart-5)" }
+    failed: { label: "Failed", color: "var(--chart-5)" },
+    skipped: { label: "Skipped", color: "var(--chart-3)" }
+  } satisfies ChartConfig;
+  const dashboardRunsVolumeConfig = {
+    total: { label: "Runs", color: "var(--chart-2)" }
+  } satisfies ChartConfig;
+  const dashboardAgentsConfig = {
+    total: { label: "Agents", color: "var(--chart-3)" }
+  } satisfies ChartConfig;
+  const dashboardApprovalsConfig = {
+    total: { label: "Approvals", color: "var(--chart-4)" }
   } satisfies ChartConfig;
   const dashboardCostConfig = {
     usd: { label: "USD", color: "var(--chart-2)" }
+  } satisfies ChartConfig;
+  const dashboardAgentTrendConfig = {
+    total: { label: "Runs", color: "var(--chart-1)" },
+    failed: { label: "Failed", color: "var(--chart-5)" }
   } satisfies ChartConfig;
   const projectColumns = useMemo<ColumnDef<ProjectRow>[]>(
     () => [
@@ -2924,18 +3218,132 @@ export function WorkspaceClient({
           <>
             <SectionHeading
               title="Dashboard"
-              description="Dashboard of the company's current status."
+              description="Birds-eye snapshot of company execution, workforce, governance, and spend."
             />
-            <div className={styles.dashboardActionGrid}>
-              <Card>
+            <div className={styles.dashboardSummaryStats}>
+              <MetricCard label="Open work" value={dashboardOpenIssues.length} hint={`${staleIssueCount} stale over 7d`} />
+              <MetricCard
+                label="Active agents"
+                value={agents.filter((agent) => agent.status !== "terminated").length}
+                hint={`${dashboardAgentProviderData.length} providers`}
+              />
+              <MetricCard label="Pending approvals" value={pendingApprovals.length} hint={`Oldest pending: ${oldestPendingApprovalAge}`} />
+              <MetricCard
+                label="Run success (24h)"
+                value={`${dashboardRunHealth.successRate24h.toFixed(0)}%`}
+                hint={`${dashboardRunHealth.completedLast24h}/${Math.max(dashboardRunHealth.completedLast24h + dashboardRunHealth.failedLast24h, 1)} completed`}
+              />
+              <MetricCard label="Spend today" value={formatUsdCost(todayCostSummary.usd)} hint={`${todayCostSummary.input + todayCostSummary.output} tokens`} />
+              <MetricCard label="Spend (last 6m)" value={formatUsdCost(dashboardCostTrendData.reduce((sum, row) => sum + row.usd, 0))} hint={topCostAgent} />
+            </div>
+            <div className={styles.dashboardAgentSpotlightGrid}>
+              {dashboardAgentSnapshots.length > 0 ? (
+                dashboardAgentSnapshots.map((agentSnapshot) => (
+                  <Card key={agentSnapshot.id} className={styles.dashboardAgentSpotlightCard}>
+                    <CardHeader>
+                      <span
+                        className={cn(
+                          styles.dashboardAgentStatusDot,
+                          agentSnapshot.status === "active" || agentSnapshot.status === "working"
+                            ? styles.dashboardAgentStatusDotWorking
+                            : styles.dashboardAgentStatusDotIdle
+                        )}
+                        aria-label={agentSnapshot.status === "active" || agentSnapshot.status === "working" ? "Working" : "Idle"}
+                        title={agentSnapshot.status === "active" || agentSnapshot.status === "working" ? "Working" : "Idle"}
+                      />
+                      <CardTitle>{agentSnapshot.name}</CardTitle>
+                      <CardDescription>
+                        {agentSnapshot.role} · {agentSnapshot.status.replaceAll("_", " ")}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className={styles.dashboardAgentSpotlightContent}>
+                      <div className={styles.dashboardAgentSpotlightStats}>
+                        <div className={styles.dashboardAgentSpotlightMetric}>
+                          <span>Open assigned</span>
+                          <Badge variant="outline">{agentSnapshot.openAssigned}</Badge>
+                        </div>
+                        <div className={styles.dashboardAgentSpotlightMetric}>
+                          <span>Blocked</span>
+                          <Badge variant="outline">{agentSnapshot.blockedAssigned}</Badge>
+                        </div>
+                        <div className={styles.dashboardAgentSpotlightMetric}>
+                          <span>Needs approval</span>
+                          <Badge variant="outline">{agentSnapshot.needsApproval}</Badge>
+                        </div>
+                        <div className={styles.dashboardAgentSpotlightMetric}>
+                          <span>Runs 24h</span>
+                          <Badge variant="outline">{agentSnapshot.runs24h}</Badge>
+                        </div>
+                        <div className={styles.dashboardAgentSpotlightMetric}>
+                          <span>Failed 24h</span>
+                          <Badge variant="outline">{agentSnapshot.failed24h}</Badge>
+                        </div>
+                        <div className={styles.dashboardAgentSpotlightMetric}>
+                          <span>Spend 30d</span>
+                          <Badge variant="outline">{formatUsdCost(agentSnapshot.spend30d)}</Badge>
+                        </div>
+                      </div>
+                      <ChartContainer config={dashboardAgentTrendConfig} className={styles.dashboardAgentSpotlightChart}>
+                        <LineChart accessibilityLayer data={agentSnapshot.trend} margin={{ top: 8, left: -8, right: -8 }}>
+                          <CartesianGrid vertical={false} strokeDasharray="4 4" strokeOpacity={0.28} />
+                          <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={10} minTickGap={20} />
+                          <YAxis hide />
+                          <ChartTooltip content={<ChartTooltipContent indicator="line" />} cursor={false} />
+                          <Line type="monotone" dataKey="total" stroke="var(--color-total)" strokeWidth={2} dot={false} />
+                          <Line type="monotone" dataKey="failed" stroke="var(--color-failed)" strokeWidth={1.8} dot={false} />
+                        </LineChart>
+                      </ChartContainer>
+                    </CardContent>
+                  </Card>
+                ))
+              ) : (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>No active agents yet</CardTitle>
+                    <CardDescription>Hire agents to unlock per-agent live workload and execution charts.</CardDescription>
+                  </CardHeader>
+                </Card>
+              )}
+            </div>
+            <div className={styles.dashboardAttentionGrid}>
+              <Card className={styles.dashboardAttentionCard}>
                 <CardHeader>
-                  <CardTitle>Needs your approval</CardTitle>
-                  <CardDescription>Outstanding requests that are waiting for your decision.</CardDescription>
+                  <CardTitle>Needs attention now</CardTitle>
+                  <CardDescription>Signals likely to slow down delivery if unresolved this cycle.</CardDescription>
+                </CardHeader>
+                <CardContent className={styles.dashboardAttentionContent}>
+                  <div className={styles.dashboardAttentionRow}>
+                    <span>Blocked issues</span>
+                    <Badge variant="outline">{dashboardNeedsAttention.blockedIssues}</Badge>
+                  </div>
+                  <div className={styles.dashboardAttentionRow}>
+                    <span>Unassigned open issues</span>
+                    <Badge variant="outline">{dashboardAssignmentCoverageData.find((entry) => entry.label === "Unassigned")?.total ?? 0}</Badge>
+                  </div>
+                  <div className={styles.dashboardAttentionRow}>
+                    <span>Stale open issues (&gt;7d)</span>
+                    <Badge variant="outline">{dashboardNeedsAttention.staleOpenIssues}</Badge>
+                  </div>
+                  <div className={styles.dashboardAttentionRow}>
+                    <span>Failed runs (24h)</span>
+                    <Badge variant="outline">{dashboardNeedsAttention.failedRuns24h}</Badge>
+                  </div>
+                  <div className={styles.dashboardActionQueueActions}>
+                    <Button asChild size="sm" variant="outline">
+                      <Link href={{ pathname: "/issues", query: { companyId: companyId! } }}>Open issues</Link>
+                    </Button>
+                    <Button asChild size="sm" variant="outline">
+                      <Link href={{ pathname: "/runs", query: { companyId: companyId! } }}>Open runs</Link>
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className={styles.dashboardAttentionCard}>
+                <CardHeader>
+                  <CardTitle>Live approval queue</CardTitle>
+                  <CardDescription>Oldest requests that still need your decision.</CardDescription>
                 </CardHeader>
                 <CardContent className={styles.dashboardActionQueueContent}>
-                  <div className={styles.dashboardActionQueueStats}>
-                    <MetricCard label="Awaiting approval" value={pendingApprovals.length} hint={`Oldest pending: ${oldestPendingApprovalAge}`} />
-                  </div>
                   {dashboardPendingApprovalPreview.length > 0 ? (
                     <ul className={styles.dashboardApprovalPreviewList}>
                       {dashboardPendingApprovalPreview.map((item) => (
@@ -2964,174 +3372,7 @@ export function WorkspaceClient({
                   </div>
                 </CardContent>
               </Card>
-              <Card>
-                <CardHeader>
-                  <CardTitle>Pending approval mix</CardTitle>
-                  <CardDescription>What kinds of decisions are waiting right now.</CardDescription>
-                </CardHeader>
-                <CardContent className={styles.dashboardApprovalBreakdownContent}>
-                  {dashboardPendingApprovalsByAction.length > 0 ? (
-                    <ul className={styles.dashboardApprovalBreakdownList}>
-                      {dashboardPendingApprovalsByAction.map((entry) => (
-                        <li key={entry.action} className={styles.dashboardApprovalBreakdownItem}>
-                          <span>{entry.label}</span>
-                          <Badge variant="outline">{entry.total}</Badge>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <div className={styles.dashboardActionQueueEmpty}>No pending approvals to break down.</div>
-                  )}
-                </CardContent>
-              </Card>
             </div>
-            <div className="ui-stats">
-              <MetricCard label="Open Issues" value={issues.filter((issue) => issue.status !== "done" && issue.status !== "canceled").length} />
-              <MetricCard label="Active Agents" value={agents.filter((agent) => agent.status !== "terminated").length} />
-              <MetricCard label="Pending Approvals" value={pendingApprovals.length} />
-              <MetricCard label="Recent Heartbeats" value={heartbeatRuns.length} />
-            </div>
-            <div className={styles.dashboardAttentionGrid}>
-              <Card>
-                <CardHeader>
-                  <CardTitle>Needs attention</CardTitle>
-                  <CardDescription>Signals that can slow down delivery if left unresolved.</CardDescription>
-                </CardHeader>
-                <CardContent className={styles.dashboardAttentionContent}>
-                  <div className={styles.dashboardAttentionRow}>
-                    <span>Stale open issues (&gt;7d)</span>
-                    <Badge variant="outline">{dashboardNeedsAttention.staleOpenIssues}</Badge>
-                  </div>
-                  <div className={styles.dashboardAttentionRow}>
-                    <span>Blocked issues</span>
-                    <Badge variant="outline">{dashboardNeedsAttention.blockedIssues}</Badge>
-                  </div>
-                  <div className={styles.dashboardAttentionRow}>
-                    <span>Failed runs (24h)</span>
-                    <Badge variant="outline">{dashboardNeedsAttention.failedRuns24h}</Badge>
-                  </div>
-                  <div className={styles.dashboardAttentionRow}>
-                    <span>Failed runs (7d)</span>
-                    <Badge variant="outline">{dashboardNeedsAttention.failedRuns7d}</Badge>
-                  </div>
-                  <div className={styles.dashboardActionQueueActions}>
-                    <Button asChild size="sm" variant="outline">
-                      <Link href={{ pathname: "/issues", query: { companyId: companyId! } }}>View issues</Link>
-                    </Button>
-                    <Button asChild size="sm" variant="outline">
-                      <Link href={{ pathname: "/runs", query: { companyId: companyId! } }}>View runs</Link>
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-            <div className={styles.dashboardChartsGrid}>
-              <Card>
-                <CardHeader>
-                  <CardTitle>Issue status mix</CardTitle>
-                  <CardDescription>Current distribution across all tracked statuses.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <ChartContainer config={dashboardIssueConfig} className={styles.dashboardChartContainer}>
-                    <BarChart accessibilityLayer data={dashboardIssueStatusData} margin={{ top: 8, left: -8, right: -8 }}>
-                      <CartesianGrid vertical={false} strokeDasharray="4 4" strokeOpacity={0.35} />
-                      <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={10} minTickGap={20} />
-                      <YAxis hide />
-                      <ChartTooltip content={<ChartTooltipContent indicator="line" />} cursor={false} />
-                      <Bar dataKey="total" fill="var(--color-total)" radius={[8, 8, 0, 0]} maxBarSize={34} />
-                    </BarChart>
-                  </ChartContainer>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader>
-                  <CardTitle>Run outcomes</CardTitle>
-                  <CardDescription>Completed vs failed runs over the last 14 days.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <ChartContainer config={dashboardRunsConfig} className={styles.dashboardChartContainer}>
-                    <AreaChart accessibilityLayer data={dashboardRunsDailyData} margin={{ top: 8, left: -8, right: -8 }}>
-                      <defs>
-                        <linearGradient id="dashboardRunsCompleted" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="10%" stopColor="var(--color-completed)" stopOpacity={0.45} />
-                          <stop offset="90%" stopColor="var(--color-completed)" stopOpacity={0.06} />
-                        </linearGradient>
-                        <linearGradient id="dashboardRunsFailed" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="10%" stopColor="var(--color-failed)" stopOpacity={0.4} />
-                          <stop offset="90%" stopColor="var(--color-failed)" stopOpacity={0.04} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid vertical={false} strokeDasharray="4 4" strokeOpacity={0.3} />
-                      <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={10} minTickGap={22} />
-                      <YAxis hide />
-                      <ChartTooltip content={<ChartTooltipContent indicator="line" />} cursor={false} />
-                      <Area
-                        type="monotone"
-                        dataKey="completed"
-                        stroke="var(--color-completed)"
-                        fill="url(#dashboardRunsCompleted)"
-                        strokeOpacity={1}
-                        strokeWidth={2}
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="failed"
-                        stroke="var(--color-failed)"
-                        fill="url(#dashboardRunsFailed)"
-                        strokeOpacity={1}
-                        strokeWidth={2}
-                      />
-                    </AreaChart>
-                  </ChartContainer>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader>
-                  <CardTitle>Cost trend</CardTitle>
-                  <CardDescription>Monthly spend (last 6 months).</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <ChartContainer config={dashboardCostConfig} className={styles.dashboardChartContainer}>
-                    <AreaChart accessibilityLayer data={dashboardCostTrendData} margin={{ top: 8, left: -8, right: -8 }}>
-                      <defs>
-                        <linearGradient id="dashboardCostUsd" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="8%" stopColor="var(--color-usd)" stopOpacity={0.5} />
-                          <stop offset="90%" stopColor="var(--color-usd)" stopOpacity={0.05} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid vertical={false} strokeDasharray="4 4" strokeOpacity={0.35} />
-                      <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={10} minTickGap={20} />
-                      <YAxis hide />
-                      <ChartTooltip content={<ChartTooltipContent indicator="line" />} cursor={false} />
-                      <Area type="monotone" dataKey="usd" stroke="var(--color-usd)" fill="url(#dashboardCostUsd)" fillOpacity={1} strokeWidth={2.2} />
-                    </AreaChart>
-                  </ChartContainer>
-                </CardContent>
-              </Card>
-            </div>
-            <div className={styles.dashboardInsightsGrid}>
-              <Card>
-                <CardHeader>
-                  <CardTitle>Execution risks</CardTitle>
-                </CardHeader>
-                <CardContent className={styles.dashboardInsightsCardContent}>
-                  <div>Stale open issues (&gt;7d): {staleIssueCount}</div>
-                  <div>Oldest pending approval: {oldestPendingApprovalAge}</div>
-                  <div>Top cost center: {topCostAgent}</div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader>
-                  <CardTitle>Backlog signal</CardTitle>
-                </CardHeader>
-                <CardContent className={styles.dashboardInsightsCardContent}>
-                  <div>In review: {issues.filter((issue) => issue.status === "in_review").length}</div>
-                  <div>Blocked: {issues.filter((issue) => issue.status === "blocked").length}</div>
-                  <div>Unassigned: {issues.filter((issue) => !issue.assigneeAgentId).length}</div>
-                </CardContent>
-              </Card>
-            </div>
-            
           </>
         );
       case "Projects":
@@ -3488,48 +3729,68 @@ export function WorkspaceClient({
                   <MetricCard label="Event types" value={traceSummary.uniqueEventTypes} hint={`Top: ${traceSummary.topEventType}`} />
                   <MetricCard label="Anomalies" value={traceSummary.anomalies} hint="fail/error/reject/timeout events" />
                 </div>
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Trace trend</CardTitle>
-                    <CardDescription>Daily event volume and anomalies (last 14 days, based on current filters).</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <ChartContainer config={traceChartConfig} className={styles.traceTrendChartContainer}>
-                      <AreaChart accessibilityLayer data={traceDailyChartData} margin={{ top: 8, left: -8, right: -8 }}>
-                        <defs>
-                          <linearGradient id="traceTotalGradient" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="10%" stopColor="var(--color-total)" stopOpacity={0.45} />
-                            <stop offset="90%" stopColor="var(--color-total)" stopOpacity={0.05} />
-                          </linearGradient>
-                          <linearGradient id="traceAnomaliesGradient" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="10%" stopColor="var(--color-anomalies)" stopOpacity={0.4} />
-                            <stop offset="90%" stopColor="var(--color-anomalies)" stopOpacity={0.04} />
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid vertical={false} strokeDasharray="4 4" strokeOpacity={0.3} />
-                        <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={10} minTickGap={22} />
-                        <YAxis hide />
-                        <ChartTooltip content={<ChartTooltipContent indicator="line" />} cursor={false} />
-                        <Area
-                          type="monotone"
-                          dataKey="total"
-                          stroke="var(--color-total)"
-                          fill="url(#traceTotalGradient)"
-                          fillOpacity={1}
-                          strokeWidth={2}
-                        />
-                        <Area
-                          type="monotone"
-                          dataKey="anomalies"
-                          stroke="var(--color-anomalies)"
-                          fill="url(#traceAnomaliesGradient)"
-                          fillOpacity={1}
-                          strokeWidth={2}
-                        />
-                      </AreaChart>
-                    </ChartContainer>
-                  </CardContent>
-                </Card>
+                <div className={styles.traceChartsGrid}>
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Trace trend</CardTitle>
+                      <CardDescription>Daily event volume and anomalies (last 14 days, based on current filters).</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <ChartContainer config={traceChartConfig} className={styles.traceTrendChartContainer}>
+                        <AreaChart accessibilityLayer data={traceDailyChartData} margin={{ top: 8, left: -8, right: -8 }}>
+                          <defs>
+                            <linearGradient id="traceTotalGradient" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="10%" stopColor="var(--color-total)" stopOpacity={0.45} />
+                              <stop offset="90%" stopColor="var(--color-total)" stopOpacity={0.05} />
+                            </linearGradient>
+                            <linearGradient id="traceAnomaliesGradient" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="10%" stopColor="var(--color-anomalies)" stopOpacity={0.4} />
+                              <stop offset="90%" stopColor="var(--color-anomalies)" stopOpacity={0.04} />
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid vertical={false} strokeDasharray="4 4" strokeOpacity={0.3} />
+                          <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={10} minTickGap={22} />
+                          <YAxis hide />
+                          <ChartTooltip content={<ChartTooltipContent indicator="line" />} cursor={false} />
+                          <Area
+                            type="monotone"
+                            dataKey="total"
+                            stroke="var(--color-total)"
+                            fill="url(#traceTotalGradient)"
+                            fillOpacity={1}
+                            strokeWidth={2}
+                          />
+                          <Area
+                            type="monotone"
+                            dataKey="anomalies"
+                            stroke="var(--color-anomalies)"
+                            fill="url(#traceAnomaliesGradient)"
+                            fillOpacity={1}
+                            strokeWidth={2}
+                          />
+                        </AreaChart>
+                      </ChartContainer>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Top event types</CardTitle>
+                      <CardDescription>Most frequent log event types in scope, with anomaly counts.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <ChartContainer config={traceEventTypeChartConfig} className={styles.traceTrendChartContainer}>
+                        <BarChart accessibilityLayer data={traceEventTypeChartData} margin={{ top: 8, left: -8, right: -8 }}>
+                          <CartesianGrid vertical={false} strokeDasharray="4 4" strokeOpacity={0.3} />
+                          <XAxis dataKey="eventType" tickLine={false} axisLine={false} tickMargin={10} minTickGap={12} />
+                          <YAxis hide />
+                          <ChartTooltip content={<ChartTooltipContent />} cursor={false} />
+                          <Bar dataKey="total" fill="var(--color-total)" radius={[6, 6, 0, 0]} />
+                          <Bar dataKey="anomalies" fill="var(--color-anomalies)" radius={[6, 6, 0, 0]} />
+                        </BarChart>
+                      </ChartContainer>
+                    </CardContent>
+                  </Card>
+                </div>
                 <DataTable
                   columns={auditColumns}
                   data={filteredAuditEvents}
@@ -3607,48 +3868,68 @@ export function WorkspaceClient({
                   <MetricCard label="Failed runs" value={runsSummary.failed} />
                   <MetricCard label="Avg duration" value={runsSummary.avgDuration} hint={`${runsSummary.running} currently running`} />
                 </div>
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Run trend</CardTitle>
-                    <CardDescription>Daily completed vs failed runs (last 14 days, based on current filters).</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <ChartContainer config={runsChartConfig} className={styles.runTrendChartContainer}>
-                      <AreaChart accessibilityLayer data={runsDailyChartData} margin={{ top: 8, left: -8, right: -8 }}>
-                        <defs>
-                          <linearGradient id="runsCompletedGradient" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="10%" stopColor="var(--color-completed)" stopOpacity={0.45} />
-                            <stop offset="90%" stopColor="var(--color-completed)" stopOpacity={0.06} />
-                          </linearGradient>
-                          <linearGradient id="runsFailedGradient" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="10%" stopColor="var(--color-failed)" stopOpacity={0.4} />
-                            <stop offset="90%" stopColor="var(--color-failed)" stopOpacity={0.04} />
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid vertical={false} strokeDasharray="4 4" strokeOpacity={0.3} />
-                        <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={10} minTickGap={22} />
-                        <YAxis hide />
-                        <ChartTooltip content={<ChartTooltipContent indicator="line" />} cursor={false} />
-                        <Area
-                          type="monotone"
-                          dataKey="completed"
-                          stroke="var(--color-completed)"
-                          fill="url(#runsCompletedGradient)"
-                          fillOpacity={1}
-                          strokeWidth={2}
-                        />
-                        <Area
-                          type="monotone"
-                          dataKey="failed"
-                          stroke="var(--color-failed)"
-                          fill="url(#runsFailedGradient)"
-                          fillOpacity={1}
-                          strokeWidth={2}
-                        />
-                      </AreaChart>
-                    </ChartContainer>
-                  </CardContent>
-                </Card>
+                <div className={styles.runTrendChartsGrid}>
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Run trend</CardTitle>
+                      <CardDescription>Daily completed vs failed runs (last 14 days, based on current filters).</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <ChartContainer config={runsChartConfig} className={styles.runTrendChartContainer}>
+                        <AreaChart accessibilityLayer data={runsDailyChartData} margin={{ top: 8, left: -8, right: -8 }}>
+                          <defs>
+                            <linearGradient id="runsCompletedGradient" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="10%" stopColor="var(--color-completed)" stopOpacity={0.45} />
+                              <stop offset="90%" stopColor="var(--color-completed)" stopOpacity={0.06} />
+                            </linearGradient>
+                            <linearGradient id="runsFailedGradient" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="10%" stopColor="var(--color-failed)" stopOpacity={0.4} />
+                              <stop offset="90%" stopColor="var(--color-failed)" stopOpacity={0.04} />
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid vertical={false} strokeDasharray="4 4" strokeOpacity={0.3} />
+                          <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={10} minTickGap={22} />
+                          <YAxis hide />
+                          <ChartTooltip content={<ChartTooltipContent indicator="line" />} cursor={false} />
+                          <Area
+                            type="monotone"
+                            dataKey="completed"
+                            stroke="var(--color-completed)"
+                            fill="url(#runsCompletedGradient)"
+                            fillOpacity={1}
+                            strokeWidth={2}
+                          />
+                          <Area
+                            type="monotone"
+                            dataKey="failed"
+                            stroke="var(--color-failed)"
+                            fill="url(#runsFailedGradient)"
+                            fillOpacity={1}
+                            strokeWidth={2}
+                          />
+                        </AreaChart>
+                      </ChartContainer>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Top agents by run volume</CardTitle>
+                      <CardDescription>Most active agents in current scope, with failed-run overlay.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <ChartContainer config={runsTopAgentsChartConfig} className={styles.runInsightsChartContainer}>
+                        <BarChart accessibilityLayer data={runsTopAgentsChartData} margin={{ top: 8, left: -8, right: -8 }}>
+                          <CartesianGrid vertical={false} strokeDasharray="4 4" strokeOpacity={0.3} />
+                          <XAxis dataKey="agent" tickLine={false} axisLine={false} tickMargin={10} minTickGap={14} />
+                          <YAxis hide />
+                          <ChartTooltip content={<ChartTooltipContent />} cursor={false} />
+                          <Bar dataKey="total" fill="var(--color-total)" radius={[6, 6, 0, 0]} />
+                          <Bar dataKey="failed" fill="var(--color-failed)" radius={[6, 6, 0, 0]} />
+                        </BarChart>
+                      </ChartContainer>
+                    </CardContent>
+                  </Card>
+                </div>
                 <DataTable
                   columns={heartbeatRunColumns}
                   data={filteredHeartbeatRuns}
@@ -4108,6 +4389,15 @@ export function WorkspaceClient({
               title="Templates"
               description="Portable org templates for reproducible company setup."
             />
+            <div className="ui-stats">
+              <MetricCard label="Templates in scope" value={templatesSummary.total} />
+              <MetricCard label="Published" value={templatesSummary.published} />
+              <MetricCard label="Draft / Archived" value={`${templatesSummary.draft} / ${templatesSummary.archived}`} />
+              <MetricCard
+                label="Company / Private · Variables"
+                value={`${templatesSummary.companyVisible} / ${templatesSummary.privateVisible} · ${templatesSummary.variables}`}
+              />
+            </div>
             <DataTable
               columns={templateColumns}
               data={filteredTemplates}

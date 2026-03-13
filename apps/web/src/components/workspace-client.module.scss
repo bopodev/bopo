@@ -164,7 +164,15 @@
 
 
 .runTrendChartContainer {
-  @apply h-52 w-full;
+  @apply h-44 w-full;
+}
+
+.runTrendChartsGrid {
+  @apply mt-6 grid gap-6 md:grid-cols-2 xl:grid-cols-2;
+}
+
+.runInsightsChartContainer {
+  @apply h-44 w-full;
 }
 
 .runMessageCellContainer {
@@ -188,6 +196,10 @@
   @apply h-52 w-full;
 }
 
+.traceChartsGrid {
+  @apply mt-6 grid gap-6 md:grid-cols-2;
+}
+
 .governanceFiltersCardContent {
   @apply flex flex-wrap items-center gap-6;
 }
@@ -201,12 +213,52 @@
 }
 
 
-.dashboardChartsGrid {
-  @apply grid gap-6 xl:grid-cols-3;
-}
-
 .dashboardActionGrid {
   @apply grid gap-6 xl:grid-cols-2;
+}
+
+.dashboardSummaryStats {
+  @apply grid gap-6 sm:grid-cols-2 xl:grid-cols-3;
+}
+
+.dashboardBirdseyeGrid {
+  @apply grid gap-6 xl:grid-cols-2;
+}
+
+.dashboardAgentSpotlightGrid {
+  @apply grid gap-6 xl:grid-cols-2;
+}
+
+.dashboardAgentSpotlightCard {
+  @apply relative overflow-hidden;
+}
+
+.dashboardAgentSpotlightContent {
+  @apply space-y-4;
+}
+
+.dashboardAgentStatusDot {
+  @apply absolute right-4 top-4 h-2.5 w-2.5 rounded-full ring-2 ring-background;
+}
+
+.dashboardAgentStatusDotWorking {
+  @apply bg-emerald-500;
+}
+
+.dashboardAgentStatusDotIdle {
+  @apply bg-slate-400;
+}
+
+.dashboardAgentSpotlightStats {
+  @apply grid gap-2 sm:grid-cols-2 xl:grid-cols-3;
+}
+
+.dashboardAgentSpotlightMetric {
+  @apply flex items-center justify-between rounded-md border bg-muted/20 px-3 py-2 text-xs;
+}
+
+.dashboardAgentSpotlightChart {
+  @apply h-48 w-full;
 }
 
 .dashboardActionQueueContent {
@@ -238,7 +290,7 @@
 }
 
 .dashboardActionQueueActions {
-  @apply flex flex-wrap gap-2;
+  @apply flex flex-wrap gap-6 mt-6;
 }
 
 .dashboardApprovalBreakdownContent {
@@ -254,7 +306,11 @@
 }
 
 .dashboardAttentionGrid {
-  @apply grid gap-6;
+  @apply grid items-stretch gap-6 xl:grid-cols-2;
+}
+
+.dashboardAttentionCard {
+  @apply h-full;
 }
 
 .dashboardAttentionContent {
@@ -266,7 +322,7 @@
 }
 
 .dashboardChartContainer {
-  @apply h-52 w-full;
+  @apply h-56 w-full;
 }
 
 .dashboardInsightsGrid {
