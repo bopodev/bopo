@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ExecutionOutcome } from "bopodev-contracts";
 import { AppShell } from "@/components/app-shell";
@@ -13,7 +13,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
-import { ApiError, apiDelete, apiPost } from "@/lib/api";
+import { Field, FieldLabel } from "@/components/ui/field";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ApiError, apiDelete, apiPost, apiPut } from "@/lib/api";
 import { agentAvatarSeed } from "@/lib/agent-avatar";
 import { parseRuntimeFromAgentColumns } from "@/lib/agent-detail-logic";
 import { getModelOptionsForProvider, heartbeatCronToIntervalSec } from "@/lib/agent-runtime-options";
@@ -397,6 +399,7 @@ export function AgentDetailPageClient({
 }) {
   const router = useRouter();
   const [actionError, setActionError] = useState<string | null>(null);
+  const [sidebarError, setSidebarError] = useState<string | null>(null);
   const [pendingActionKeys, setPendingActionKeys] = useState<Record<string, boolean>>({});
   const managerNameById = useMemo(() => new Map(agents.map((entry) => [entry.id, entry.name])), [agents]);
 
@@ -444,6 +447,14 @@ export function AgentDetailPageClient({
     };
   }, [agent]);
   const managerName = agent.managerAgentId ? managerNameById.get(agent.managerAgentId) ?? shortId(agent.managerAgentId) : "Unassigned";
+  const managerOptions = useMemo(
+    () =>
+      agents
+        .filter((entry) => entry.id !== agent.id)
+        .slice()
+        .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)),
+    [agent.id, agents]
+  );
   const configuredModelId =
     state.runtime?.model?.trim() ||
     agent.runtimeModel?.trim() ||
@@ -452,6 +463,15 @@ export function AgentDetailPageClient({
       return provider ? getDefaultModelForProvider(provider) ?? "" : "";
     })();
   const configuredModelLabel = configuredModelId ? getModelLabel(agent.providerType, configuredModelId) : "Not configured";
+  const modelOptions = useMemo(() => {
+    const provider = normalizeRuntimeProvider(agent.providerType);
+    if (!provider) {
+      return [];
+    }
+    return getModelOptionsForProvider(provider, configuredModelId).filter((option) => option.value.trim().length > 0);
+  }, [agent.providerType, configuredModelId]);
+  const [selectedModelId, setSelectedModelId] = useState(configuredModelId);
+  const [selectedManagerAgentId, setSelectedManagerAgentId] = useState(agent.managerAgentId ?? "__none");
   const runActivityBars = useMemo(() => buildLastNDaysSeries(14, agentRuns, (run) => run.startedAt), [agentRuns]);
   const successRateBars = useMemo(() => {
     const now = new Date();
@@ -523,6 +543,14 @@ export function AgentDetailPageClient({
       : agent.status === "terminated"
         ? "Agent is terminated and cannot run."
         : null;
+
+  useEffect(() => {
+    setSelectedModelId(configuredModelId);
+  }, [configuredModelId]);
+
+  useEffect(() => {
+    setSelectedManagerAgentId(agent.managerAgentId ?? "__none");
+  }, [agent.managerAgentId]);
 
   const isActionPending = useCallback(
     (actionKey: string) => pendingActionKeys[actionKey] === true,
@@ -599,6 +627,53 @@ export function AgentDetailPageClient({
     await runAgentAction(async () => {
       await apiPost(`/agents/${agent.id}/terminate`, companyId, {});
     }, "Failed to terminate agent.", `agent:${agent.id}:terminate`);
+  }
+
+  async function updateSidebarSettings(payload: { runtimeConfig?: { runtimeModel?: string }; managerAgentId?: string | null }, actionKey: string) {
+    setSidebarError(null);
+    if (isActionPending(actionKey)) {
+      return;
+    }
+    setPendingActionKeys((prev) => ({ ...prev, [actionKey]: true }));
+    try {
+      await apiPut(`/agents/${agent.id}`, companyId, payload);
+      router.refresh();
+    } catch (error) {
+      setSidebarError(error instanceof ApiError ? error.message : "Failed to update agent settings.");
+      throw error;
+    } finally {
+      setPendingActionKeys((prev) => {
+        if (!prev[actionKey]) {
+          return prev;
+        }
+        const next = { ...prev };
+        delete next[actionKey];
+        return next;
+      });
+    }
+  }
+
+  async function handleModelChange(nextModelId: string) {
+    const previousModelId = selectedModelId;
+    setSelectedModelId(nextModelId);
+    try {
+      await updateSidebarSettings({ runtimeConfig: { runtimeModel: nextModelId } }, `agent:${agent.id}:runtime-model`);
+    } catch {
+      setSelectedModelId(previousModelId);
+    }
+  }
+
+  async function handleManagerChange(nextManagerAgentId: string) {
+    const previousManagerAgentId = selectedManagerAgentId;
+    setSelectedManagerAgentId(nextManagerAgentId);
+    try {
+      await updateSidebarSettings(
+        { managerAgentId: nextManagerAgentId === "__none" ? null : nextManagerAgentId },
+        `agent:${agent.id}:manager`
+      );
+    } catch {
+      setSelectedManagerAgentId(previousManagerAgentId);
+    }
   }
 
   const invokeActionKey = `agent:${agent.id}:invoke`;
@@ -715,6 +790,15 @@ export function AgentDetailPageClient({
         </Alert>
       ) : null}
 
+      <div className={styles.costSectionContainer}>
+        <div className={styles.costGridCardContent}>
+          <MetricCard label="Input tokens" value={costSummary.input.toLocaleString()} />
+          <MetricCard label="Output tokens" value={costSummary.output.toLocaleString()} />
+          <MetricCard label="Cost entries" value={agentCosts.length.toLocaleString()} />
+          <MetricCard label="Total cost" value={costSummary.usd.toFixed(2)} />
+        </div>
+      </div>
+
       <div className={styles.chartGridContainer}>
         <Card>
           <CardHeader>
@@ -817,50 +901,73 @@ export function AgentDetailPageClient({
           )}
         </CardContent>
       </Card>
+    </div>
+  );
 
-      <div className={styles.costSectionContainer}>
-        <div className={styles.costSectionHeadingContainer}>
-          <h3 className={styles.costSectionTitle}>Costs</h3>
-          <p className={styles.costSectionDescription}>Aggregated usage for this agent.</p>
-        </div>
-        <div className={styles.costGridCardContent}>
-          <MetricCard label="Input tokens" value={costSummary.input.toLocaleString()} />
-          <MetricCard label="Output tokens" value={costSummary.output.toLocaleString()} />
-          <MetricCard label="Cost entries" value={agentCosts.length.toLocaleString()} />
-          <MetricCard label="Total cost" value={costSummary.usd.toFixed(2)} />
-        </div>
-      </div>
+  const rightPane = (
+    <div className={styles.agentSidebarContainer}>
+      <Card>
+        <CardContent className={styles.agentSidebarControlsCardContent}>
+          <Field>
+            <FieldLabel>Model</FieldLabel>
+            <Select
+              value={selectedModelId}
+              onValueChange={(value) => void handleModelChange(value)}
+              disabled={modelOptions.length === 0 || isActionPending(`agent:${agent.id}:runtime-model`) || agent.status === "terminated"}
+            >
+              <SelectTrigger className={styles.agentSidebarSelectTrigger}>
+                <SelectValue placeholder={modelOptions.length === 0 ? "Not configurable for this adapter" : "Select a model"} />
+              </SelectTrigger>
+              <SelectContent>
+                {modelOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
 
-      <div className={styles.configGridContainer}>
-        <Card>
-          <CardHeader>
-            <CardTitle>Configuration</CardTitle>
-            <CardDescription>Runtime and ownership details.</CardDescription>
-          </CardHeader>
-          <CardContent className={styles.configCardContent}>
-            <ConfigRow label="Agent ID" value={agent.id} />
-            <ConfigRow label="Adapter" value={getProviderLabel(agent.providerType)} />
-            <ConfigRow label="Model" value={configuredModelLabel} />
-            <ConfigRow label="Status" value={agent.status} />
-            <ConfigRow label="Heartbeat" value={formatHeartbeatCadence(agent.heartbeatCron)} />
-            <ConfigRow label="Last heartbeat" value={formatDateTime(latestRun?.startedAt)} />
-            <ConfigRow label="Reports to" value={managerName} />
-            <ConfigRow label="Monthly budget" value={typeof agent.monthlyBudgetUsd === "number" ? `$${agent.monthlyBudgetUsd}` : "Not set"} />
-          </CardContent>
-        </Card>
+          <Field className={styles.agentSidebarField}>
+            <FieldLabel>Reports to</FieldLabel>
+            <Select
+              value={selectedManagerAgentId}
+              onValueChange={(value) => void handleManagerChange(value)}
+              disabled={isActionPending(`agent:${agent.id}:manager`) || agent.status === "terminated"}
+            >
+              <SelectTrigger className={styles.agentSidebarSelectTrigger}>
+                <SelectValue placeholder="No manager" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none">No manager</SelectItem>
+                {managerOptions.map((entry) => (
+                  <SelectItem key={entry.id} value={entry.id}>
+                    {entry.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Prompt Template</CardTitle>
-            <CardDescription>Current runtime context persisted in state.</CardDescription>
-          </CardHeader>
-          <CardContent className={styles.promptCardContent}>
-            <div className={styles.promptPre}>
-              {state.promptTemplate ?? "No explicit prompt template found in state."}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+          {sidebarError ? <div className={styles.agentSidebarErrorText}>{sidebarError}</div> : null}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Details</CardTitle>
+          <CardDescription>Agent runtime details.</CardDescription>
+        </CardHeader>
+        <CardContent className={styles.configCardContent}>
+          <ConfigRow label="Agent ID" value={agent.id} />
+          <ConfigRow label="Adapter" value={getProviderLabel(agent.providerType)} />
+          <ConfigRow label="Model" value={configuredModelLabel} />
+          <ConfigRow label="Status" value={agent.status} />
+          <ConfigRow label="Heartbeat" value={formatHeartbeatCadence(agent.heartbeatCron)} />
+          <ConfigRow label="Reports to" value={managerName} />
+          <ConfigRow label="Monthly budget" value={typeof agent.monthlyBudgetUsd === "number" ? `$${agent.monthlyBudgetUsd}` : "Not set"} />
+        </CardContent>
+      </Card>
     </div>
   );
 
@@ -872,7 +979,7 @@ export function AgentDetailPageClient({
           <AlertDescription>{actionError}</AlertDescription>
         </Alert>
       ) : null}
-      <AppShell leftPane={leftPane} rightPane={null} activeNav="Agents" companies={companies} activeCompanyId={companyId} />
+      <AppShell leftPane={leftPane} rightPane={rightPane} activeNav="Agents" companies={companies} activeCompanyId={companyId} />
     </>
   );
 }
