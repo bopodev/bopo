@@ -961,10 +961,8 @@ export function AgentDetailPageClient({
         <CardContent className={styles.configCardContent}>
           <ConfigRow label="Agent ID" value={agent.id} />
           <ConfigRow label="Adapter" value={getProviderLabel(agent.providerType)} />
-          <ConfigRow label="Model" value={configuredModelLabel} />
           <ConfigRow label="Status" value={agent.status} />
           <ConfigRow label="Heartbeat" value={formatHeartbeatCadence(agent.heartbeatCron)} />
-          <ConfigRow label="Reports to" value={managerName} />
           <ConfigRow label="Monthly budget" value={typeof agent.monthlyBudgetUsd === "number" ? `$${agent.monthlyBudgetUsd}` : "Not set"} />
         </CardContent>
       </Card>
