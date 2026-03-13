@@ -54,12 +54,14 @@ Manage goals, projects, issues, agents, approvals, runs, and costs from one plac
 
 ## Documentation
 
-- Docs home: `docs/index.md`
-- Getting started: `docs/getting-started-and-dev.md`
-- Product guides: `docs/product/index.md`
-- Developer references: `docs/developer/index.md`
-- Operations runbooks: `docs/operations/index.md`
-- Release docs: `docs/release/index.md`
+- Docs home: [`docs/index.md`](./docs/index.md)
+- Getting started: [`docs/getting-started-and-dev.md`](./docs/getting-started-and-dev.md)
+- Product guides: [`docs/product/index.md`](./docs/product/index.md)
+- Developer references: [`docs/developer/index.md`](./docs/developer/index.md)
+- Operations runbooks: [`docs/operations/index.md`](./docs/operations/index.md)
+- Release docs: [`docs/release/index.md`](./docs/release/index.md)
+- Workspace/path canonical model: [`docs/developer/workspace-resolution-reference.md`](./docs/developer/workspace-resolution-reference.md)
+- Workspace migration/backfill runbook: [`docs/operations/workspace-migration-and-backfill-runbook.md`](./docs/operations/workspace-migration-and-backfill-runbook.md)
 
 ## Quickstart
 

@@ -29,6 +29,7 @@ This documentation set covers Bopo from two angles:
 - [`developer/domain-model.md`](./developer/domain-model.md)
 - [`developer/api-reference.md`](./developer/api-reference.md)
 - [`developer/configuration-reference.md`](./developer/configuration-reference.md)
+- [`developer/workspace-resolution-reference.md`](./developer/workspace-resolution-reference.md)
 - [`developer/plugin-system.md`](./developer/plugin-system.md)
 - [`developer/plugin-authoring.md`](./developer/plugin-authoring.md)
 - [`developer/plugin-hook-reference.md`](./developer/plugin-hook-reference.md)
@@ -45,6 +46,9 @@ This documentation set covers Bopo from two angles:
 - [`operations/runbooks-index.md`](./operations/runbooks-index.md)
 - [`operations/troubleshooting.md`](./operations/troubleshooting.md)
 - [`operations/plugin-runbook.md`](./operations/plugin-runbook.md)
+- [`operations/workspace-path-surface.md`](./operations/workspace-path-surface.md)
+- [`operations/workspace-migration-and-backfill-runbook.md`](./operations/workspace-migration-and-backfill-runbook.md)
+- [`operations/attachments-storage-runbook.md`](./operations/attachments-storage-runbook.md)
 - Codex-specific runbook: [`codex-connection-debugging.md`](./codex-connection-debugging.md)
 
 ## Release Docs

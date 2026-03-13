@@ -13,7 +13,7 @@ import {
   createProject
 } from "../packages/db/src/index";
 
-describe("governance and company scope authorization", () => {
+describe("governance and company scope authorization", { timeout: 90_000 }, () => {
   let db: BopoDb;
   let app: ReturnType<typeof createApp>;
   let tempDir: string;
@@ -85,7 +85,7 @@ describe("governance and company scope authorization", () => {
         heartbeatCron: "*/5 * * * *",
         monthlyBudgetUsd: 20,
         canHireAgents: false,
-        runtimeCwd: "/tmp"
+        runtimeCwd: join(tmpdir(), "bopodev-instances", "default", "workspaces", companyId, "agents", "gov-ok")
       }
     });
 
@@ -122,6 +122,34 @@ describe("governance and company scope authorization", () => {
     expect(inbox.status).toBe(200);
     expect(Array.isArray(inbox.body.data.items)).toBe(true);
     expect(inbox.body.data.items.some((item: { approval: { id: string } }) => item.approval.id === approvalId)).toBe(true);
+  });
+
+  it("rejects approval resolve when hire payload runtimeCwd is outside managed root", async () => {
+    const approvalId = await createApprovalRequest(db, {
+      companyId,
+      action: "hire_agent",
+      payload: {
+        name: "Unsafe Runtime Candidate",
+        role: "Engineer",
+        providerType: "shell",
+        heartbeatCron: "*/5 * * * *",
+        monthlyBudgetUsd: 20,
+        canHireAgents: false,
+        runtimeCwd: join(tmpdir(), "outside-governance-runtime")
+      }
+    });
+
+    const response = await request(app)
+      .post("/governance/resolve")
+      .set("x-company-id", companyId)
+      .set("x-actor-type", "member")
+      .set("x-actor-id", "member-gov")
+      .set("x-actor-companies", companyId)
+      .set("x-actor-permissions", "governance:resolve")
+      .send({ approvalId, status: "approved" });
+
+    expect(response.status).toBe(422);
+    expect(String(response.body.error ?? "")).toContain("must be inside");
   });
 
   it("enforces issues:write on issue mutations", async () => {

@@ -16,6 +16,11 @@ Provide fast routing from symptom to runbook.
   - [`../codex-connection-debugging.md`](../codex-connection-debugging.md)
 - **General API, scheduler, or realtime failures**
   - [`troubleshooting.md`](./troubleshooting.md)
+- **Workspace/path drift and runtime cwd policy failures**
+  - [`workspace-migration-and-backfill-runbook.md`](./workspace-migration-and-backfill-runbook.md)
+  - [`workspace-path-surface.md`](./workspace-path-surface.md)
+- **Attachment path and storage failures**
+  - [`attachments-storage-runbook.md`](./attachments-storage-runbook.md)
 - **Plugin workflow failures**
   - [`plugin-runbook.md`](./plugin-runbook.md)
 - **Release blockers**
@@ -26,6 +31,7 @@ Provide fast routing from symptom to runbook.
 - **Agents and heartbeats**
   - [`../product/agents-and-runs.md`](../product/agents-and-runs.md)
   - [`../developer/api-reference.md`](../developer/api-reference.md)
+  - [`../developer/workspace-resolution-reference.md`](../developer/workspace-resolution-reference.md)
 - **Plugins and integrations**
   - [`plugin-runbook.md`](./plugin-runbook.md)
   - [`../product/plugins-and-integrations.md`](../product/plugins-and-integrations.md)

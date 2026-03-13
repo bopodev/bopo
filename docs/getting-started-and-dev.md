@@ -22,6 +22,10 @@ For the full docs map, start at [`docs/index.md`](./index.md).
 3. Heartbeat and governance workflows publish realtime updates.
 4. The web app subscribes to `/realtime` channels for live status.
 
+### Workspace and Path Model
+
+Use [`docs/developer/workspace-resolution-reference.md`](./developer/workspace-resolution-reference.md) as the canonical source for workspace root derivation, runtime cwd selection precedence, and path boundary invariants.
+
 ## Tech Stack
 
 - Monorepo: pnpm workspaces and Turbo
@@ -89,6 +93,7 @@ For full VPS guidance, see [`operations/deployment.md`](./operations/deployment.
 - `isolated + git_worktree` policy mode is available behind `BOPO_ENABLE_GIT_WORKTREE_ISOLATION`.
 - Override workspace root with `BOPO_INSTANCE_ROOT`.
 - Agent fallback workspaces are created under `~/.bopodev/instances/default/workspaces/<companyId>/agents/<agentId>` when project paths are unavailable.
+- Full path sink inventory and guardrail mapping: [`docs/operations/workspace-path-surface.md`](./operations/workspace-path-surface.md).
 
 ## Command Reference
 

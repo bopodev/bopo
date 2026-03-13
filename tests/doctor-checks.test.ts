@@ -44,4 +44,16 @@ describe("doctor checks", () => {
     const suspicious = await detectSuspiciousWorkspaceDirectories(testRoot);
     expect(suspicious.some((entry) => entry.endsWith("/relative"))).toBe(true);
   });
+
+  it("includes workspace drift check when workspaceRoot is provided", { timeout: 30_000 }, async () => {
+    const testRoot = await mkdtemp(join(tmpdir(), "bopodev-doctor-workspace-root-"));
+    cleanupPaths.push(testRoot);
+    await mkdir(join(testRoot, "relative", "path"), { recursive: true });
+    const checks = await runDoctorChecks({ workspaceRoot: testRoot });
+    const driftCheck = checks.find((check) => check.label === "Workspace path drift");
+    const coverageCheck = checks.find((check) => check.label === "Project workspace coverage");
+    expect(driftCheck).toBeDefined();
+    expect(driftCheck?.ok).toBe(false);
+    expect(coverageCheck).toBeDefined();
+  });
 });

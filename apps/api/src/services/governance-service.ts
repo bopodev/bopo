@@ -204,7 +204,11 @@ async function applyApprovalAction(db: BopoDb, companyId: string, action: string
       defaultRuntimeCwd
     });
     if (runtimeConfig.runtimeCwd) {
-      runtimeConfig.runtimeCwd = assertRuntimeCwdForCompany(companyId, runtimeConfig.runtimeCwd, "runtimeCwd");
+      try {
+        runtimeConfig.runtimeCwd = assertRuntimeCwdForCompany(companyId, runtimeConfig.runtimeCwd, "runtimeCwd");
+      } catch (error) {
+        throw new GovernanceError(String(error));
+      }
     }
     runtimeConfig.runtimeModel = await resolveOpencodeRuntimeModel(parsed.data.providerType, runtimeConfig);
     runtimeConfig.runtimeModel = resolveRuntimeModelForProvider(parsed.data.providerType, runtimeConfig.runtimeModel);
