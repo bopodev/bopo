@@ -314,6 +314,7 @@ export async function runOnboardFlow(options: OnboardOptions, deps: OnboardDeps 
   } else {
     printCheck("ok", "Template", "Skipped");
   }
+  printCheck("ok", "Seed mode", requestedTemplateId ? "Template-only (strict)" : "Default bootstrap");
 
   const envSpin = spinner();
   envSpin.start("Ensuring local environment");

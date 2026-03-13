@@ -120,10 +120,14 @@ describe("onboarding seed bootstrap", { timeout: 20_000 }, () => {
       expect(result.templateId).toBe(template!.id);
       const verify = await bootstrapDatabase(dbPath);
       try {
+        const agents = await listAgents(verify.db, company.id);
         const projects = await listProjects(verify.db, company.id);
         const issues = await listIssues(verify.db, company.id);
+        expect(agents).toHaveLength(0);
         expect(projects.some((project) => project.name === "Operations")).toBe(true);
+        expect(projects.some((project) => project.name === "Leadership Setup")).toBe(false);
         expect(issues.some((issue) => issue.title === "Set up operating cadence")).toBe(true);
+        expect(issues.some((issue) => issue.title === "Set up CEO operating files and hire founding engineer")).toBe(false);
       } finally {
         await verify.client.close?.();
       }
@@ -148,12 +152,66 @@ describe("onboarding seed bootstrap", { timeout: 20_000 }, () => {
 
     const verify = await bootstrapDatabase(dbPath);
     try {
+      const agents = await listAgents(verify.db, result.companyId);
       const projects = await listProjects(verify.db, result.companyId);
+      const issues = await listIssues(verify.db, result.companyId);
+      expect(agents.some((agent) => agent.name === "CEO")).toBe(false);
+      expect(agents.some((agent) => agent.role === "CEO" && agent.name === "Founder CEO")).toBe(true);
       expect(projects.some((project) => project.name === "Leadership Operations")).toBe(true);
       expect(projects.some((project) => project.name === "Product Delivery")).toBe(true);
+      expect(projects.some((project) => project.name === "Leadership Setup")).toBe(false);
+      expect(issues.some((issue) => issue.title === "Set up CEO operating files and hire founding engineer")).toBe(false);
     } finally {
       await verify.client.close?.();
     }
+  });
+
+  test("fails onboarding when requested template does not exist", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "bopo-onboard-seed-"));
+    cleanupDirs.push(tempDir);
+    const dbPath = join(tempDir, "seed.db");
+    await expect(
+      ensureOnboardingSeed({
+        dbPath,
+        companyName: "Missing Template Co",
+        agentProvider: "codex",
+        templateId: "does-not-exist"
+      })
+    ).rejects.toThrow("was not found");
+  });
+
+  test("fails onboarding when requested template manifest is invalid", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "bopo-onboard-seed-"));
+    cleanupDirs.push(tempDir);
+    const dbPath = join(tempDir, "seed.db");
+    const boot = await bootstrapDatabase(dbPath);
+    try {
+      const company = await createCompany(boot.db, { name: "Invalid Template Co" });
+      const template = await createTemplate(boot.db, {
+        companyId: company.id,
+        slug: "invalid-template",
+        name: "Invalid Template",
+        currentVersion: "1.0.0",
+        variablesJson: "[]"
+      });
+      expect(template).toBeTruthy();
+      await createTemplateVersion(boot.db, {
+        companyId: company.id,
+        templateId: template!.id,
+        version: "1.0.0",
+        manifestJson: "{\"projects\":"
+      });
+    } finally {
+      await boot.client.close?.();
+    }
+    await expect(
+      ensureOnboardingSeed({
+        dbPath,
+        companyName: "Invalid Template Co",
+        agentProvider: "codex",
+        templateId: "invalid-template"
+      })
+    ).rejects.toThrow("invalid manifest JSON");
   });
 
   test("migrates existing bootstrap echo CEO to selected provider", async () => {

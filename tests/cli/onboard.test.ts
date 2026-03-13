@@ -268,6 +268,80 @@ describe("bopo onboard flow", () => {
     expect(envContent).toContain('BOPO_DEFAULT_COMPANY_NAME="Acme AI"');
     expect(envContent).toContain("BOPO_DEFAULT_AGENT_PROVIDER=codex");
   });
+
+  test("passes selected template through onboarding and uses strict seed mode", async () => {
+    const workspace = await createWorkspace();
+    const logs = captureStdout();
+    cleanup.push(() => logs.restore());
+    const seedOnboardingDatabase = vi.fn(async () => ({
+      companyId: "company-123",
+      companyName: "Acme AI",
+      companyCreated: true,
+      ceoCreated: false,
+      ceoProviderType: "codex" as const,
+      ceoRuntimeModel: "gpt-5",
+      ceoMigrated: false,
+      templateApplied: true,
+      templateId: "template-123"
+    }));
+
+    await runOnboardFlow(
+      {
+        cwd: workspace,
+        yes: true,
+        start: false,
+        forceInstall: false,
+        template: "founder-startup-basic"
+      },
+      {
+        installDependencies: async () => {},
+        initializeDatabase: async () => {},
+        seedOnboardingDatabase,
+        startServices: async () => 0,
+        runDoctor: async () => [],
+        promptForCompanyName: async () => "Acme AI",
+        promptForAgentProvider: async () => "codex" as const,
+        promptForAgentModel: async () => "gpt-5"
+      }
+    );
+
+    expect(seedOnboardingDatabase).toHaveBeenCalledWith(workspace, {
+      dbPath: undefined,
+      companyName: "Acme AI",
+      companyId: undefined,
+      agentProvider: "codex",
+      templateId: "founder-startup-basic"
+    });
+    expect(logs.output).toContain("Seed mode");
+    expect(logs.output).toContain("Template-only (strict)");
+  });
+
+  test("fails fast when selected onboarding template cannot be applied", async () => {
+    const workspace = await createWorkspace();
+    await expect(
+      runOnboardFlow(
+        {
+          cwd: workspace,
+          yes: true,
+          start: false,
+          forceInstall: false,
+          template: "missing-template"
+        },
+        {
+          installDependencies: async () => {},
+          initializeDatabase: async () => {},
+          seedOnboardingDatabase: async () => {
+            throw new Error("Requested onboarding template 'missing-template' was not found.");
+          },
+          startServices: async () => 0,
+          runDoctor: async () => [],
+          promptForCompanyName: async () => "Acme AI",
+          promptForAgentProvider: async () => "codex" as const,
+          promptForAgentModel: async () => "gpt-5"
+        }
+      )
+    ).rejects.toThrow("missing-template");
+  });
 });
 
 async function createWorkspace(options?: { includeEnvExample?: boolean }) {

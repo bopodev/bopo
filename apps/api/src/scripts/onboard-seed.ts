@@ -1,6 +1,6 @@
 import { pathToFileURL } from "node:url";
 import { mkdir } from "node:fs/promises";
-import { TemplateManifestDefault, TemplateManifestSchema } from "bopodev-contracts";
+import { TemplateManifestSchema } from "bopodev-contracts";
 import { getAdapterModels } from "bopodev-agent-sdk";
 import {
   bootstrapDatabase,
@@ -71,6 +71,8 @@ export async function ensureOnboardingSeed(input: {
   }
   const agentProvider = parseAgentProvider(input.agentProvider) ?? "shell";
   const requestedAgentModel = input.agentModel?.trim() || undefined;
+  const requestedTemplateId = input.templateId?.trim() || null;
+  const useTemplateOnlySeed = requestedTemplateId !== null;
 
   const { db, client } = await bootstrapDatabase(input.dbPath);
 
@@ -97,106 +99,111 @@ export async function ensureOnboardingSeed(input: {
     const companyId = companyRow.id;
     const resolvedCompanyName = companyRow.name;
     await ensureCompanyBuiltinTemplateDefaults(db, companyId);
-    const defaultRuntimeCwd = await resolveDefaultRuntimeCwdForCompany(db, companyId);
-    await mkdir(normalizeCompanyWorkspacePath(companyId, defaultRuntimeCwd), { recursive: true });
-    const seedRuntimeEnv = resolveSeedRuntimeEnv(agentProvider);
-    const defaultRuntimeConfig = normalizeRuntimeConfig({
-      defaultRuntimeCwd,
-      runtimeConfig: {
-        runtimeEnv: seedRuntimeEnv,
-        runtimeModel: await resolveSeedRuntimeModel(agentProvider, {
-          requestedModel: requestedAgentModel,
-          defaultRuntimeCwd,
-          runtimeEnv: seedRuntimeEnv
-        })
-      }
-    });
     const agents = await listAgents(db, companyId);
     const existingCeo = agents.find((agent) => agent.role === "CEO" || agent.name === "CEO");
     let ceoCreated = false;
     let ceoMigrated = false;
     let ceoProviderType: AgentProvider = parseAgentProvider(existingCeo?.providerType) ?? agentProvider;
     let ceoRuntimeModel = existingCeo?.runtimeModel ?? null;
-
-    let ceoId = existingCeo?.id ?? null;
-
-    if (!existingCeo) {
-      const ceo = await createAgent(db, {
-        companyId,
-        role: "CEO",
-        name: "CEO",
-        providerType: agentProvider,
-        heartbeatCron: "*/5 * * * *",
-        monthlyBudgetUsd: "100.0000",
-        canHireAgents: true,
-        ...runtimeConfigToDb(defaultRuntimeConfig),
-        initialState: runtimeConfigToStateBlobPatch(defaultRuntimeConfig)
+    if (!useTemplateOnlySeed) {
+      const defaultRuntimeCwd = await resolveDefaultRuntimeCwdForCompany(db, companyId);
+      await mkdir(normalizeCompanyWorkspacePath(companyId, defaultRuntimeCwd), { recursive: true });
+      const seedRuntimeEnv = resolveSeedRuntimeEnv(agentProvider);
+      const defaultRuntimeConfig = normalizeRuntimeConfig({
+        defaultRuntimeCwd,
+        runtimeConfig: {
+          runtimeEnv: seedRuntimeEnv,
+          runtimeModel: await resolveSeedRuntimeModel(agentProvider, {
+            requestedModel: requestedAgentModel,
+            defaultRuntimeCwd,
+            runtimeEnv: seedRuntimeEnv
+          })
+        }
       });
-      ceoId = ceo.id;
-      ceoCreated = true;
-      ceoProviderType = agentProvider;
-      ceoRuntimeModel = ceo.runtimeModel ?? defaultRuntimeConfig.runtimeModel ?? null;
-    } else if (isBootstrapCeoRuntime(existingCeo.providerType, existingCeo.stateBlob)) {
-      const nextState = {
-        ...stripRuntimeFromState(existingCeo.stateBlob),
-        ...runtimeConfigToStateBlobPatch(defaultRuntimeConfig)
-      };
-      await updateAgent(db, {
-        companyId,
-        id: existingCeo.id,
-        providerType: agentProvider,
-        ...runtimeConfigToDb(defaultRuntimeConfig),
-        stateBlob: nextState
-      });
-      ceoMigrated = true;
-      ceoProviderType = agentProvider;
-      ceoId = existingCeo.id;
-      ceoRuntimeModel = defaultRuntimeConfig.runtimeModel ?? null;
-    } else {
-      ceoId = existingCeo.id;
-      ceoRuntimeModel = existingCeo.runtimeModel ?? null;
-    }
-
-    if (ceoId) {
-      const startupProjectId = await ensureStartupProject(db, companyId);
-      await ensureCeoStartupTask(db, {
-        companyId,
-        projectId: startupProjectId,
-        ceoId
-      });
+      let ceoId = existingCeo?.id ?? null;
+      if (!existingCeo) {
+        const ceo = await createAgent(db, {
+          companyId,
+          role: "CEO",
+          name: "CEO",
+          providerType: agentProvider,
+          heartbeatCron: "*/5 * * * *",
+          monthlyBudgetUsd: "100.0000",
+          canHireAgents: true,
+          ...runtimeConfigToDb(defaultRuntimeConfig),
+          initialState: runtimeConfigToStateBlobPatch(defaultRuntimeConfig)
+        });
+        ceoId = ceo.id;
+        ceoCreated = true;
+        ceoProviderType = agentProvider;
+        ceoRuntimeModel = ceo.runtimeModel ?? defaultRuntimeConfig.runtimeModel ?? null;
+      } else if (isBootstrapCeoRuntime(existingCeo.providerType, existingCeo.stateBlob)) {
+        const nextState = {
+          ...stripRuntimeFromState(existingCeo.stateBlob),
+          ...runtimeConfigToStateBlobPatch(defaultRuntimeConfig)
+        };
+        await updateAgent(db, {
+          companyId,
+          id: existingCeo.id,
+          providerType: agentProvider,
+          ...runtimeConfigToDb(defaultRuntimeConfig),
+          stateBlob: nextState
+        });
+        ceoMigrated = true;
+        ceoProviderType = agentProvider;
+        ceoId = existingCeo.id;
+        ceoRuntimeModel = defaultRuntimeConfig.runtimeModel ?? null;
+      } else {
+        ceoId = existingCeo.id;
+        ceoRuntimeModel = existingCeo.runtimeModel ?? null;
+      }
+      if (ceoId) {
+        const startupProjectId = await ensureStartupProject(db, companyId);
+        await ensureCeoStartupTask(db, {
+          companyId,
+          projectId: startupProjectId,
+          ceoId
+        });
+      }
     }
     let templateApplied = false;
     let appliedTemplateId: string | null = null;
-    if (input.templateId?.trim()) {
-      const requestedTemplateId = input.templateId.trim();
+    if (requestedTemplateId) {
       const template =
         (await getTemplate(db, companyId, requestedTemplateId)) ??
         (await getTemplateBySlug(db, companyId, requestedTemplateId));
-      if (template) {
-        const templateVersion = await getCurrentTemplateVersion(db, companyId, template.id);
-        if (templateVersion) {
-          let manifest: Record<string, unknown> = {};
-          try {
-            manifest = JSON.parse(templateVersion.manifestJson) as Record<string, unknown>;
-          } catch {
-            manifest = {};
-          }
-          const parsedManifest = TemplateManifestSchema.safeParse(manifest);
-          const normalizedManifest = parsedManifest.success
-            ? parsedManifest.data
-            : TemplateManifestSchema.parse(TemplateManifestDefault);
-          const applied = await applyTemplateManifest(db, {
-            companyId,
-            templateId: template.id,
-            templateVersion: templateVersion.version,
-            templateVersionId: templateVersion.id,
-            manifest: normalizedManifest,
-            variables: {}
-          });
-          templateApplied = applied.applied;
-          appliedTemplateId = template.id;
-        }
+      if (!template) {
+        throw new Error(`Requested onboarding template '${requestedTemplateId}' was not found for company '${companyId}'.`);
       }
+      const templateVersion = await getCurrentTemplateVersion(db, companyId, template.id);
+      if (!templateVersion) {
+        throw new Error(`Template '${requestedTemplateId}' has no current version and cannot be applied during onboarding.`);
+      }
+      let manifest: Record<string, unknown>;
+      try {
+        manifest = JSON.parse(templateVersion.manifestJson) as Record<string, unknown>;
+      } catch {
+        throw new Error(`Template '${requestedTemplateId}' has invalid manifest JSON in current version '${templateVersion.version}'.`);
+      }
+      const parsedManifest = TemplateManifestSchema.safeParse(manifest);
+      if (!parsedManifest.success) {
+        throw new Error(
+          `Template '${requestedTemplateId}' has invalid manifest schema in current version '${templateVersion.version}': ${parsedManifest.error.message}`
+        );
+      }
+      const applied = await applyTemplateManifest(db, {
+        companyId,
+        templateId: template.id,
+        templateVersion: templateVersion.version,
+        templateVersionId: templateVersion.id,
+        manifest: parsedManifest.data,
+        variables: {}
+      });
+      if (!applied.applied) {
+        throw new Error(`Template '${requestedTemplateId}' did not apply successfully during onboarding.`);
+      }
+      templateApplied = true;
+      appliedTemplateId = template.id;
     }
     await ensureCompanyModelPricingDefaults(db, companyId);
 
