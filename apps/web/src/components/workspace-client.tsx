@@ -1458,6 +1458,16 @@ export function WorkspaceClient({
       );
     });
   }, [isProjectsNav, projectIssueSummaryById, projects, projectsActivityFilter, projectsQuery]);
+  const projectsSummary = useMemo(() => {
+    const total = filteredProjects.length;
+    const withOpenIssues = filteredProjects.filter((project) => (projectIssueSummaryById.get(project.id)?.open ?? 0) > 0).length;
+    const noOpenIssues = filteredProjects.filter((project) => {
+      const summary = projectIssueSummaryById.get(project.id) ?? { total: 0, open: 0 };
+      return summary.total > 0 && summary.open === 0;
+    }).length;
+    const noIssues = filteredProjects.filter((project) => (projectIssueSummaryById.get(project.id)?.total ?? 0) === 0).length;
+    return { total, withOpenIssues, noOpenIssues, noIssues };
+  }, [filteredProjects, projectIssueSummaryById]);
   const suggestedAgentRuntimeCwd = useMemo(() => {
     const uniqueWorkspacePaths = Array.from(
       new Set(
@@ -3390,35 +3400,43 @@ export function WorkspaceClient({
             {projects.length === 0 ? (
               <EmptyState>Create a project to unlock issue creation and dedicated project pages.</EmptyState>
             ) : (
-              <DataTable
-                columns={projectColumns}
-                data={filteredProjects}
-                emptyMessage="No projects match current filters."
-                toolbarActions={
-                  <div className={styles.goalsFiltersCardContent}>
-                    <Input
-                      value={projectsQuery}
-                      onChange={(event) => setProjectsQuery(event.target.value)}
-                      placeholder="Search project name or description..."
-                      className={styles.goalsFiltersInput}
-                    />
-                    <Select
-                      value={projectsActivityFilter}
-                      onValueChange={(value) => setProjectsActivityFilter(value as "all" | "active" | "no_open_issues" | "no_issues")}
-                    >
-                      <SelectTrigger className={styles.goalsFiltersSelect}>
-                        <SelectValue placeholder="Activity" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All projects</SelectItem>
-                        <SelectItem value="active">With open issues</SelectItem>
-                        <SelectItem value="no_open_issues">No open issues</SelectItem>
-                        <SelectItem value="no_issues">No issues</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                }
-              />
+              <>
+                <div className={cn("ui-stats", "mt-4")}>
+                  <MetricCard label="Total projects" value={projectsSummary.total} />
+                  <MetricCard label="With open issues" value={projectsSummary.withOpenIssues} />
+                  <MetricCard label="No open issues" value={projectsSummary.noOpenIssues} />
+                  <MetricCard label="No issues" value={projectsSummary.noIssues} />
+                </div>
+                <DataTable
+                  columns={projectColumns}
+                  data={filteredProjects}
+                  emptyMessage="No projects match current filters."
+                  toolbarActions={
+                    <div className={styles.goalsFiltersCardContent}>
+                      <Input
+                        value={projectsQuery}
+                        onChange={(event) => setProjectsQuery(event.target.value)}
+                        placeholder="Search project name or description..."
+                        className={styles.goalsFiltersInput}
+                      />
+                      <Select
+                        value={projectsActivityFilter}
+                        onValueChange={(value) => setProjectsActivityFilter(value as "all" | "active" | "no_open_issues" | "no_issues")}
+                      >
+                        <SelectTrigger className={styles.goalsFiltersSelect}>
+                          <SelectValue placeholder="Activity" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All projects</SelectItem>
+                          <SelectItem value="active">With open issues</SelectItem>
+                          <SelectItem value="no_open_issues">No open issues</SelectItem>
+                          <SelectItem value="no_issues">No issues</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  }
+                />
+              </>
             )}
           </>
         );
