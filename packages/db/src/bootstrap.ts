@@ -20,9 +20,9 @@ export async function bootstrapDatabase(dbPath?: string) {
       description TEXT,
       status TEXT NOT NULL DEFAULT 'planned',
       planned_start_at TIMESTAMP,
-      workspace_local_path TEXT,
-      workspace_github_repo TEXT,
-      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+      execution_workspace_policy TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
   `);
   await db.execute(sql`
@@ -35,11 +35,29 @@ export async function bootstrapDatabase(dbPath?: string) {
   `);
   await db.execute(sql`
     ALTER TABLE projects
-    ADD COLUMN IF NOT EXISTS workspace_local_path TEXT;
+    ADD COLUMN IF NOT EXISTS execution_workspace_policy TEXT;
   `);
   await db.execute(sql`
     ALTER TABLE projects
-    ADD COLUMN IF NOT EXISTS workspace_github_repo TEXT;
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP;
+  `);
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS project_workspaces (
+      id TEXT PRIMARY KEY,
+      company_id TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+      project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      cwd TEXT,
+      repo_url TEXT,
+      repo_ref TEXT,
+      is_primary BOOLEAN NOT NULL DEFAULT false,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_project_workspaces_company_project
+      ON project_workspaces (company_id, project_id, is_primary DESC, created_at ASC);
   `);
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS goals (

@@ -17,10 +17,78 @@ export const ProjectSchema = z.object({
   description: z.string().nullable().optional(),
   status: z.enum(["planned", "active", "paused", "blocked", "completed", "archived"]),
   plannedStartAt: z.string().nullable().optional(),
-  workspaceLocalPath: z.string().nullable().optional(),
-  workspaceGithubRepo: z.string().nullable().optional(),
+  executionWorkspacePolicy: z.record(z.string(), z.unknown()).nullable().optional(),
+  gitDiagnostics: z
+    .object({
+      workspaceStatus: z.enum(["hybrid", "repo_only", "local_only", "unconfigured"]).optional(),
+      cloneState: z.enum(["ready", "missing", "n/a"]).optional(),
+      authMode: z.enum(["host", "env_token"]).optional(),
+      tokenEnvVar: z.string().nullable().optional(),
+      effectiveCwd: z.string().nullable().optional()
+    })
+    .optional(),
+  workspaces: z
+    .array(
+      z.object({
+        id: EntityIdSchema,
+        companyId: EntityIdSchema,
+        projectId: EntityIdSchema,
+        name: z.string().min(1),
+        cwd: z.string().nullable().optional(),
+        repoUrl: z.string().url().nullable().optional(),
+        repoRef: z.string().nullable().optional(),
+        isPrimary: z.boolean(),
+        createdAt: z.string(),
+        updatedAt: z.string()
+      })
+    )
+    .default([]),
+  primaryWorkspace: z
+    .object({
+      id: EntityIdSchema,
+      companyId: EntityIdSchema,
+      projectId: EntityIdSchema,
+      name: z.string().min(1),
+      cwd: z.string().nullable().optional(),
+      repoUrl: z.string().url().nullable().optional(),
+      repoRef: z.string().nullable().optional(),
+      isPrimary: z.boolean(),
+      createdAt: z.string(),
+      updatedAt: z.string()
+    })
+    .nullable()
+    .optional(),
   createdAt: z.string()
 });
+
+export const ExecutionWorkspaceModeSchema = z.enum(["project_primary", "isolated", "agent_default"]);
+export type ExecutionWorkspaceMode = z.infer<typeof ExecutionWorkspaceModeSchema>;
+export const ExecutionWorkspaceStrategyTypeSchema = z.enum(["git_worktree"]);
+export type ExecutionWorkspaceStrategyType = z.infer<typeof ExecutionWorkspaceStrategyTypeSchema>;
+export const ProjectExecutionWorkspacePolicySchema = z
+  .object({
+    mode: ExecutionWorkspaceModeSchema.optional(),
+    strategy: z
+      .object({
+        type: ExecutionWorkspaceStrategyTypeSchema.optional(),
+        rootDir: z.string().nullable().optional(),
+        branchPrefix: z.string().nullable().optional()
+      })
+      .nullable()
+      .optional(),
+    credentials: z
+      .object({
+        mode: z.enum(["host", "env_token"]).optional(),
+        tokenEnvVar: z.string().nullable().optional(),
+        username: z.string().nullable().optional()
+      })
+      .nullable()
+      .optional(),
+    allowRemotes: z.array(z.string()).nullable().optional(),
+    allowBranchPrefixes: z.array(z.string()).nullable().optional()
+  })
+  .partial();
+export type ProjectExecutionWorkspacePolicy = z.infer<typeof ProjectExecutionWorkspacePolicySchema>;
 
 export const IssueStatusSchema = z.enum([
   "todo",

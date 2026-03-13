@@ -68,8 +68,10 @@ describe("governance and company scope authorization", () => {
 
     expect(response.status).toBe(200);
     expect(response.body.data.name).toBe("Public OSS Milestone");
-    expect(typeof response.body.data.workspaceLocalPath).toBe("string");
-    expect(String(response.body.data.workspaceLocalPath ?? "")).toContain("/default/workspaces/");
+    expect(response.body.data.primaryWorkspace?.isPrimary).toBe(true);
+    expect(typeof response.body.data.primaryWorkspace?.cwd).toBe("string");
+    expect(Array.isArray(response.body.data.workspaces)).toBe(true);
+    expect(response.body.data.workspaces.length).toBeGreaterThanOrEqual(1);
   });
 
   it("enforces governance resolve permission and emits inbox updates", async () => {

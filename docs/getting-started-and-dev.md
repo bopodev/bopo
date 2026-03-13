@@ -80,10 +80,13 @@ For full VPS guidance, see [`operations/deployment.md`](./operations/deployment.
 
 - The web app reads API URL from `NEXT_PUBLIC_API_URL`.
 - Deployment profile is controlled by `BOPO_DEPLOYMENT_MODE` (`local`, `authenticated_private`, `authenticated_public`).
-- Agent runtime working directories are auto-filled from project local folder hints when possible.
+- Agent runtime working directories are resolved from each project's primary workspace `cwd` when available.
 - `NEXT_PUBLIC_DEFAULT_RUNTIME_CWD` is an optional fallback.
 - Embedded DB defaults to `~/.bopodev/instances/default/db/bopodev.db`; set `BOPO_DB_PATH` only to override.
-- When a project is created without a local folder hint, the API creates one under `~/.bopodev/instances/default/workspaces/<companyId>/projects/<projectId>`.
+- Projects can hold multiple workspaces; exactly one workspace should be marked primary for deterministic runtime path selection.
+- If no primary workspace `cwd` exists, runtime falls back to the agent runtime cwd or an agent fallback workspace path.
+- If a primary workspace defines `repoUrl`, heartbeat bootstraps the local repo path (clone/fetch/checkout) before adapter execution.
+- `isolated + git_worktree` policy mode is available behind `BOPO_ENABLE_GIT_WORKTREE_ISOLATION`.
 - Override workspace root with `BOPO_INSTANCE_ROOT`.
 - Agent fallback workspaces are created under `~/.bopodev/instances/default/workspaces/<companyId>/agents/<agentId>` when project paths are unavailable.
 

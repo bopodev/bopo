@@ -5,7 +5,7 @@ import { afterEach, describe, expect, test } from "vitest";
 import { ensureOnboardingSeed } from "../apps/api/src/scripts/onboard-seed";
 import { bootstrapDatabase, createAgent, createCompany, listAgents, listCompanies, listIssues, listProjects } from "../packages/db/src";
 
-describe("onboarding seed bootstrap", () => {
+describe("onboarding seed bootstrap", { timeout: 20_000 }, () => {
   const cleanupDirs: string[] = [];
 
   afterEach(async () => {

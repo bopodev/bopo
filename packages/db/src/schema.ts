@@ -17,9 +17,26 @@ export const projects = pgTable("projects", {
   description: text("description"),
   status: text("status").notNull().default("planned"),
   plannedStartAt: timestamp("planned_start_at", { mode: "date" }),
-  workspaceLocalPath: text("workspace_local_path"),
-  workspaceGithubRepo: text("workspace_github_repo"),
-  createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull()
+  executionWorkspacePolicy: text("execution_workspace_policy"),
+  createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull()
+});
+
+export const projectWorkspaces = pgTable("project_workspaces", {
+  id: text("id").primaryKey(),
+  companyId: text("company_id")
+    .notNull()
+    .references(() => companies.id, { onDelete: "cascade" }),
+  projectId: text("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  cwd: text("cwd"),
+  repoUrl: text("repo_url"),
+  repoRef: text("repo_ref"),
+  isPrimary: boolean("is_primary").notNull().default(false),
+  createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull()
 });
 
 export const goals = pgTable("goals", {
@@ -340,7 +357,8 @@ export const schema = {
   pluginConfigs,
   pluginRuns,
   modelPricing,
-  agentIssueLabels
+  agentIssueLabels,
+  projectWorkspaces
 };
 
 export const touchUpdatedAtSql = sql`CURRENT_TIMESTAMP`;

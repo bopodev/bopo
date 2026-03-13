@@ -346,8 +346,31 @@ interface ProjectRow {
   description: string | null;
   status: "planned" | "active" | "paused" | "blocked" | "completed" | "archived";
   plannedStartAt: string | null;
-  workspaceLocalPath: string | null;
-  workspaceGithubRepo: string | null;
+  executionWorkspacePolicy?: Record<string, unknown> | null;
+  workspaces: Array<{
+    id: string;
+    companyId: string;
+    projectId: string;
+    name: string;
+    cwd: string | null;
+    repoUrl: string | null;
+    repoRef: string | null;
+    isPrimary: boolean;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+  primaryWorkspace: {
+    id: string;
+    companyId: string;
+    projectId: string;
+    name: string;
+    cwd: string | null;
+    repoUrl: string | null;
+    repoRef: string | null;
+    isPrimary: boolean;
+    createdAt: string;
+    updatedAt: string;
+  } | null;
 }
 
 interface CompanyRow {
@@ -1359,8 +1382,8 @@ export function WorkspaceClient({
         project.name.toLowerCase().includes(normalizedQuery) ||
         (project.description ?? "").toLowerCase().includes(normalizedQuery) ||
         project.status.toLowerCase().includes(normalizedQuery) ||
-        (project.workspaceLocalPath ?? "").toLowerCase().includes(normalizedQuery) ||
-        (project.workspaceGithubRepo ?? "").toLowerCase().includes(normalizedQuery)
+        (project.primaryWorkspace?.cwd ?? "").toLowerCase().includes(normalizedQuery) ||
+        (project.primaryWorkspace?.repoUrl ?? "").toLowerCase().includes(normalizedQuery)
       );
     });
   }, [isProjectsNav, projectIssueSummaryById, projects, projectsActivityFilter, projectsQuery]);
@@ -1368,7 +1391,7 @@ export function WorkspaceClient({
     const uniqueWorkspacePaths = Array.from(
       new Set(
         projects
-          .map((project) => project.workspaceLocalPath?.trim() ?? "")
+          .map((project) => project.primaryWorkspace?.cwd?.trim() ?? "")
           .filter((value) => value.length > 0)
       )
     );

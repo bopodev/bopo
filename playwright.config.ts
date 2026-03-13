@@ -7,7 +7,8 @@ const webUrl = process.env.E2E_WEB_URL ?? `http://127.0.0.1:${webPort}`;
 
 export default defineConfig({
   testDir: "./tests/e2e",
-  fullyParallel: true,
+  fullyParallel: false,
+  workers: 1,
   retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? [["github"], ["html", { open: "never" }]] : "list",
   use: {

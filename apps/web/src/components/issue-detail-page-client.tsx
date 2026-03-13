@@ -743,10 +743,6 @@ export function IssueDetailPageClient({
   const rightPane = (
     <div className={styles.issueSidebarContainer}>
       <Card>
-        <CardHeader>
-          <CardTitle>Issue controls</CardTitle>
-          <CardDescription>Update this issue data.</CardDescription>
-        </CardHeader>
         <CardContent className={styles.issueSidebarCardContent}>
           <Field>
             <FieldLabel>Status</FieldLabel>
@@ -787,10 +783,6 @@ export function IssueDetailPageClient({
       </Card>
 
       <Card>
-        <CardHeader>
-          <CardTitle>Issue details</CardTitle>
-          <CardDescription>Current metadata for this issue.</CardDescription>
-        </CardHeader>
         <CardContent className={styles.issueSidebarCardContent}>
           <PropertyRow label="Priority" value={<Badge variant="outline">{issue.priority}</Badge>} />
           <PropertyRow label="Labels" value={issue.labels.length > 0 ? issue.labels.join(", ") : "No labels"} />

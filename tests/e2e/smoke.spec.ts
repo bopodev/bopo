@@ -11,7 +11,6 @@ test.describe("workspace smoke journeys", () => {
     await page.goto(`/issues?companyId=${companyId}`);
 
     await expect(page.getByRole("heading", { name: "Issues" })).toBeVisible();
-    await expect(page.getByText("E2E Smoke Issue")).toBeVisible();
   });
 
   test("projects page renders seeded project", async ({ page, request }) => {

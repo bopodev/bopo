@@ -9,7 +9,7 @@
 }
 
 .propertyRowContainer2 {
-  @apply text-xs font-medium uppercase tracking-wide text-muted-foreground/80;
+  @apply text-sm text-muted-foreground font-medium;
 }
 
 .propertyRowValue {
@@ -99,7 +99,7 @@
 }
 
 .issueSidebarCardContent {
-  @apply space-y-3;
+  @apply space-y-2;
 }
 
 .issueSidebarStats {

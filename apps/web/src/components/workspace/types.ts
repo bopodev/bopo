@@ -160,8 +160,31 @@ export interface ProjectRow {
   description: string | null;
   status: "planned" | "active" | "paused" | "blocked" | "completed" | "archived";
   plannedStartAt: string | null;
-  workspaceLocalPath: string | null;
-  workspaceGithubRepo: string | null;
+  executionWorkspacePolicy?: Record<string, unknown> | null;
+  workspaces: Array<{
+    id: string;
+    companyId: string;
+    projectId: string;
+    name: string;
+    cwd: string | null;
+    repoUrl: string | null;
+    repoRef: string | null;
+    isPrimary: boolean;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+  primaryWorkspace: {
+    id: string;
+    companyId: string;
+    projectId: string;
+    name: string;
+    cwd: string | null;
+    repoUrl: string | null;
+    repoRef: string | null;
+    isPrimary: boolean;
+    createdAt: string;
+    updatedAt: string;
+  } | null;
 }
 
 export interface CompanyRow {

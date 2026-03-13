@@ -17,7 +17,7 @@ export async function commandExists(command: string): Promise<boolean> {
 export async function runCommandCapture(
   command: string,
   args: string[],
-  options?: { cwd?: string; env?: NodeJS.ProcessEnv }
+  options?: { cwd?: string; env?: NodeJS.ProcessEnv; timeoutMs?: number }
 ): Promise<CommandResult> {
   return new Promise((resolvePromise) => {
     const child = spawn(command, args, {
@@ -29,6 +29,14 @@ export async function runCommandCapture(
 
     let stdout = "";
     let stderr = "";
+    const timeoutMs = Math.max(0, Math.floor(options?.timeoutMs ?? 10_000));
+    const timeoutHandle =
+      timeoutMs > 0
+        ? setTimeout(() => {
+            stderr = `${stderr}\nCommand '${command}' timed out after ${timeoutMs}ms.`.trim();
+            child.kill("SIGTERM");
+          }, timeoutMs)
+        : null;
 
     child.stdout.on("data", (chunk) => {
       stdout += String(chunk);
@@ -38,6 +46,9 @@ export async function runCommandCapture(
     });
 
     child.on("error", (error) => {
+      if (timeoutHandle) {
+        clearTimeout(timeoutHandle);
+      }
       resolvePromise({
         ok: false,
         code: null,
@@ -47,6 +58,9 @@ export async function runCommandCapture(
     });
 
     child.on("close", (code) => {
+      if (timeoutHandle) {
+        clearTimeout(timeoutHandle);
+      }
       resolvePromise({
         ok: code === 0,
         code,

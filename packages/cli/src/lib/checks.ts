@@ -26,6 +26,16 @@ export async function runDoctorChecks(options?: { workspaceRoot?: string }): Pro
   });
 
   const codexCommand = process.env.BOPO_CODEX_COMMAND?.trim() || "codex";
+  const gitRuntime = await checkRuntimeCommandHealth("git", options?.workspaceRoot);
+  checks.push({
+    label: "Git runtime",
+    ok: gitRuntime.available && gitRuntime.exitCode === 0,
+    details:
+      gitRuntime.available && gitRuntime.exitCode === 0
+        ? "Command 'git' is available (required for repo bootstrap/worktree execution)"
+        : gitRuntime.error ?? "Command 'git' is not available"
+  });
+
   const codex = await checkRuntimeCommandHealth(codexCommand, options?.workspaceRoot);
   checks.push({
     label: "Codex runtime",
@@ -97,7 +107,7 @@ export async function runDoctorChecks(options?: { workspaceRoot?: string }): Pro
 }
 
 async function checkRuntimeCommandHealth(command: string, cwd?: string) {
-  const result = await runCommandCapture(command, ["--version"], { cwd });
+  const result = await runCommandCapture(command, ["--version"], { cwd, timeoutMs: 2_500 });
   return {
     available: result.code !== null,
     exitCode: result.code,

@@ -22,8 +22,31 @@ interface ProjectRow {
   description: string | null;
   status: "planned" | "active" | "paused" | "blocked" | "completed" | "archived";
   plannedStartAt: string | null;
-  workspaceLocalPath: string | null;
-  workspaceGithubRepo: string | null;
+  executionWorkspacePolicy?: Record<string, unknown> | null;
+  workspaces: Array<{
+    id: string;
+    companyId: string;
+    projectId: string;
+    name: string;
+    cwd: string | null;
+    repoUrl: string | null;
+    repoRef: string | null;
+    isPrimary: boolean;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+  primaryWorkspace: {
+    id: string;
+    companyId: string;
+    projectId: string;
+    name: string;
+    cwd: string | null;
+    repoUrl: string | null;
+    repoRef: string | null;
+    isPrimary: boolean;
+    createdAt: string;
+    updatedAt: string;
+  } | null;
 }
 
 interface IssueRow {
@@ -190,6 +213,15 @@ export function ProjectDetailPageClient({
     [agentNameById, companyId]
   );
   const projectDescription = project.description?.trim() ? project.description : "No project description yet.";
+  const workspaceSummary =
+    project.workspaces.length > 0
+      ? project.workspaces
+          .map((workspace) => {
+            const location = workspace.cwd ?? workspace.repoUrl ?? "No location configured";
+            return workspace.isPrimary ? `${workspace.name} (primary): ${location}` : `${workspace.name}: ${location}`;
+          })
+          .join(", ")
+      : "No workspaces configured";
 
   const leftPane = (
     <div className={styles.projectDetailContainer2}>
@@ -273,24 +305,13 @@ export function ProjectDetailPageClient({
   const rightPane = (
     <div className={styles.projectDetailContainer6}>
       <Card>
-        <CardHeader>
-          <CardTitle>Description</CardTitle>
-          <CardDescription>Describe the project and its goals.</CardDescription>
-        </CardHeader>
         <CardContent className={styles.projectDetailCardContent2}>
-        {projectDescription}
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle>Project details</CardTitle>
-          <CardDescription>Current metadata and timeline for this project.</CardDescription>
-        </CardHeader>
-        <CardContent className={styles.projectDetailCardContent2}>
+          <PropertyRow label="Description" value={projectDescription} />
           <PropertyRow label="Goals" value={linkedGoals.length ? linkedGoals.map((goal) => goal.title).join(", ") : "No linked goals"} />
           <PropertyRow label="Planned start" value={formatDate(project.plannedStartAt)} />
-          <PropertyRow label="Local folder" value={project.workspaceLocalPath ?? "Not set"} />
-          <PropertyRow label="GitHub repo" value={project.workspaceGithubRepo ?? "Not set"} />
+          <PropertyRow label="Primary workspace" value={project.primaryWorkspace?.name ?? "Not set"} />
+          <PropertyRow label="Workspace location" value={project.primaryWorkspace?.cwd ?? project.primaryWorkspace?.repoUrl ?? "Not set"} />
+          <PropertyRow label="Workspaces" value={workspaceSummary} />
         </CardContent>
       </Card>
     </div>

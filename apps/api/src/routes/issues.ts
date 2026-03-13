@@ -21,6 +21,7 @@ import {
   listIssueComments,
   listIssues,
   projects,
+  projectWorkspaces,
   updateIssueComment,
   updateIssue
 } from "bopodev-db";
@@ -220,7 +221,7 @@ export function createIssuesRouter(ctx: AppContext) {
         if (!issueContext) {
           return sendError(res, "Issue not found.", 404);
         }
-        const workspacePath = resolveWorkspacePath(issueContext.companyId, issueContext.projectId, issueContext.workspaceLocalPath);
+        const workspacePath = resolveWorkspacePath(issueContext.companyId, issueContext.projectId, issueContext.workspaceCwd);
         const attachmentDir = join(workspacePath, ".bopo", "issues", issueContext.issueId, "attachments");
         await mkdir(attachmentDir, { recursive: true });
 
@@ -313,7 +314,7 @@ export function createIssuesRouter(ctx: AppContext) {
     if (!attachment) {
       return sendError(res, "Attachment not found.", 404);
     }
-    const workspacePath = resolveWorkspacePath(issueContext.companyId, issueContext.projectId, issueContext.workspaceLocalPath);
+    const workspacePath = resolveWorkspacePath(issueContext.companyId, issueContext.projectId, issueContext.workspaceCwd);
     const absolutePath = resolve(workspacePath, attachment.relativePath);
     if (!isInsidePath(workspacePath, absolutePath)) {
       return sendError(res, "Invalid attachment path.", 422);
@@ -346,7 +347,7 @@ export function createIssuesRouter(ctx: AppContext) {
     if (!attachment) {
       return sendError(res, "Attachment not found.", 404);
     }
-    const workspacePath = resolveWorkspacePath(issueContext.companyId, issueContext.projectId, issueContext.workspaceLocalPath);
+    const workspacePath = resolveWorkspacePath(issueContext.companyId, issueContext.projectId, issueContext.workspaceCwd);
     const absolutePath = resolve(workspacePath, attachment.relativePath);
     if (!isInsidePath(workspacePath, absolutePath)) {
       return sendError(res, "Invalid attachment path.", 422);
@@ -717,9 +718,9 @@ function toIssueAttachmentResponse(attachment: Record<string, unknown>, issueId:
   };
 }
 
-function resolveWorkspacePath(companyId: string, projectId: string, workspaceLocalPath: string | null) {
-  if (workspaceLocalPath && workspaceLocalPath.trim().length > 0) {
-    return normalizeAbsolutePath(workspaceLocalPath);
+function resolveWorkspacePath(companyId: string, projectId: string, workspaceCwd: string | null) {
+  if (workspaceCwd && workspaceCwd.trim().length > 0) {
+    return normalizeAbsolutePath(workspaceCwd);
   }
   return resolveProjectWorkspacePath(companyId, projectId);
 }
@@ -739,8 +740,7 @@ async function getIssueContextForAttachment(ctx: AppContext, companyId: string, 
   }
   const [project] = await ctx.db
     .select({
-      id: projects.id,
-      workspaceLocalPath: projects.workspaceLocalPath
+      id: projects.id
     })
     .from(projects)
     .where(and(eq(projects.companyId, companyId), eq(projects.id, issue.projectId)))
@@ -748,11 +748,24 @@ async function getIssueContextForAttachment(ctx: AppContext, companyId: string, 
   if (!project) {
     return null;
   }
+  const [workspace] = await ctx.db
+    .select({
+      cwd: projectWorkspaces.cwd
+    })
+    .from(projectWorkspaces)
+    .where(
+      and(
+        eq(projectWorkspaces.companyId, companyId),
+        eq(projectWorkspaces.projectId, issue.projectId),
+        eq(projectWorkspaces.isPrimary, true)
+      )
+    )
+    .limit(1);
   return {
     issueId: issue.issueId,
     companyId: issue.companyId,
     projectId: issue.projectId,
-    workspaceLocalPath: project.workspaceLocalPath
+    workspaceCwd: workspace?.cwd ?? null
   };
 }
 

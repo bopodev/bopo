@@ -58,6 +58,8 @@ Give contributors and operators one reference for key environment variables and 
 | `BOPO_HEARTBEAT_SWEEP_MS` | `60000` | Scheduler interval for heartbeat sweeps. |
 | `BOPO_HEARTBEAT_STALE_RUN_MS` | `600000` | Recovery threshold for stale `started` runs. |
 | `BOPO_HEARTBEAT_EXECUTION_TIMEOUT_MS` | computed by service | Execution timeout fallback when runtime config omits explicit timeout. |
+| `BOPO_ENABLE_GIT_WORKTREE_ISOLATION` | `0` | Enables `isolated + git_worktree` runtime resolution in heartbeat service. |
+| `BOPO_GIT_WORKTREE_TTL_MINUTES` | `240` | TTL for stale isolated worktree cleanup under strategy root dir. |
 | `BOPO_SCHEDULER_ROLE` | `auto` | Scheduler ownership: `auto`, `leader`, `follower`, `off`. |
 | `BOPO_PLUGIN_SYSTEM_DISABLED` | `0` (plugin system enabled) | Global emergency kill switch for plugin hook execution when `1`/`true`. |
 | `BOPO_PLUGIN_SYSTEM_ENABLED` | legacy compatibility | If explicitly set to `0`/`false`, plugin hooks are disabled. |
@@ -110,6 +112,15 @@ These variables are required for control-plane aware skill execution and approva
 | `BOPO_ANTHROPIC_BASE_URL` | Optional Anthropic API base URL override for direct API adapters. |
 | `BOPO_OPENAI_INPUT_USD_PER_1M` / `BOPO_OPENAI_OUTPUT_USD_PER_1M` | Optional direct-adapter cost fallback rates when provider response omits cost fields. |
 | `BOPO_ANTHROPIC_INPUT_USD_PER_1M` / `BOPO_ANTHROPIC_OUTPUT_USD_PER_1M` | Optional direct-adapter cost fallback rates when provider response omits cost fields. |
+
+## Project Workspace Git Policy
+
+- `projects.executionWorkspacePolicy.credentials.mode`
+  - `host` (default): rely on host git credentials (`ssh-agent`, `gh auth`, or credential helper).
+  - `env_token`: resolve token from `credentials.tokenEnvVar` in runtime env/process env.
+- `projects.executionWorkspacePolicy.allowRemotes`: optional remote allowlist guard.
+- `projects.executionWorkspacePolicy.allowBranchPrefixes`: optional guard for isolated worktree branch naming.
+- `projects.executionWorkspacePolicy.strategy.type=git_worktree`: enables isolated worktree strategy when global flag allows it.
 
 ## Attachments Limits
 

@@ -25,8 +25,9 @@ import {
 } from "bopodev-db";
 import { appendAuditEvent, appendCost } from "bopodev-db";
 import { parseRuntimeConfigFromAgentRow } from "../lib/agent-config";
+import { bootstrapRepositoryWorkspace, ensureIsolatedGitWorktree, GitRuntimeError } from "../lib/git-runtime";
 import { resolveProjectWorkspacePath } from "../lib/instance-paths";
-import { getProjectWorkspaceMap, hasText, resolveAgentFallbackWorkspace } from "../lib/workspace-policy";
+import { getProjectWorkspaceContextMap, hasText, resolveAgentFallbackWorkspace } from "../lib/workspace-policy";
 import type { RealtimeHub } from "../realtime/hub";
 import { createHeartbeatRunsRealtimeEvent } from "../realtime/heartbeat-runs";
 import { publishOfficeOccupantForAgent } from "../realtime/office-space";
@@ -1413,7 +1414,10 @@ async function buildHeartbeatContext(
           .where(and(eq(projects.companyId, companyId), inArray(projects.id, projectIds)))
       : [];
   const projectNameById = new Map(projectRows.map((row) => [row.id, row.name]));
-  const projectWorkspaceMap = await getProjectWorkspaceMap(db, companyId, projectIds);
+  const projectWorkspaceContextMap = await getProjectWorkspaceContextMap(db, companyId, projectIds);
+  const projectWorkspaceMap = new Map(
+    Array.from(projectWorkspaceContextMap.entries()).map(([projectId, context]) => [projectId, context.cwd])
+  );
   const issueIds = input.workItems.map((item) => item.id);
   const attachmentRows =
     issueIds.length > 0
@@ -1773,7 +1777,7 @@ async function resolveRuntimeWorkspaceForWorkItems(
   db: BopoDb,
   companyId: string,
   agentId: string,
-  workItems: Array<{ project_id: string }>,
+  workItems: Array<{ id?: string; project_id: string }>,
   runtime:
     | {
         command?: string;
@@ -1797,22 +1801,74 @@ async function resolveRuntimeWorkspaceForWorkItems(
   const normalizedRuntimeCwd = runtime?.cwd?.trim();
   const warnings: string[] = [];
   const projectIds = Array.from(new Set(workItems.map((item) => item.project_id)));
-  const projectWorkspaceMap = await getProjectWorkspaceMap(db, companyId, projectIds);
-
-  let selectedProjectWorkspace: string | null = null;
+  const projectWorkspaceContextMap = await getProjectWorkspaceContextMap(db, companyId, projectIds);
   for (const projectId of projectIds) {
-    const projectWorkspace = projectWorkspaceMap.get(projectId) ?? null;
-    if (hasText(projectWorkspace)) {
-      selectedProjectWorkspace = projectWorkspace;
-      break;
+    const projectContext = projectWorkspaceContextMap.get(projectId);
+    if (!projectContext) {
+      continue;
     }
-  }
+    const mode = projectContext.policy?.mode ?? "project_primary";
+    const baseWorkspaceCwd = hasText(projectContext.cwd)
+      ? projectContext.cwd
+      : projectContext.repoUrl
+        ? resolveProjectWorkspacePath(companyId, projectId)
+        : null;
+    if (mode === "agent_default" && hasText(normalizedRuntimeCwd)) {
+      return {
+        source: "agent_runtime",
+        warnings,
+        runtime: {
+          ...runtime,
+          cwd: normalizedRuntimeCwd
+        }
+      };
+    }
+    if (!baseWorkspaceCwd) {
+      continue;
+    }
+    let selectedWorkspaceCwd = baseWorkspaceCwd;
+    await mkdir(baseWorkspaceCwd, { recursive: true });
+    try {
+      if (hasText(projectContext.repoUrl)) {
+        const bootstrap = await bootstrapRepositoryWorkspace({
+          companyId,
+          projectId,
+          cwd: baseWorkspaceCwd,
+          repoUrl: projectContext.repoUrl as string,
+          repoRef: projectContext.repoRef,
+          policy: projectContext.policy,
+          runtimeEnv: runtime?.env
+        });
+        selectedWorkspaceCwd = bootstrap.cwd;
+      }
+      if (
+        mode === "isolated" &&
+        projectContext.policy?.strategy?.type === "git_worktree" &&
+        resolveGitWorktreeIsolationEnabled()
+      ) {
+        const projectIssue = workItems.find((item) => item.project_id === projectId);
+        const worktree = await ensureIsolatedGitWorktree({
+          repoCwd: selectedWorkspaceCwd,
+          projectId,
+          agentId,
+          issueId: projectIssue?.id ?? null,
+          repoRef: projectContext.repoRef,
+          policy: projectContext.policy
+        });
+        selectedWorkspaceCwd = worktree.cwd;
+      } else if (mode === "isolated" && projectContext.policy?.strategy?.type === "git_worktree") {
+        warnings.push(
+          "Project execution workspace policy mode 'isolated' is configured with git_worktree, but BOPO_ENABLE_GIT_WORKTREE_ISOLATION is disabled. Falling back to primary project workspace."
+        );
+      }
+    } catch (error) {
+      const message = error instanceof GitRuntimeError ? error.message : String(error);
+      warnings.push(`Workspace bootstrap failed for project '${projectId}': ${message}`);
+    }
 
-  if (selectedProjectWorkspace) {
-    await mkdir(selectedProjectWorkspace, { recursive: true });
-    if (hasText(normalizedRuntimeCwd) && normalizedRuntimeCwd !== selectedProjectWorkspace) {
+    if (hasText(normalizedRuntimeCwd) && normalizedRuntimeCwd !== selectedWorkspaceCwd) {
       warnings.push(
-        `Runtime cwd '${normalizedRuntimeCwd}' was overridden to project workspace '${selectedProjectWorkspace}' for assigned work.`
+        `Runtime cwd '${normalizedRuntimeCwd}' was overridden to project workspace '${selectedWorkspaceCwd}' for assigned work.`
       );
     }
     return {
@@ -1820,13 +1876,13 @@ async function resolveRuntimeWorkspaceForWorkItems(
       warnings,
       runtime: {
         ...runtime,
-        cwd: selectedProjectWorkspace
+        cwd: selectedWorkspaceCwd
       }
     };
   }
 
   if (projectIds.length > 0) {
-    warnings.push("Assigned project has no local workspace path configured. Falling back to agent workspace.");
+    warnings.push("Assigned project has no primary workspace cwd/repo configured. Falling back to agent workspace.");
   }
 
   if (hasText(normalizedRuntimeCwd)) {
@@ -1851,6 +1907,13 @@ async function resolveRuntimeWorkspaceForWorkItems(
       cwd: fallbackWorkspace
     }
   };
+}
+
+function resolveGitWorktreeIsolationEnabled() {
+  const value = String(process.env.BOPO_ENABLE_GIT_WORKTREE_ISOLATION ?? "")
+    .trim()
+    .toLowerCase();
+  return value === "1" || value === "true";
 }
 
 function resolveStaleRunThresholdMs() {

@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { ApiError, apiPost, apiPut } from "@/lib/api";
+import { ApiError, apiDelete, apiPost, apiPut } from "@/lib/api";
 import { readAgentRuntimeDefaults, writeAgentRuntimeDefaults } from "@/lib/agent-defaults";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -75,8 +75,29 @@ export function CreateProjectModal({
     description: string | null;
     status: ProjectStatus;
     plannedStartAt: string | null;
-    workspaceLocalPath: string | null;
-    workspaceGithubRepo: string | null;
+    workspaces: Array<{
+      id: string;
+      name: string;
+      cwd: string | null;
+      repoUrl: string | null;
+      repoRef: string | null;
+      isPrimary: boolean;
+    }>;
+    primaryWorkspace: {
+      id: string;
+      name: string;
+      cwd: string | null;
+      repoUrl: string | null;
+      repoRef: string | null;
+      isPrimary: boolean;
+    } | null;
+    gitDiagnostics?: {
+      workspaceStatus?: "hybrid" | "repo_only" | "local_only" | "unconfigured";
+      cloneState?: "ready" | "missing" | "n/a";
+      authMode?: "host" | "env_token";
+      tokenEnvVar?: string | null;
+      effectiveCwd?: string | null;
+    };
   };
   triggerLabel?: string;
   triggerVariant?: "default" | "outline" | "secondary" | "ghost" | "destructive";
@@ -88,9 +109,13 @@ export function CreateProjectModal({
   const [description, setDescription] = useState(project?.description ?? "");
   const [status, setStatus] = useState<ProjectStatus>(project?.status ?? "planned");
   const [plannedStartAt, setPlannedStartAt] = useState(project?.plannedStartAt ? project.plannedStartAt.slice(0, 10) : "");
-  const [workspaceLocalPath, setWorkspaceLocalPath] = useState(project?.workspaceLocalPath ?? "");
-  const [workspaceGithubRepo, setWorkspaceGithubRepo] = useState(project?.workspaceGithubRepo ?? "");
-  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>(inferWorkspaceMode(project?.workspaceLocalPath, project?.workspaceGithubRepo));
+  const [workspaceName, setWorkspaceName] = useState(project?.primaryWorkspace?.name ?? "");
+  const [workspaceCwd, setWorkspaceCwd] = useState(project?.primaryWorkspace?.cwd ?? "");
+  const [workspaceRepoUrl, setWorkspaceRepoUrl] = useState(project?.primaryWorkspace?.repoUrl ?? "");
+  const [workspaceRepoRef, setWorkspaceRepoRef] = useState(project?.primaryWorkspace?.repoRef ?? "");
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>(
+    inferWorkspaceMode(project?.primaryWorkspace?.cwd, project?.primaryWorkspace?.repoUrl)
+  );
   const [goalIds, setGoalIds] = useState<string[]>(
     project ? goals.filter((goal) => goal.projectId === project.id).map((goal) => goal.id) : []
   );
@@ -103,9 +128,11 @@ export function CreateProjectModal({
     setDescription(project?.description ?? "");
     setStatus(project?.status ?? "planned");
     setPlannedStartAt(project?.plannedStartAt ? project.plannedStartAt.slice(0, 10) : "");
-    setWorkspaceLocalPath(project?.workspaceLocalPath ?? "");
-    setWorkspaceGithubRepo(project?.workspaceGithubRepo ?? "");
-    setWorkspaceMode(inferWorkspaceMode(project?.workspaceLocalPath, project?.workspaceGithubRepo));
+    setWorkspaceName(project?.primaryWorkspace?.name ?? "");
+    setWorkspaceCwd(project?.primaryWorkspace?.cwd ?? "");
+    setWorkspaceRepoUrl(project?.primaryWorkspace?.repoUrl ?? "");
+    setWorkspaceRepoRef(project?.primaryWorkspace?.repoRef ?? "");
+    setWorkspaceMode(inferWorkspaceMode(project?.primaryWorkspace?.cwd, project?.primaryWorkspace?.repoUrl));
     setGoalIds(project ? goals.filter((goal) => goal.projectId === project.id).map((goal) => goal.id) : []);
     setError(null);
   }
@@ -127,33 +154,66 @@ export function CreateProjectModal({
     setIsSubmitting(true);
     setError(null);
     try {
-      const selectedWorkspaceLocalPath = workspaceMode === "github" ? "" : workspaceLocalPath;
-      const selectedWorkspaceGithubRepo = workspaceMode === "local" ? "" : workspaceGithubRepo;
+      const trimmedWorkspaceCwd = (workspaceMode === "github" ? "" : workspaceCwd).trim();
+      const trimmedWorkspaceRepoUrl = (workspaceMode === "local" ? "" : workspaceRepoUrl).trim();
+      const trimmedWorkspaceRepoRef = workspaceRepoRef.trim();
+      const trimmedWorkspaceName = workspaceName.trim();
+      const hasWorkspace = trimmedWorkspaceCwd.length > 0 || trimmedWorkspaceRepoUrl.length > 0;
+      const normalizedWorkspace = hasWorkspace
+        ? {
+            name: trimmedWorkspaceName || undefined,
+            cwd: trimmedWorkspaceCwd || undefined,
+            repoUrl: trimmedWorkspaceRepoUrl || undefined,
+            repoRef: trimmedWorkspaceRepoRef || undefined,
+            isPrimary: true
+          }
+        : undefined;
       const payload = {
         name,
         description: description || undefined,
         status,
         plannedStartAt: plannedStartAt || undefined,
-        workspaceLocalPath: selectedWorkspaceLocalPath || undefined,
-        workspaceGithubRepo: selectedWorkspaceGithubRepo || undefined,
+        workspace: normalizedWorkspace,
         goalIds
       };
       if (isEditing && project) {
         await apiPut(`/projects/${project.id}`, companyId, {
-          ...payload,
           description: description || null,
+          goalIds,
+          name,
           plannedStartAt: plannedStartAt || null,
-          workspaceLocalPath: workspaceLocalPath || null,
-          workspaceGithubRepo: workspaceGithubRepo || null
+          status
         });
+        if (hasWorkspace) {
+          const workspacePayload = normalizedWorkspace as {
+            name?: string;
+            cwd?: string;
+            repoUrl?: string;
+            repoRef?: string;
+            isPrimary: boolean;
+          };
+          if (project.primaryWorkspace) {
+            await apiPut(`/projects/${project.id}/workspaces/${project.primaryWorkspace.id}`, companyId, {
+              name: workspacePayload.name,
+              cwd: workspacePayload.cwd ?? null,
+              repoUrl: workspacePayload.repoUrl ?? null,
+              repoRef: workspacePayload.repoRef ?? null,
+              isPrimary: true
+            });
+          } else {
+            await apiPost(`/projects/${project.id}/workspaces`, companyId, workspacePayload);
+          }
+        } else if (project.primaryWorkspace) {
+          await apiDelete(`/projects/${project.id}/workspaces/${project.primaryWorkspace.id}`, companyId);
+        }
       } else {
         await apiPost("/projects", companyId, payload);
       }
-      if (selectedWorkspaceLocalPath.trim().length > 0) {
+      if (trimmedWorkspaceCwd.length > 0) {
         const defaults = readAgentRuntimeDefaults();
         writeAgentRuntimeDefaults({
           ...defaults,
-          runtimeCwd: selectedWorkspaceLocalPath.trim()
+          runtimeCwd: trimmedWorkspaceCwd
         });
       }
       if (!isEditing) {
@@ -161,8 +221,10 @@ export function CreateProjectModal({
         setDescription("");
         setStatus("planned");
         setPlannedStartAt("");
-        setWorkspaceLocalPath("");
-        setWorkspaceGithubRepo("");
+        setWorkspaceName("");
+        setWorkspaceCwd("");
+        setWorkspaceRepoUrl("");
+        setWorkspaceRepoRef("");
         setWorkspaceMode("local");
         setGoalIds([]);
       }
@@ -222,7 +284,7 @@ export function CreateProjectModal({
           <FieldGroup className={styles.createProjectModalSection}>
             <div>
               <p className={styles.createProjectModalSectionTitle}>Where will work be done on this project?</p>
-              <p className={styles.createProjectModalSectionDescription}>Add local folder and/or GitHub repo workspace hints.</p>
+              <p className={styles.createProjectModalSectionDescription}>Configure a project workspace (local folder and/or GitHub repo).</p>
             </div>
             <div className={styles.createProjectModalWorkspaceModes}>
               <button
@@ -250,13 +312,23 @@ export function CreateProjectModal({
                 <span className="ui-project-workspace-mode-description">Configure local + repo hints.</span>
               </button>
             </div>
+            <Field>
+              <FieldLabel htmlFor="project-workspace-name">Workspace name</FieldLabel>
+              <Input
+                id="project-workspace-name"
+                value={workspaceName}
+                onChange={(e) => setWorkspaceName(e.target.value)}
+                placeholder="Main workspace"
+                autoComplete="off"
+              />
+            </Field>
             {workspaceMode !== "github" ? (
               <Field>
-                <FieldLabel htmlFor="project-workspace-local-path">Local folder hint</FieldLabel>
+                <FieldLabel htmlFor="project-workspace-local-path">Local folder</FieldLabel>
                 <Input
                   id="project-workspace-local-path"
-                  value={workspaceLocalPath}
-                  onChange={(e) => setWorkspaceLocalPath(e.target.value)}
+                  value={workspaceCwd}
+                  onChange={(e) => setWorkspaceCwd(e.target.value)}
                   placeholder="/Users/name/path/to/workspace"
                   autoComplete="off"
                 />
@@ -264,15 +336,44 @@ export function CreateProjectModal({
             ) : null}
             {workspaceMode !== "local" ? (
               <Field>
-                <FieldLabel htmlFor="project-workspace-github-repo">GitHub repository hint</FieldLabel>
+                <FieldLabel htmlFor="project-workspace-github-repo">GitHub repository</FieldLabel>
                 <Input
                   id="project-workspace-github-repo"
                   type="url"
-                  value={workspaceGithubRepo}
-                  onChange={(e) => setWorkspaceGithubRepo(e.target.value)}
+                  value={workspaceRepoUrl}
+                  onChange={(e) => setWorkspaceRepoUrl(e.target.value)}
                   placeholder="https://github.com/org/repo"
                   autoComplete="off"
                 />
+                <FieldDescription>
+                  Git auth defaults to host credentials (ssh-agent, gh auth, or git credential helper). For headless runs,
+                  set project policy credentials mode to env token.
+                </FieldDescription>
+              </Field>
+            ) : null}
+            {workspaceMode !== "local" ? (
+              <Field>
+                <FieldLabel htmlFor="project-workspace-github-ref">Repository ref</FieldLabel>
+                <Input
+                  id="project-workspace-github-ref"
+                  value={workspaceRepoRef}
+                  onChange={(e) => setWorkspaceRepoRef(e.target.value)}
+                  placeholder="main"
+                  autoComplete="off"
+                />
+                <FieldDescription>Optional branch, tag, or commit reference.</FieldDescription>
+              </Field>
+            ) : null}
+            {project?.gitDiagnostics ? (
+              <Field>
+                <FieldDescription>
+                  Workspace runtime status: {project.gitDiagnostics.workspaceStatus ?? "unconfigured"} / clone{" "}
+                  {project.gitDiagnostics.cloneState ?? "n/a"}
+                  {project.gitDiagnostics.authMode === "env_token" && project.gitDiagnostics.tokenEnvVar
+                    ? ` / token env ${project.gitDiagnostics.tokenEnvVar}`
+                    : ""}
+                  {project.gitDiagnostics.effectiveCwd ? ` / cwd ${project.gitDiagnostics.effectiveCwd}` : ""}
+                </FieldDescription>
               </Field>
             ) : null}
           </FieldGroup>

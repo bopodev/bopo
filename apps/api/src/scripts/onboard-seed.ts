@@ -3,6 +3,7 @@ import { mkdir } from "node:fs/promises";
 import { getAdapterModels } from "bopodev-agent-sdk";
 import {
   bootstrapDatabase,
+  createProjectWorkspace,
   createAgent,
   createCompany,
   createIssue,
@@ -10,12 +11,15 @@ import {
   listAgents,
   listCompanies,
   listIssues,
+  listProjectWorkspaces,
   listProjects,
+  updateProjectWorkspace,
   updateIssue,
   updateAgent,
   updateCompany
 } from "bopodev-db";
 import { normalizeRuntimeConfig, runtimeConfigToDb, runtimeConfigToStateBlobPatch } from "../lib/agent-config";
+import { resolveProjectWorkspacePath } from "../lib/instance-paths";
 import { resolveDefaultRuntimeCwdForCompany } from "../lib/workspace-policy";
 import { ensureCompanyModelPricingDefaults } from "../services/model-pricing";
 
@@ -168,6 +172,7 @@ async function ensureStartupProject(db: Awaited<ReturnType<typeof bootstrapDatab
   const projects = await listProjects(db, companyId);
   const existing = projects.find((project) => project.name === STARTUP_PROJECT_NAME);
   if (existing) {
+    await ensureProjectPrimaryWorkspace(db, companyId, existing.id, STARTUP_PROJECT_NAME);
     return existing.id;
   }
   const created = await createProject(db, {
@@ -175,7 +180,50 @@ async function ensureStartupProject(db: Awaited<ReturnType<typeof bootstrapDatab
     name: STARTUP_PROJECT_NAME,
     description: "Initial leadership onboarding and operating setup."
   });
+  if (!created) {
+    throw new Error("Failed to create startup project.");
+  }
+  await ensureProjectPrimaryWorkspace(db, companyId, created.id, STARTUP_PROJECT_NAME);
   return created.id;
+}
+
+async function ensureProjectPrimaryWorkspace(
+  db: Awaited<ReturnType<typeof bootstrapDatabase>>["db"],
+  companyId: string,
+  projectId: string,
+  projectName: string
+) {
+  const existingWorkspaces = await listProjectWorkspaces(db, companyId, projectId);
+  const existingPrimary = existingWorkspaces.find((workspace) => workspace.isPrimary);
+  if (existingPrimary) {
+    if (existingPrimary.cwd) {
+      await mkdir(existingPrimary.cwd, { recursive: true });
+    }
+    return existingPrimary;
+  }
+  const defaultWorkspaceCwd = resolveProjectWorkspacePath(companyId, projectId);
+  await mkdir(defaultWorkspaceCwd, { recursive: true });
+  const fallbackWorkspace = existingWorkspaces[0];
+  if (fallbackWorkspace) {
+    const normalizedCwd = fallbackWorkspace.cwd?.trim() ? fallbackWorkspace.cwd : defaultWorkspaceCwd;
+    if (normalizedCwd) {
+      await mkdir(normalizedCwd, { recursive: true });
+    }
+    return updateProjectWorkspace(db, {
+      companyId,
+      projectId,
+      id: fallbackWorkspace.id,
+      cwd: normalizedCwd,
+      isPrimary: true
+    });
+  }
+  return createProjectWorkspace(db, {
+    companyId,
+    projectId,
+    name: projectName,
+    cwd: defaultWorkspaceCwd,
+    isPrimary: true
+  });
 }
 
 async function ensureCeoStartupTask(

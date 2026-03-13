@@ -19,6 +19,7 @@ import {
   pluginConfigs,
   pluginRuns,
   plugins,
+  projectWorkspaces,
   projects,
   touchUpdatedAtSql
 } from "./schema";
@@ -106,7 +107,8 @@ export async function deleteCompany(db: BopoDb, id: string) {
 }
 
 export async function listProjects(db: BopoDb, companyId: string) {
-  return db.select().from(projects).where(eq(projects.companyId, companyId)).orderBy(desc(projects.createdAt));
+  const rows = await db.select().from(projects).where(eq(projects.companyId, companyId)).orderBy(desc(projects.createdAt));
+  return hydrateProjectsWithWorkspaces(db, rows);
 }
 
 export async function createProject(
@@ -118,6 +120,7 @@ export async function createProject(
     description?: string | null;
     status?: "planned" | "active" | "paused" | "blocked" | "completed" | "archived";
     plannedStartAt?: Date | null;
+    executionWorkspacePolicy?: Record<string, unknown> | null;
     workspaceLocalPath?: string | null;
     workspaceGithubRepo?: string | null;
   }
@@ -130,10 +133,21 @@ export async function createProject(
     description: input.description ?? null,
     status: input.status ?? "planned",
     plannedStartAt: input.plannedStartAt ?? null,
-    workspaceLocalPath: input.workspaceLocalPath ?? null,
-    workspaceGithubRepo: input.workspaceGithubRepo ?? null
+    executionWorkspacePolicy: input.executionWorkspacePolicy ? JSON.stringify(input.executionWorkspacePolicy) : null
   });
-  return { id, ...input };
+  const legacyWorkspaceLocalPath = input.workspaceLocalPath?.trim();
+  const legacyWorkspaceGithubRepo = input.workspaceGithubRepo?.trim();
+  if ((legacyWorkspaceLocalPath && legacyWorkspaceLocalPath.length > 0) || (legacyWorkspaceGithubRepo && legacyWorkspaceGithubRepo.length > 0)) {
+    await createProjectWorkspace(db, {
+      companyId: input.companyId,
+      projectId: id,
+      name: input.name,
+      cwd: legacyWorkspaceLocalPath && legacyWorkspaceLocalPath.length > 0 ? legacyWorkspaceLocalPath : null,
+      repoUrl: legacyWorkspaceGithubRepo && legacyWorkspaceGithubRepo.length > 0 ? legacyWorkspaceGithubRepo : null,
+      isPrimary: true
+    });
+  }
+  return getProjectById(db, input.companyId, id);
 }
 
 export async function updateProject(
@@ -145,6 +159,7 @@ export async function updateProject(
     description?: string | null;
     status?: "planned" | "active" | "paused" | "blocked" | "completed" | "archived";
     plannedStartAt?: Date | null;
+    executionWorkspacePolicy?: Record<string, unknown> | null;
     workspaceLocalPath?: string | null;
     workspaceGithubRepo?: string | null;
   }
@@ -157,13 +172,222 @@ export async function updateProject(
         description: input.description,
         status: input.status,
         plannedStartAt: input.plannedStartAt,
-        workspaceLocalPath: input.workspaceLocalPath,
-        workspaceGithubRepo: input.workspaceGithubRepo
+        executionWorkspacePolicy:
+          input.executionWorkspacePolicy === undefined
+            ? undefined
+            : input.executionWorkspacePolicy === null
+              ? null
+              : JSON.stringify(input.executionWorkspacePolicy),
+        updatedAt: touchUpdatedAtSql
       })
     )
     .where(and(eq(projects.companyId, input.companyId), eq(projects.id, input.id)))
     .returning();
-  return project ?? null;
+  if (!project) {
+    return null;
+  }
+  if (input.workspaceLocalPath !== undefined || input.workspaceGithubRepo !== undefined) {
+    const existingWorkspaces = await listProjectWorkspaces(db, input.companyId, input.id);
+    const primaryWorkspace = existingWorkspaces.find((workspace) => workspace.isPrimary) ?? existingWorkspaces[0] ?? null;
+    const hasAnyWorkspaceField =
+      (input.workspaceLocalPath?.trim() ?? "").length > 0 || (input.workspaceGithubRepo?.trim() ?? "").length > 0;
+    if (!hasAnyWorkspaceField) {
+      if (primaryWorkspace) {
+        await updateProjectWorkspace(db, {
+          companyId: input.companyId,
+          projectId: input.id,
+          id: primaryWorkspace.id,
+          cwd: null,
+          repoUrl: null
+        });
+      }
+    } else if (primaryWorkspace) {
+      await updateProjectWorkspace(db, {
+        companyId: input.companyId,
+        projectId: input.id,
+        id: primaryWorkspace.id,
+        cwd: input.workspaceLocalPath ?? null,
+        repoUrl: input.workspaceGithubRepo ?? null,
+        isPrimary: true
+      });
+    } else {
+      await createProjectWorkspace(db, {
+        companyId: input.companyId,
+        projectId: input.id,
+        name: input.name ?? project.name,
+        cwd: input.workspaceLocalPath ?? null,
+        repoUrl: input.workspaceGithubRepo ?? null,
+        isPrimary: true
+      });
+    }
+  }
+  return getProjectById(db, input.companyId, project.id);
+}
+
+export async function listProjectWorkspaces(db: BopoDb, companyId: string, projectId: string) {
+  return db
+    .select()
+    .from(projectWorkspaces)
+    .where(and(eq(projectWorkspaces.companyId, companyId), eq(projectWorkspaces.projectId, projectId)))
+    .orderBy(desc(projectWorkspaces.isPrimary), asc(projectWorkspaces.createdAt), asc(projectWorkspaces.id));
+}
+
+export async function createProjectWorkspace(
+  db: BopoDb,
+  input: {
+    companyId: string;
+    projectId: string;
+    name: string;
+    cwd?: string | null;
+    repoUrl?: string | null;
+    repoRef?: string | null;
+    isPrimary?: boolean;
+  }
+) {
+  const id = nanoid(12);
+  return db.transaction(async (tx) => {
+    const existingWorkspaces = await tx
+      .select({ id: projectWorkspaces.id })
+      .from(projectWorkspaces)
+      .where(and(eq(projectWorkspaces.companyId, input.companyId), eq(projectWorkspaces.projectId, input.projectId)))
+      .limit(1);
+    const shouldBePrimary = input.isPrimary === true || existingWorkspaces.length === 0;
+    if (shouldBePrimary) {
+      await tx
+        .update(projectWorkspaces)
+        .set({ isPrimary: false, updatedAt: touchUpdatedAtSql })
+        .where(and(eq(projectWorkspaces.companyId, input.companyId), eq(projectWorkspaces.projectId, input.projectId)));
+    }
+    const [workspace] = await tx
+      .insert(projectWorkspaces)
+      .values({
+        id,
+        companyId: input.companyId,
+        projectId: input.projectId,
+        name: input.name,
+        cwd: input.cwd ?? null,
+        repoUrl: input.repoUrl ?? null,
+        repoRef: input.repoRef ?? null,
+        isPrimary: shouldBePrimary
+      })
+      .returning();
+    return workspace;
+  });
+}
+
+export async function updateProjectWorkspace(
+  db: BopoDb,
+  input: {
+    companyId: string;
+    projectId: string;
+    id: string;
+    name?: string;
+    cwd?: string | null;
+    repoUrl?: string | null;
+    repoRef?: string | null;
+    isPrimary?: boolean;
+  }
+) {
+  return db.transaction(async (tx) => {
+    if (input.isPrimary === true) {
+      await tx
+        .update(projectWorkspaces)
+        .set({ isPrimary: false, updatedAt: touchUpdatedAtSql })
+        .where(and(eq(projectWorkspaces.companyId, input.companyId), eq(projectWorkspaces.projectId, input.projectId)));
+    }
+
+    const [workspace] = await tx
+      .update(projectWorkspaces)
+      .set(
+        compactUpdate({
+          name: input.name,
+          cwd: input.cwd,
+          repoUrl: input.repoUrl,
+          repoRef: input.repoRef,
+          isPrimary: input.isPrimary,
+          updatedAt: touchUpdatedAtSql
+        })
+      )
+      .where(
+        and(
+          eq(projectWorkspaces.companyId, input.companyId),
+          eq(projectWorkspaces.projectId, input.projectId),
+          eq(projectWorkspaces.id, input.id)
+        )
+      )
+      .returning();
+
+    if (!workspace) {
+      return null;
+    }
+
+    const primary = await tx
+      .select({ id: projectWorkspaces.id })
+      .from(projectWorkspaces)
+      .where(
+        and(
+          eq(projectWorkspaces.companyId, input.companyId),
+          eq(projectWorkspaces.projectId, input.projectId),
+          eq(projectWorkspaces.isPrimary, true)
+        )
+      )
+      .limit(1);
+    if (primary.length === 0) {
+      await tx
+        .update(projectWorkspaces)
+        .set({ isPrimary: true, updatedAt: touchUpdatedAtSql })
+        .where(
+          and(
+            eq(projectWorkspaces.companyId, input.companyId),
+            eq(projectWorkspaces.projectId, input.projectId),
+            eq(projectWorkspaces.id, workspace.id)
+          )
+        );
+      const [rehydrated] = await tx
+        .select()
+        .from(projectWorkspaces)
+        .where(eq(projectWorkspaces.id, workspace.id))
+        .limit(1);
+      return rehydrated ?? workspace;
+    }
+    return workspace;
+  });
+}
+
+export async function deleteProjectWorkspace(
+  db: BopoDb,
+  input: { companyId: string; projectId: string; id: string }
+) {
+  return db.transaction(async (tx) => {
+    const [workspace] = await tx
+      .delete(projectWorkspaces)
+      .where(
+        and(
+          eq(projectWorkspaces.companyId, input.companyId),
+          eq(projectWorkspaces.projectId, input.projectId),
+          eq(projectWorkspaces.id, input.id)
+        )
+      )
+      .returning();
+    if (!workspace) {
+      return null;
+    }
+    if (workspace.isPrimary) {
+      const [fallback] = await tx
+        .select({ id: projectWorkspaces.id })
+        .from(projectWorkspaces)
+        .where(and(eq(projectWorkspaces.companyId, input.companyId), eq(projectWorkspaces.projectId, input.projectId)))
+        .orderBy(asc(projectWorkspaces.createdAt), asc(projectWorkspaces.id))
+        .limit(1);
+      if (fallback) {
+        await tx
+          .update(projectWorkspaces)
+          .set({ isPrimary: true, updatedAt: touchUpdatedAtSql })
+          .where(eq(projectWorkspaces.id, fallback.id));
+      }
+    }
+    return workspace;
+  });
 }
 
 export async function syncProjectGoals(
@@ -211,6 +435,67 @@ export async function deleteProject(db: BopoDb, companyId: string, id: string) {
     .where(and(eq(projects.companyId, companyId), eq(projects.id, id)))
     .returning({ id: projects.id });
   return Boolean(deletedProject);
+}
+
+async function getProjectById(db: BopoDb, companyId: string, projectId: string) {
+  const [row] = await db
+    .select()
+    .from(projects)
+    .where(and(eq(projects.companyId, companyId), eq(projects.id, projectId)))
+    .limit(1);
+  if (!row) {
+    return null;
+  }
+  const [project] = await hydrateProjectsWithWorkspaces(db, [row]);
+  return project ?? null;
+}
+
+async function hydrateProjectsWithWorkspaces(
+  db: BopoDb,
+  projectRows: Array<typeof projects.$inferSelect>
+) {
+  if (projectRows.length === 0) {
+    return [] as Array<
+      typeof projects.$inferSelect & {
+        executionWorkspacePolicy: Record<string, unknown> | null;
+        workspaces: Array<typeof projectWorkspaces.$inferSelect>;
+        primaryWorkspace: typeof projectWorkspaces.$inferSelect | null;
+      }
+    >;
+  }
+  const projectIds = projectRows.map((project) => project.id);
+  const workspaces = await db
+    .select()
+    .from(projectWorkspaces)
+    .where(inArray(projectWorkspaces.projectId, projectIds))
+    .orderBy(desc(projectWorkspaces.isPrimary), asc(projectWorkspaces.createdAt), asc(projectWorkspaces.id));
+  const workspacesByProject = new Map<string, Array<typeof projectWorkspaces.$inferSelect>>();
+  for (const workspace of workspaces) {
+    const existing = workspacesByProject.get(workspace.projectId) ?? [];
+    existing.push(workspace);
+    workspacesByProject.set(workspace.projectId, existing);
+  }
+
+  return projectRows.map((project) => {
+    const projectWorkspacesRows = workspacesByProject.get(project.id) ?? [];
+    const primaryWorkspace = projectWorkspacesRows.find((workspace) => workspace.isPrimary) ?? projectWorkspacesRows[0] ?? null;
+    let executionWorkspacePolicy: Record<string, unknown> | null = null;
+    if (project.executionWorkspacePolicy) {
+      try {
+        executionWorkspacePolicy = JSON.parse(project.executionWorkspacePolicy) as Record<string, unknown>;
+      } catch {
+        executionWorkspacePolicy = null;
+      }
+    }
+    return {
+      ...project,
+      workspaceLocalPath: primaryWorkspace?.cwd ?? null,
+      workspaceGithubRepo: primaryWorkspace?.repoUrl ?? null,
+      executionWorkspacePolicy,
+      workspaces: projectWorkspacesRows,
+      primaryWorkspace
+    };
+  });
 }
 
 export async function listIssues(db: BopoDb, companyId: string, projectId?: string) {

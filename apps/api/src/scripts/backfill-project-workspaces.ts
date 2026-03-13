@@ -1,11 +1,21 @@
 import { access, constants, mkdir } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 import { pathToFileURL } from "node:url";
-import { bootstrapDatabase, listCompanies, listProjects, updateProject } from "bopodev-db";
+import {
+  bootstrapDatabase,
+  createProjectWorkspace,
+  listCompanies,
+  listProjects,
+  listProjectWorkspaces,
+  updateProjectWorkspace
+} from "bopodev-db";
 import { normalizeAbsolutePath, resolveBopoInstanceRoot, resolveProjectWorkspacePath, resolveStorageRoot } from "../lib/instance-paths";
 
 export interface ProjectWorkspaceBackfillSummary {
   scannedProjects: number;
+  createdWorkspaces: number;
+  normalizedWorkspaceCwds: number;
+  updatedWorkspaces: number;
   missingWorkspaceLocalPath: number;
   relativeWorkspaceLocalPath: number;
   updatedProjects: number;
@@ -20,9 +30,11 @@ export async function backfillProjectWorkspaces(input: { dbPath?: string; dryRun
   const instanceRoot = resolveBopoInstanceRoot();
   const storageRoot = resolveStorageRoot();
   let scannedProjects = 0;
-  let missingWorkspaceLocalPath = 0;
-  let relativeWorkspaceLocalPath = 0;
-  let updatedProjects = 0;
+  let createdWorkspaces = 0;
+  let normalizedWorkspaceCwds = 0;
+  let updatedWorkspaces = 0;
+  let missingWorkspaceCount = 0;
+  let relativeWorkspaceCount = 0;
   let createdDirectories = 0;
 
   try {
@@ -31,38 +43,49 @@ export async function backfillProjectWorkspaces(input: { dbPath?: string; dryRun
       const projects = await listProjects(db, company.id);
       for (const project of projects) {
         scannedProjects += 1;
-        const workspaceLocalPath = project.workspaceLocalPath?.trim() ?? "";
-        if (!workspaceLocalPath) {
-          missingWorkspaceLocalPath += 1;
+        const workspaces = await listProjectWorkspaces(db, company.id, project.id);
+        if (workspaces.length === 0) {
+          missingWorkspaceCount += 1;
           const nextPath = resolveProjectWorkspacePath(company.id, project.id);
           if (!input.dryRun) {
             await mkdir(nextPath, { recursive: true });
             createdDirectories += 1;
-            const updated = await updateProject(db, {
+            const created = await createProjectWorkspace(db, {
               companyId: company.id,
-              id: project.id,
-              workspaceLocalPath: nextPath
+              projectId: project.id,
+              name: project.name,
+              cwd: nextPath,
+              isPrimary: true
             });
-            if (updated) {
-              updatedProjects += 1;
+            if (created) {
+              createdWorkspaces += 1;
             }
           }
           continue;
         }
 
-        if (!isAbsolute(workspaceLocalPath)) {
-          relativeWorkspaceLocalPath += 1;
-          const nextPath = normalizeAbsolutePath(workspaceLocalPath);
+        for (const workspace of workspaces) {
+          const cwd = workspace.cwd?.trim() ?? "";
+          if (!cwd) {
+            continue;
+          }
+          if (isAbsolute(cwd)) {
+            continue;
+          }
+          relativeWorkspaceCount += 1;
+          normalizedWorkspaceCwds += 1;
+          const nextPath = normalizeAbsolutePath(cwd);
           if (!input.dryRun) {
             await mkdir(nextPath, { recursive: true });
             createdDirectories += 1;
-            const updated = await updateProject(db, {
+            const updated = await updateProjectWorkspace(db, {
               companyId: company.id,
-              id: project.id,
-              workspaceLocalPath: nextPath
+              projectId: project.id,
+              id: workspace.id,
+              cwd: nextPath
             });
             if (updated) {
-              updatedProjects += 1;
+              updatedWorkspaces += 1;
             }
           }
         }
@@ -78,9 +101,12 @@ export async function backfillProjectWorkspaces(input: { dbPath?: string; dryRun
 
     return {
       scannedProjects,
-      missingWorkspaceLocalPath,
-      relativeWorkspaceLocalPath,
-      updatedProjects,
+      createdWorkspaces,
+      normalizedWorkspaceCwds,
+      updatedWorkspaces,
+      missingWorkspaceLocalPath: missingWorkspaceCount,
+      relativeWorkspaceLocalPath: relativeWorkspaceCount,
+      updatedProjects: updatedWorkspaces + createdWorkspaces,
       createdDirectories,
       writableInstanceRoot,
       writableStorageRoot,
