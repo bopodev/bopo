@@ -62,7 +62,7 @@ export function CreateIssueModal({
   defaultProjectId,
   triggerLabel = "New Issue",
   triggerVariant = "default",
-  triggerSize
+  triggerSize = "sm"
 }: {
   companyId: string;
   projects: ProjectOption[];
@@ -190,80 +190,82 @@ export function CreateIssueModal({
           <DialogDescription>Use one full issue dialog for both create and edit workflows.</DialogDescription>
         </DialogHeader>
         <form className={styles.createIssueModalForm} onSubmit={onSubmit}>
-          <FieldGroup>
-            <Field>
-              <FieldLabel>Project</FieldLabel>
-              <Select value={projectId} onValueChange={setProjectId} disabled={projects.length === 0}>
-                <SelectTrigger className={styles.createIssueModalSelectTrigger}>
-                  <SelectValue placeholder={projects.length === 0 ? "No projects available" : "Select a project"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {projects.map((project) => (
-                    <SelectItem key={project.id} value={project.id}>
-                      {project.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {projects.length === 0 ? <FieldDescription>Create a project first so new issues have a home.</FieldDescription> : null}
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="issue-title">Issue title</FieldLabel>
-              <Input id="issue-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Improve approval latency" required />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="issue-description">Description</FieldLabel>
-              <Textarea id="issue-description" value={body} onChange={(e) => setBody(e.target.value)} placeholder="Describe the work and expected outcome." />
-            </Field>
-            <Field>
-              <FieldLabel>Status</FieldLabel>
-              <Select value={status} onValueChange={(value) => setStatus(value as IssueStatus)}>
-                <SelectTrigger className={styles.createIssueModalSelectTrigger}>
-                  <SelectValue placeholder="Select a status" />
-                </SelectTrigger>
-                <SelectContent>
-                  {issueStatusOptions.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field>
-              <FieldLabel>Assigned agent</FieldLabel>
-              <Select value={assigneeAgentId} onValueChange={setAssigneeAgentId}>
-                <SelectTrigger className={styles.createIssueModalSelectTrigger}>
-                  <SelectValue placeholder="Select an agent" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="unassigned">Unassigned</SelectItem>
-                  {agents.map((agent) => (
-                    <SelectItem key={agent.id} value={agent.id}>
-                      {agent.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="issue-labels">Labels</FieldLabel>
-              <Input
-                id="issue-labels"
-                value={labels}
-                onChange={(e) => setLabels(e.target.value)}
-                placeholder="bug, onboarding, backend"
-              />
-              <FieldDescription>Separate labels with commas.</FieldDescription>
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="issue-attachments">Attachments</FieldLabel>
-              <Input id="issue-attachments" type="file" multiple onChange={onFilesSelected} />
-              <FieldDescription>
-                Attach one or more files. {isEditing ? "Files upload when you save changes." : "Files upload after issue creation."}
-              </FieldDescription>
-            </Field>
-          </FieldGroup>
+          <div className="ui-dialog-content-scrollable">
+            <FieldGroup>
+              <Field>
+                <FieldLabel>Project</FieldLabel>
+                <Select value={projectId} onValueChange={setProjectId} disabled={projects.length === 0}>
+                  <SelectTrigger className={styles.createIssueModalSelectTrigger}>
+                    <SelectValue placeholder={projects.length === 0 ? "No projects available" : "Select a project"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {projects.map((project) => (
+                      <SelectItem key={project.id} value={project.id}>
+                        {project.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {projects.length === 0 ? <FieldDescription>Create a project first so new issues have a home.</FieldDescription> : null}
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="issue-title">Issue title</FieldLabel>
+                <Input id="issue-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Improve approval latency" required />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="issue-description">Description</FieldLabel>
+                <Textarea id="issue-description" value={body} onChange={(e) => setBody(e.target.value)} placeholder="Describe the work and expected outcome." />
+              </Field>
+              <Field>
+                <FieldLabel>Status</FieldLabel>
+                <Select value={status} onValueChange={(value) => setStatus(value as IssueStatus)}>
+                  <SelectTrigger className={styles.createIssueModalSelectTrigger}>
+                    <SelectValue placeholder="Select a status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {issueStatusOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field>
+                <FieldLabel>Assigned agent</FieldLabel>
+                <Select value={assigneeAgentId} onValueChange={setAssigneeAgentId}>
+                  <SelectTrigger className={styles.createIssueModalSelectTrigger}>
+                    <SelectValue placeholder="Select an agent" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="unassigned">Unassigned</SelectItem>
+                    {agents.map((agent) => (
+                      <SelectItem key={agent.id} value={agent.id}>
+                        {agent.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="issue-labels">Labels</FieldLabel>
+                <Input
+                  id="issue-labels"
+                  value={labels}
+                  onChange={(e) => setLabels(e.target.value)}
+                  placeholder="bug, onboarding, backend"
+                />
+                <FieldDescription>Separate labels with commas.</FieldDescription>
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="issue-attachments">Attachments</FieldLabel>
+                <Input id="issue-attachments" type="file" multiple onChange={onFilesSelected} />
+                <FieldDescription>
+                  Attach one or more files. {isEditing ? "Files upload when you save changes." : "Files upload after issue creation."}
+                </FieldDescription>
+              </Field>
+            </FieldGroup>
+          </div>
           {error ? <p className={styles.createIssueModalText}>{error}</p> : null}
           <DialogFooter showCloseButton>
             <Button type="submit" disabled={isSubmitting || projects.length === 0}>

@@ -129,56 +129,58 @@ export function CreateGoalModal({
           <DialogDescription>Create a goal with status, start timing, and workspace hints.</DialogDescription>
         </DialogHeader>
         <form className={styles.createGoalModalForm} onSubmit={onSubmit}>
-          <FieldGroup>
-            <Field>
-              <FieldLabel>Goal scope</FieldLabel>
-              <Select value={level} onValueChange={(value) => setLevel(value as "company" | "project" | "agent")}>
-                <SelectTrigger className={styles.createGoalModalSelectTrigger}>
-                  <SelectValue placeholder="Select a scope" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="company">Company goal</SelectItem>
-                  <SelectItem value="project">Project goal</SelectItem>
-                  <SelectItem value="agent">Agent goal</SelectItem>
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="goal-title">Goal title</FieldLabel>
-              <Input id="goal-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Increase delivery throughput" required />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="goal-description">Details</FieldLabel>
-              <Textarea id="goal-description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Goal details" />
-            </Field>
-            {isEditing ? (
+          <div className="ui-dialog-content-scrollable">
+            <FieldGroup>
               <Field>
-                <FieldLabel>Status</FieldLabel>
-                <Select value={status} onValueChange={setStatus}>
+                <FieldLabel>Goal scope</FieldLabel>
+                <Select value={level} onValueChange={(value) => setLevel(value as "company" | "project" | "agent")}>
                   <SelectTrigger className={styles.createGoalModalSelectTrigger}>
-                    <SelectValue placeholder="Select a status" />
+                    <SelectValue placeholder="Select a scope" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="draft">Draft</SelectItem>
-                    <SelectItem value="active">Active</SelectItem>
-                    <SelectItem value="completed">Completed</SelectItem>
-                    <SelectItem value="archived">Archived</SelectItem>
+                    <SelectItem value="company">Company goal</SelectItem>
+                    <SelectItem value="project">Project goal</SelectItem>
+                    <SelectItem value="agent">Agent goal</SelectItem>
                   </SelectContent>
                 </Select>
               </Field>
-            ) : (
-              <Field orientation="horizontal">
-                <Checkbox
-                  id="goal-activate-now"
-                  checked={activateNow}
-                  onCheckedChange={(checked) => setActivateNow(Boolean(checked))}
-                />
-                <FieldContent>
-                  <FieldLabel htmlFor="goal-activate-now">Request activation approval</FieldLabel>
-                </FieldContent>
+              <Field>
+                <FieldLabel htmlFor="goal-title">Goal title</FieldLabel>
+                <Input id="goal-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Increase delivery throughput" required />
               </Field>
-            )}
-          </FieldGroup>
+              <Field>
+                <FieldLabel htmlFor="goal-description">Details</FieldLabel>
+                <Textarea id="goal-description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Goal details" />
+              </Field>
+              {isEditing ? (
+                <Field>
+                  <FieldLabel>Status</FieldLabel>
+                  <Select value={status} onValueChange={setStatus}>
+                    <SelectTrigger className={styles.createGoalModalSelectTrigger}>
+                      <SelectValue placeholder="Select a status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="draft">Draft</SelectItem>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="completed">Completed</SelectItem>
+                      <SelectItem value="archived">Archived</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </Field>
+              ) : (
+                <Field orientation="horizontal">
+                  <Checkbox
+                    id="goal-activate-now"
+                    checked={activateNow}
+                    onCheckedChange={(checked) => setActivateNow(Boolean(checked))}
+                  />
+                  <FieldContent>
+                    <FieldLabel htmlFor="goal-activate-now">Request activation approval</FieldLabel>
+                  </FieldContent>
+                </Field>
+              )}
+            </FieldGroup>
+          </div>
           {error ? <p className={styles.createGoalModalText}>{error}</p> : null}
           <DialogFooter showCloseButton>
             <Button type="submit" disabled={isSubmitting}>

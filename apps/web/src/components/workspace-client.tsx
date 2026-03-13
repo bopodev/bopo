@@ -3201,7 +3201,7 @@ export function WorkspaceClient({
             <SectionHeading
               title="Goals"
               description="Strategic goals stay attached to the selected company scope."
-              actions={<CreateGoalModal companyId={companyId} />}
+              actions={<CreateGoalModal companyId={companyId} triggerSize="sm" />}
             />
             {goals.length === 0 ? (
               <EmptyState>Create a goal to connect strategy with execution.</EmptyState>
@@ -3934,6 +3934,7 @@ export function WorkspaceClient({
               actions={
                 <Button
                   variant="default"
+                  size="sm"
                   onClick={openCreatePluginDialog}
                 >
                   New plugin
@@ -4015,75 +4016,77 @@ export function WorkspaceClient({
                     );
                   }}
                 >
-                  <FieldGroup>
-                    <Field>
-                      <FieldLabel htmlFor="plugin-builder-id">Plugin ID</FieldLabel>
-                      <Input
-                        id="plugin-builder-id"
-                        value={pluginBuilderId}
-                        onChange={(event) => setPluginBuilderId(event.target.value)}
-                        placeholder="plugin-id"
-                      />
-                      <FieldDescription>Stable identifier used for file path and plugin registration.</FieldDescription>
-                    </Field>
-                    <Field>
-                      <FieldLabel htmlFor="plugin-builder-title">Title</FieldLabel>
-                      <Input
-                        id="plugin-builder-title"
-                        value={pluginBuilderName}
-                        onChange={(event) => setPluginBuilderName(event.target.value)}
-                        placeholder="Plugin title"
-                      />
-                    </Field>
-                    <Field>
-                      <FieldLabel htmlFor="plugin-builder-description">Description</FieldLabel>
-                      <Textarea
-                        id="plugin-builder-description"
-                        value={pluginBuilderDescription}
-                        onChange={(event) => setPluginBuilderDescription(event.target.value)}
-                        className="min-h-[96px]"
-                        placeholder="What this plugin does"
-                      />
-                    </Field>
-                    <Field>
-                      <FieldLabel>Run hook</FieldLabel>
-                      <Select value={pluginBuilderHook} onValueChange={(value) => setPluginBuilderHook(value as (typeof pluginBuilderHooks)[number])}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Hook" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {pluginBuilderHooks.map((hook) => (
-                            <SelectItem key={hook} value={hook}>
-                              {hook}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </Field>
-                    <Field>
-                      <FieldLabel htmlFor="plugin-builder-capabilities">Capabilities</FieldLabel>
-                      <Input
-                        id="plugin-builder-capabilities"
-                        value={pluginBuilderCapabilities}
-                        onChange={(event) => setPluginBuilderCapabilities(event.target.value)}
-                        placeholder="emit_audit,network"
-                      />
-                      <FieldDescription>Comma-separated capabilities the plugin declares.</FieldDescription>
-                    </Field>
-                    <Field>
-                      <FieldLabel htmlFor="plugin-builder-template">Prompt template</FieldLabel>
-                      <Textarea
-                        id="plugin-builder-template"
-                        value={pluginBuilderPromptTemplate}
-                        onChange={(event) => setPluginBuilderPromptTemplate(event.target.value)}
-                        className="min-h-[140px] font-mono text-xs"
-                        placeholder="Example: Inject relevant knowledge for this run. Company={{companyId}} Agent={{agentId}}"
-                      />
-                      <FieldDescription>
-                        Supports placeholders like {"{{companyId}}"}, {"{{agentId}}"}, {"{{runId}}"}, and {"{{pluginConfig}}"}.
-                      </FieldDescription>
-                    </Field>
-                  </FieldGroup>
+                  <div className="ui-dialog-content-scrollable">
+                    <FieldGroup>
+                      <Field>
+                        <FieldLabel htmlFor="plugin-builder-id">Plugin ID</FieldLabel>
+                        <Input
+                          id="plugin-builder-id"
+                          value={pluginBuilderId}
+                          onChange={(event) => setPluginBuilderId(event.target.value)}
+                          placeholder="plugin-id"
+                        />
+                        <FieldDescription>Stable identifier used for file path and plugin registration.</FieldDescription>
+                      </Field>
+                      <Field>
+                        <FieldLabel htmlFor="plugin-builder-title">Title</FieldLabel>
+                        <Input
+                          id="plugin-builder-title"
+                          value={pluginBuilderName}
+                          onChange={(event) => setPluginBuilderName(event.target.value)}
+                          placeholder="Plugin title"
+                        />
+                      </Field>
+                      <Field>
+                        <FieldLabel htmlFor="plugin-builder-description">Description</FieldLabel>
+                        <Textarea
+                          id="plugin-builder-description"
+                          value={pluginBuilderDescription}
+                          onChange={(event) => setPluginBuilderDescription(event.target.value)}
+                          className="min-h-[96px]"
+                          placeholder="What this plugin does"
+                        />
+                      </Field>
+                      <Field>
+                        <FieldLabel>Run hook</FieldLabel>
+                        <Select value={pluginBuilderHook} onValueChange={(value) => setPluginBuilderHook(value as (typeof pluginBuilderHooks)[number])}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Hook" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {pluginBuilderHooks.map((hook) => (
+                              <SelectItem key={hook} value={hook}>
+                                {hook}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </Field>
+                      <Field>
+                        <FieldLabel htmlFor="plugin-builder-capabilities">Capabilities</FieldLabel>
+                        <Input
+                          id="plugin-builder-capabilities"
+                          value={pluginBuilderCapabilities}
+                          onChange={(event) => setPluginBuilderCapabilities(event.target.value)}
+                          placeholder="emit_audit,network"
+                        />
+                        <FieldDescription>Comma-separated capabilities the plugin declares.</FieldDescription>
+                      </Field>
+                      <Field>
+                        <FieldLabel htmlFor="plugin-builder-template">Prompt template</FieldLabel>
+                        <Textarea
+                          id="plugin-builder-template"
+                          value={pluginBuilderPromptTemplate}
+                          onChange={(event) => setPluginBuilderPromptTemplate(event.target.value)}
+                          className="min-h-[140px] font-mono text-xs"
+                          placeholder="Example: Inject relevant knowledge for this run. Company={{companyId}} Agent={{agentId}}"
+                        />
+                        <FieldDescription>
+                          Supports placeholders like {"{{companyId}}"}, {"{{agentId}}"}, {"{{runId}}"}, and {"{{pluginConfig}}"}.
+                        </FieldDescription>
+                      </Field>
+                    </FieldGroup>
+                  </div>
                   <DialogFooter showCloseButton>
                     <Button
                       type="submit"
@@ -4310,108 +4313,110 @@ export function WorkspaceClient({
                           );
                         }}
                       >
-                        <FieldGroup className={styles.modelPricingDialogPrimaryGroup}>
-                          <Field>
-                            <FieldLabel>Provider</FieldLabel>
-                            <Select
-                              value={modelDialogValue.providerType.trim() ? modelDialogValue.providerType : undefined}
-                              onValueChange={(value) =>
-                                setModelDialogValue((current) =>
-                                  current
-                                    ? {
-                                        ...current,
-                                        providerType: value,
-                                        modelId: ""
-                                      }
-                                    : current
-                                )
-                              }
-                            >
-                              <SelectTrigger id="model-pricing-provider">
-                                <SelectValue placeholder="Select provider" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {availableModelProviders.map((provider) => (
-                                  <SelectItem key={provider} value={provider}>
-                                    {provider}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </Field>
-                          <Field>
-                            <FieldLabel>Model ID</FieldLabel>
-                            <Select
-                              value={modelDialogValue.modelId.trim() ? modelDialogValue.modelId : undefined}
-                              onValueChange={(value) =>
-                                setModelDialogValue((current) =>
-                                  current
-                                    ? {
-                                        ...current,
-                                        modelId: value
-                                      }
-                                    : current
-                                )
-                              }
-                              disabled={!modelDialogValue.providerType.trim()}
-                            >
-                              <SelectTrigger id="model-pricing-model-id">
-                                <SelectValue placeholder="Select model" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {(availableModelsByProvider.get(modelDialogValue.providerType.trim()) ?? []).map((modelId) => (
-                                  <SelectItem key={modelId} value={modelId}>
-                                    {modelId}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </Field>
-                        </FieldGroup>
-                        <FieldGroup className={styles.modelPricingDialogPricingGroup}>
-                          <Field>
-                            <FieldLabel htmlFor="model-pricing-input-rate">Input / 1M</FieldLabel>
-                            <Input
-                              id="model-pricing-input-rate"
-                              type="number"
-                              step="0.000001"
-                              min="0"
-                              value={modelDialogValue.inputUsdPer1M}
-                              onChange={(event) =>
-                                setModelDialogValue((current) =>
-                                  current
-                                    ? {
-                                        ...current,
-                                        inputUsdPer1M: event.target.value
-                                      }
-                                    : current
-                                )
-                              }
-                              required
-                            />
-                          </Field>
-                          <Field className={styles.modelPricingDialogField}>
-                            <FieldLabel htmlFor="model-pricing-output-rate">Output / 1M</FieldLabel>
-                            <Input
-                              id="model-pricing-output-rate"
-                              type="number"
-                              step="0.000001"
-                              min="0"
-                              value={modelDialogValue.outputUsdPer1M}
-                              onChange={(event) =>
-                                setModelDialogValue((current) =>
-                                  current
-                                    ? {
-                                        ...current,
-                                        outputUsdPer1M: event.target.value
-                                      }
-                                    : current
-                                )
-                              }
-                              required
-                            />
-                          </Field>
-                        </FieldGroup>
+                        <div className="ui-dialog-content-scrollable">
+                          <FieldGroup className={styles.modelPricingDialogPrimaryGroup}>
+                            <Field>
+                              <FieldLabel>Provider</FieldLabel>
+                              <Select
+                                value={modelDialogValue.providerType.trim() ? modelDialogValue.providerType : undefined}
+                                onValueChange={(value) =>
+                                  setModelDialogValue((current) =>
+                                    current
+                                      ? {
+                                          ...current,
+                                          providerType: value,
+                                          modelId: ""
+                                        }
+                                      : current
+                                  )
+                                }
+                              >
+                                <SelectTrigger id="model-pricing-provider">
+                                  <SelectValue placeholder="Select provider" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {availableModelProviders.map((provider) => (
+                                    <SelectItem key={provider} value={provider}>
+                                      {provider}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </Field>
+                            <Field>
+                              <FieldLabel>Model ID</FieldLabel>
+                              <Select
+                                value={modelDialogValue.modelId.trim() ? modelDialogValue.modelId : undefined}
+                                onValueChange={(value) =>
+                                  setModelDialogValue((current) =>
+                                    current
+                                      ? {
+                                          ...current,
+                                          modelId: value
+                                        }
+                                      : current
+                                  )
+                                }
+                                disabled={!modelDialogValue.providerType.trim()}
+                              >
+                                <SelectTrigger id="model-pricing-model-id">
+                                  <SelectValue placeholder="Select model" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {(availableModelsByProvider.get(modelDialogValue.providerType.trim()) ?? []).map((modelId) => (
+                                    <SelectItem key={modelId} value={modelId}>
+                                      {modelId}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </Field>
+                          </FieldGroup>
+                          <FieldGroup className={styles.modelPricingDialogPricingGroup}>
+                            <Field>
+                              <FieldLabel htmlFor="model-pricing-input-rate">Input / 1M</FieldLabel>
+                              <Input
+                                id="model-pricing-input-rate"
+                                type="number"
+                                step="0.000001"
+                                min="0"
+                                value={modelDialogValue.inputUsdPer1M}
+                                onChange={(event) =>
+                                  setModelDialogValue((current) =>
+                                    current
+                                      ? {
+                                          ...current,
+                                          inputUsdPer1M: event.target.value
+                                        }
+                                      : current
+                                  )
+                                }
+                                required
+                              />
+                            </Field>
+                            <Field className={styles.modelPricingDialogField}>
+                              <FieldLabel htmlFor="model-pricing-output-rate">Output / 1M</FieldLabel>
+                              <Input
+                                id="model-pricing-output-rate"
+                                type="number"
+                                step="0.000001"
+                                min="0"
+                                value={modelDialogValue.outputUsdPer1M}
+                                onChange={(event) =>
+                                  setModelDialogValue((current) =>
+                                    current
+                                      ? {
+                                          ...current,
+                                          outputUsdPer1M: event.target.value
+                                        }
+                                      : current
+                                  )
+                                }
+                                required
+                              />
+                            </Field>
+                          </FieldGroup>
+                        </div>
                         <DialogFooter showCloseButton>
                           <Button
                             type="submit"

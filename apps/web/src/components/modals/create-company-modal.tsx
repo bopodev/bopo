@@ -58,22 +58,24 @@ export function CreateCompanyModal({ companyId }: { companyId: string }) {
           <DialogDescription>Create additional workspaces and organizations.</DialogDescription>
         </DialogHeader>
         <form className={styles.createCompanyModalForm} onSubmit={onSubmit}>
-          <FieldGroup>
-            <Field>
-              <FieldLabel htmlFor="company-name">Company name</FieldLabel>
-              <Input id="company-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Acme AI" required />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="company-mission">Mission</FieldLabel>
-              <Textarea
-                id="company-mission"
-                value={mission}
-                onChange={(e) => setMission(e.target.value)}
-                placeholder="Describe the company mission and operating context."
-              />
-              <FieldDescription>Optional context shown across the workspace.</FieldDescription>
-            </Field>
-          </FieldGroup>
+          <div className="ui-dialog-content-scrollable">
+            <FieldGroup>
+              <Field>
+                <FieldLabel htmlFor="company-name">Company name</FieldLabel>
+                <Input id="company-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Acme AI" required />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="company-mission">Mission</FieldLabel>
+                <Textarea
+                  id="company-mission"
+                  value={mission}
+                  onChange={(e) => setMission(e.target.value)}
+                  placeholder="Describe the company mission and operating context."
+                />
+                <FieldDescription>Optional context shown across the workspace.</FieldDescription>
+              </Field>
+            </FieldGroup>
+          </div>
           {error ? <p className={styles.createCompanyModalText}>{error}</p> : null}
           <DialogFooter showCloseButton>
             <Button type="submit" disabled={isSubmitting}>

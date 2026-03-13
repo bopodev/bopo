@@ -264,158 +264,160 @@ export function CreateProjectModal({
           </DialogDescription>
         </DialogHeader>
         <form className={styles.createProjectModalForm} onSubmit={onSubmit} autoComplete="off">
-          <FieldGroup>
-            <Field>
-              <FieldLabel htmlFor="project-name">Project name</FieldLabel>
-              <Input id="project-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Growth website" required autoComplete="off" />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="project-description">Description</FieldLabel>
-              <Textarea
-                id="project-description"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="What is this project trying to achieve?"
-                autoComplete="off"
-              />
-            </Field>
-          </FieldGroup>
-
-          <FieldGroup className={styles.createProjectModalSection}>
-            <div>
-              <p className={styles.createProjectModalSectionTitle}>Where will work be done on this project?</p>
-              <p className={styles.createProjectModalSectionDescription}>Configure a project workspace (local folder and/or GitHub repo).</p>
-            </div>
-            <div className={styles.createProjectModalWorkspaceModes}>
-              <button
-                type="button"
-                className={cn("ui-project-workspace-mode", workspaceMode === "local" && "ui-project-workspace-mode-active")}
-                onClick={() => setWorkspaceMode("local")}
-              >
-                <span className="ui-project-workspace-mode-title">A local folder</span>
-                <span className="ui-project-workspace-mode-description">Use a full path.</span>
-              </button>
-              <button
-                type="button"
-                className={cn("ui-project-workspace-mode", workspaceMode === "github" && "ui-project-workspace-mode-active")}
-                onClick={() => setWorkspaceMode("github")}
-              >
-                <span className="ui-project-workspace-mode-title">A GitHub repo</span>
-                <span className="ui-project-workspace-mode-description">Paste a GitHub URL.</span>
-              </button>
-              <button
-                type="button"
-                className={cn("ui-project-workspace-mode", workspaceMode === "both" && "ui-project-workspace-mode-active")}
-                onClick={() => setWorkspaceMode("both")}
-              >
-                <span className="ui-project-workspace-mode-title">Both</span>
-                <span className="ui-project-workspace-mode-description">Configure local + repo.</span>
-              </button>
-            </div>
-            <Field>
-              <FieldLabel htmlFor="project-workspace-name">Workspace name</FieldLabel>
-              <Input
-                id="project-workspace-name"
-                value={workspaceName}
-                onChange={(e) => setWorkspaceName(e.target.value)}
-                placeholder="Main workspace"
-                autoComplete="off"
-              />
-            </Field>
-            {workspaceMode !== "github" ? (
+          <div className="ui-dialog-content-scrollable">
+            <FieldGroup>
               <Field>
-                <FieldLabel htmlFor="project-workspace-local-path">Local folder</FieldLabel>
-                <Input
-                  id="project-workspace-local-path"
-                  value={workspaceCwd}
-                  onChange={(e) => setWorkspaceCwd(e.target.value)}
-                  placeholder="/Users/name/path/to/workspace"
+                <FieldLabel htmlFor="project-name">Project name</FieldLabel>
+                <Input id="project-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Growth website" required autoComplete="off" />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="project-description">Description</FieldLabel>
+                <Textarea
+                  id="project-description"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="What is this project trying to achieve?"
                   autoComplete="off"
                 />
               </Field>
-            ) : null}
-            {workspaceMode !== "local" ? (
+            </FieldGroup>
+
+            <FieldGroup className={styles.createProjectModalSection}>
+              <div>
+                <p className={styles.createProjectModalSectionTitle}>Where will work be done on this project?</p>
+                <p className={styles.createProjectModalSectionDescription}>Configure a project workspace (local folder and/or GitHub repo).</p>
+              </div>
+              <div className={styles.createProjectModalWorkspaceModes}>
+                <button
+                  type="button"
+                  className={cn("ui-project-workspace-mode", workspaceMode === "local" && "ui-project-workspace-mode-active")}
+                  onClick={() => setWorkspaceMode("local")}
+                >
+                  <span className="ui-project-workspace-mode-title">A local folder</span>
+                  <span className="ui-project-workspace-mode-description">Use a full path.</span>
+                </button>
+                <button
+                  type="button"
+                  className={cn("ui-project-workspace-mode", workspaceMode === "github" && "ui-project-workspace-mode-active")}
+                  onClick={() => setWorkspaceMode("github")}
+                >
+                  <span className="ui-project-workspace-mode-title">A GitHub repo</span>
+                  <span className="ui-project-workspace-mode-description">Paste a GitHub URL.</span>
+                </button>
+                <button
+                  type="button"
+                  className={cn("ui-project-workspace-mode", workspaceMode === "both" && "ui-project-workspace-mode-active")}
+                  onClick={() => setWorkspaceMode("both")}
+                >
+                  <span className="ui-project-workspace-mode-title">Both</span>
+                  <span className="ui-project-workspace-mode-description">Configure local + repo.</span>
+                </button>
+              </div>
               <Field>
-                <FieldLabel htmlFor="project-workspace-github-repo">GitHub repository</FieldLabel>
+                <FieldLabel htmlFor="project-workspace-name">Workspace name</FieldLabel>
                 <Input
-                  id="project-workspace-github-repo"
-                  type="url"
-                  value={workspaceRepoUrl}
-                  onChange={(e) => setWorkspaceRepoUrl(e.target.value)}
-                  placeholder="https://github.com/org/repo"
+                  id="project-workspace-name"
+                  value={workspaceName}
+                  onChange={(e) => setWorkspaceName(e.target.value)}
+                  placeholder="Main workspace"
                   autoComplete="off"
                 />
               </Field>
-            ) : null}
-            {workspaceMode !== "local" ? (
+              {workspaceMode !== "github" ? (
+                <Field>
+                  <FieldLabel htmlFor="project-workspace-local-path">Local folder</FieldLabel>
+                  <Input
+                    id="project-workspace-local-path"
+                    value={workspaceCwd}
+                    onChange={(e) => setWorkspaceCwd(e.target.value)}
+                    placeholder="/Users/name/path/to/workspace"
+                    autoComplete="off"
+                  />
+                </Field>
+              ) : null}
+              {workspaceMode !== "local" ? (
+                <Field>
+                  <FieldLabel htmlFor="project-workspace-github-repo">GitHub repository</FieldLabel>
+                  <Input
+                    id="project-workspace-github-repo"
+                    type="url"
+                    value={workspaceRepoUrl}
+                    onChange={(e) => setWorkspaceRepoUrl(e.target.value)}
+                    placeholder="https://github.com/org/repo"
+                    autoComplete="off"
+                  />
+                </Field>
+              ) : null}
+              {workspaceMode !== "local" ? (
+                <Field>
+                  <FieldLabel htmlFor="project-workspace-github-ref">Repository ref</FieldLabel>
+                  <Input
+                    id="project-workspace-github-ref"
+                    value={workspaceRepoRef}
+                    onChange={(e) => setWorkspaceRepoRef(e.target.value)}
+                    placeholder="main"
+                    autoComplete="off"
+                  />
+                </Field>
+              ) : null}
+              {project?.gitDiagnostics ? (
+                <></>
+              ) : null}
+            </FieldGroup>
+
+            <FieldGroup className={styles.createProjectModalMetaRow}>
               <Field>
-                <FieldLabel htmlFor="project-workspace-github-ref">Repository ref</FieldLabel>
-                <Input
-                  id="project-workspace-github-ref"
-                  value={workspaceRepoRef}
-                  onChange={(e) => setWorkspaceRepoRef(e.target.value)}
-                  placeholder="main"
-                  autoComplete="off"
-                />
+                <FieldLabel>Status</FieldLabel>
+                <Select value={status} onValueChange={(value) => setStatus(value as ProjectStatus)}>
+                  <SelectTrigger className={styles.createProjectModalFullWidth}>
+                    <SelectValue placeholder="Select project status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {projectStatusOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </Field>
-            ) : null}
-            {project?.gitDiagnostics ? (
-              <></>
-            ) : null}
-          </FieldGroup>
+              <Field>
+                <FieldLabel htmlFor="project-planned-start-at">Planned start date</FieldLabel>
+                <Input id="project-planned-start-at" type="date" value={plannedStartAt} onChange={(e) => setPlannedStartAt(e.target.value)} autoComplete="off" />
+              </Field>
+            </FieldGroup>
 
-          <FieldGroup className={styles.createProjectModalMetaRow}>
-            <Field>
-              <FieldLabel>Status</FieldLabel>
-              <Select value={status} onValueChange={(value) => setStatus(value as ProjectStatus)}>
-                <SelectTrigger className={styles.createProjectModalFullWidth}>
-                  <SelectValue placeholder="Select project status" />
-                </SelectTrigger>
-                <SelectContent>
-                  {projectStatusOptions.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="project-planned-start-at">Planned start date</FieldLabel>
-              <Input id="project-planned-start-at" type="date" value={plannedStartAt} onChange={(e) => setPlannedStartAt(e.target.value)} autoComplete="off" />
-            </Field>
-          </FieldGroup>
-
-          <FieldGroup>
-            <Field>
-              <FieldLabel>Linked goals</FieldLabel>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button type="button" variant="outline" className={styles.createProjectModalGoalsTrigger}>
-                    {goals.length === 0 ? "No goals available" : goalIds.length === 0 ? "Select goals" : `${goalIds.length} selected`}
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className={styles.createProjectModalGoalsDropdown}>
-                  <DropdownMenuLabel>Attach goals</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  {goals.length === 0 ? (
-                    <p className="px-2 py-1.5 text-sm text-muted-foreground">No goals available.</p>
-                  ) : (
-                    goals.map((goal) => (
-                      <DropdownMenuCheckboxItem
-                        key={goal.id}
-                        checked={goalIds.includes(goal.id)}
-                        onSelect={(event) => event.preventDefault()}
-                        onCheckedChange={(next) => toggleGoal(goal.id, Boolean(next))}
-                      >
-                        {goal.title}
-                      </DropdownMenuCheckboxItem>
-                    ))
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </Field>
-          </FieldGroup>
+            <FieldGroup>
+              <Field>
+                <FieldLabel>Linked goals</FieldLabel>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button type="button" variant="outline" className={styles.createProjectModalGoalsTrigger}>
+                      {goals.length === 0 ? "No goals available" : goalIds.length === 0 ? "Select goals" : `${goalIds.length} selected`}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className={styles.createProjectModalGoalsDropdown}>
+                    <DropdownMenuLabel>Attach goals</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    {goals.length === 0 ? (
+                      <p className="px-2 py-1.5 text-sm text-muted-foreground">No goals available.</p>
+                    ) : (
+                      goals.map((goal) => (
+                        <DropdownMenuCheckboxItem
+                          key={goal.id}
+                          checked={goalIds.includes(goal.id)}
+                          onSelect={(event) => event.preventDefault()}
+                          onCheckedChange={(next) => toggleGoal(goal.id, Boolean(next))}
+                        >
+                          {goal.title}
+                        </DropdownMenuCheckboxItem>
+                      ))
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </Field>
+            </FieldGroup>
+          </div>
           {error ? <p className={styles.createProjectModalText}>{error}</p> : null}
           <DialogFooter showCloseButton>
             <Button type="submit" disabled={isSubmitting}>

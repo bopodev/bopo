@@ -95,7 +95,7 @@ export function CreateAgentModal({
   fallbackDefaults,
   triggerLabel,
   triggerVariant = "default",
-  triggerSize
+  triggerSize = "sm"
 }: {
   companyId: string;
   agent?: {
@@ -601,233 +601,230 @@ export function CreateAgentModal({
           </DialogDescription>
         </DialogHeader>
         <form className={styles.createAgentModalForm} onSubmit={onSubmit}>
-          <section className={styles.createAgentModalSection}>
-            <FieldGroup className={styles.createAgentModalFieldGroup}>
-              <Field>
-                <FieldLabel htmlFor="agent-name">Agent name</FieldLabel>
-                <Input id="agent-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Ada" required />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="agent-role">Title</FieldLabel>
-                <Input id="agent-role" value={role} onChange={(e) => setRole(e.target.value)} placeholder="CTO, SEO, Engineer" />
-              </Field>
-              <Field>
-                <FieldLabel>Reports to</FieldLabel>
-                <Select
-                  value={managerAgentId ?? "__none"}
-                  onValueChange={(value) => setManagerAgentId(value === "__none" ? null : value)}>
-                  <SelectTrigger className={styles.createAgentModalSelectTrigger}>
-                    <SelectValue placeholder="No manager (top level)" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none">No manager</SelectItem>
-                    {managerOptions.map((entry) => (
-                      <SelectItem key={entry.id} value={entry.id}>
-                        {entry.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
-            </FieldGroup>
-          </section>
-
-          <section className={styles.createAgentModalSection}>
-            <FieldGroup className={styles.createAgentModalFieldGroup}>
-              <Field>
-                <FieldLabel>Provider</FieldLabel>
-                <Select
-                  value={providerType}
-                  onValueChange={(value) =>
-                    setProviderType(value as ProviderType)
-                  }
-                >
-                  <SelectTrigger className={styles.createAgentModalSelectTrigger}>
-                    <SelectValue placeholder="Select a provider" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {visibleProviders.map((adapter) => (
-                      <SelectItem key={adapter.providerType} value={adapter.providerType}>
-                        {adapter.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="agent-runtime-model">Model</FieldLabel>
-                <Select
-                  value={runtimeModel || undefined}
-                  onValueChange={(value) => setRuntimeModel(value)}
-                >
-                  <SelectTrigger id="agent-runtime-model" className={styles.createAgentModalSelectTrigger}>
-                    <SelectValue placeholder="Select a model" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {visibleModelOptions.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="agent-heartbeat-interval">Heartbeat interval (seconds)</FieldLabel>
-                <Input
-                  id="agent-heartbeat-interval"
-                  value={heartbeatIntervalSec}
-                  onChange={(e) => setHeartbeatIntervalSec(e.target.value)}
-                  type="number"
-                  min={60}
-                  step="1"
-                  placeholder="300"
-                  required
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="agent-budget">Monthly budget (USD)</FieldLabel>
-                <Input id="agent-budget" value={budget} onChange={(e) => setBudget(e.target.value)} type="number" min={0} step="1" />
-              </Field>
-            </FieldGroup>
-          </section>
-
-          <section className={styles.createAgentModalSection}>
-            <FieldGroup className={styles.createAgentModalFieldGroup}>
-              <Field>
-                <FieldLabel htmlFor="agent-runtime-command">Command</FieldLabel>
-                <Input
-                  id="agent-runtime-command"
-                  value={runtimeCommand}
-                  onChange={(e) => setRuntimeCommand(e.target.value)}
-                  placeholder="codex"
-                />
-              </Field>
-
-
-
-
-
-              <Field>
-                <FieldLabel>Thinking effort</FieldLabel>
-                <Select value={runtimeThinkingEffort} onValueChange={(value) => setRuntimeThinkingEffort(value as "auto" | "low" | "medium" | "high")}>
-                  <SelectTrigger className={styles.createAgentModalSelectTrigger}>
-                    <SelectValue placeholder="Select thinking effort" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="auto">Auto</SelectItem>
-                    <SelectItem value="low">Low</SelectItem>
-                    <SelectItem value="medium">Medium</SelectItem>
-                    <SelectItem value="high">High</SelectItem>
-                  </SelectContent>
-                </Select>
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="agent-runtime-args">Extra args</FieldLabel>
-                <Input
-                  id="agent-runtime-args"
-                  value={runtimeArgs}
-                  onChange={(e) => setRuntimeArgs(e.target.value)}
-                  placeholder='--verbose --foo "bar baz"'
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="agent-runtime-timeout">Timeout (sec)</FieldLabel>
-                <Input
-                  id="agent-runtime-timeout"
-                  value={runtimeTimeoutSec}
-                  onChange={(e) => setRuntimeTimeoutSec(e.target.value)}
-                  type="number"
-                  min={0}
-                  step="1"
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="agent-interrupt-grace">Interrupt grace period (sec)</FieldLabel>
-                <Input
-                  id="agent-interrupt-grace"
-                  value={interruptGraceSec}
-                  onChange={(e) => setInterruptGraceSec(e.target.value)}
-                  type="number"
-                  min={0}
-                  step="1"
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="agent-runtime-cwd">Runtime working directory</FieldLabel>
-                <Input
-                  id="agent-runtime-cwd"
-                  value={runtimeCwd}
-                  onChange={(e) => setRuntimeCwd(e.target.value)}
-                  placeholder="/path/to/workspace"
-                  required={runtimeCwdRequired}
-                />
-              </Field>
-              {providerType === "codex" || providerType === "claude_code" ? (
-                <Field orientation="horizontal">
-                  <Checkbox
-                    id="agent-skip-permissions"
-                    checked={sandboxMode === "full_access"}
-                    onCheckedChange={(checked) =>
-                      setSandboxMode(Boolean(checked) ? "full_access" : "workspace_write")
-                    }
-                  />
-                  <FieldContent>
-                    <FieldLabel htmlFor="agent-skip-permissions">{sandboxPermissionLabel}</FieldLabel>
-                  </FieldContent>
-                </Field>
-              ) : null}
-            </FieldGroup>
-            <FieldGroup className={styles.createAgentModalFieldGroup}>
-              {providerSupportsWebSearch ? (
-                <Field orientation="horizontal">
-                  <Checkbox
-                    id="agent-allow-web-search"
-                    checked={allowWebSearch}
-                    onCheckedChange={(checked) => setAllowWebSearch(Boolean(checked))}
-                  />
-                  <FieldContent>
-                    <FieldLabel htmlFor="agent-allow-web-search">Enable web search</FieldLabel>
-                  </FieldContent>
-                </Field>
-              ) : null}
-              <Field orientation="horizontal">
-                <Checkbox
-                  id="agent-can-hire"
-                  checked={canHireAgents}
-                  onCheckedChange={(checked) => setCanHireAgents(Boolean(checked))}
-                />
-                <FieldContent>
-                  <FieldLabel htmlFor="agent-can-hire">Can create new agents</FieldLabel>
-                </FieldContent>
-              </Field>
-            </FieldGroup>
-            </section>
+          <div className="ui-dialog-content-scrollable">
             <section className={styles.createAgentModalSection}>
-            <FieldGroup>
-              <Field>
-                <FieldLabel htmlFor="agent-bootstrap-prompt">Bootstrap prompt (first run)</FieldLabel>
-                <Textarea
-                  id="agent-bootstrap-prompt"
-                  value={bootstrapPrompt}
-                  onChange={(e) => setBootstrapPrompt(e.target.value)}
-                  placeholder="Optional initial setup prompt for the first run"
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="agent-runtime-env">Environment variables</FieldLabel>
-                <Textarea
-                  id="agent-runtime-env"
-                  className={styles.createAgentModalEnvTextarea}
-                  rows={4}
-                  wrap="hard"
-                  value={runtimeEnv}
-                  onChange={(e) => setRuntimeEnv(e.target.value)}
-                  placeholder={"KEY=value\nANOTHER_KEY=value"}
-                />
-              </Field>
-            </FieldGroup>
-          </section>
+              <FieldGroup className={styles.createAgentModalFieldGroup}>
+                <Field>
+                  <FieldLabel htmlFor="agent-name">Agent name</FieldLabel>
+                  <Input id="agent-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Ada" required />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="agent-role">Title</FieldLabel>
+                  <Input id="agent-role" value={role} onChange={(e) => setRole(e.target.value)} placeholder="CTO, SEO, Engineer" />
+                </Field>
+                <Field>
+                  <FieldLabel>Reports to</FieldLabel>
+                  <Select
+                    value={managerAgentId ?? "__none"}
+                    onValueChange={(value) => setManagerAgentId(value === "__none" ? null : value)}>
+                    <SelectTrigger className={styles.createAgentModalSelectTrigger}>
+                      <SelectValue placeholder="No manager (top level)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none">No manager</SelectItem>
+                      {managerOptions.map((entry) => (
+                        <SelectItem key={entry.id} value={entry.id}>
+                          {entry.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+              </FieldGroup>
+            </section>
+
+            <section className={styles.createAgentModalSection}>
+              <FieldGroup className={styles.createAgentModalFieldGroup}>
+                <Field>
+                  <FieldLabel>Provider</FieldLabel>
+                  <Select
+                    value={providerType}
+                    onValueChange={(value) =>
+                      setProviderType(value as ProviderType)
+                    }
+                  >
+                    <SelectTrigger className={styles.createAgentModalSelectTrigger}>
+                      <SelectValue placeholder="Select a provider" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {visibleProviders.map((adapter) => (
+                        <SelectItem key={adapter.providerType} value={adapter.providerType}>
+                          {adapter.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="agent-runtime-model">Model</FieldLabel>
+                  <Select
+                    value={runtimeModel || undefined}
+                    onValueChange={(value) => setRuntimeModel(value)}
+                  >
+                    <SelectTrigger id="agent-runtime-model" className={styles.createAgentModalSelectTrigger}>
+                      <SelectValue placeholder="Select a model" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {visibleModelOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="agent-heartbeat-interval">Heartbeat interval (seconds)</FieldLabel>
+                  <Input
+                    id="agent-heartbeat-interval"
+                    value={heartbeatIntervalSec}
+                    onChange={(e) => setHeartbeatIntervalSec(e.target.value)}
+                    type="number"
+                    min={60}
+                    step="1"
+                    placeholder="300"
+                    required
+                  />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="agent-budget">Monthly budget (USD)</FieldLabel>
+                  <Input id="agent-budget" value={budget} onChange={(e) => setBudget(e.target.value)} type="number" min={0} step="1" />
+                </Field>
+              </FieldGroup>
+            </section>
+
+            <section className={styles.createAgentModalSection}>
+              <FieldGroup className={styles.createAgentModalFieldGroup}>
+                <Field>
+                  <FieldLabel htmlFor="agent-runtime-command">Command</FieldLabel>
+                  <Input
+                    id="agent-runtime-command"
+                    value={runtimeCommand}
+                    onChange={(e) => setRuntimeCommand(e.target.value)}
+                    placeholder="codex"
+                  />
+                </Field>
+                <Field>
+                  <FieldLabel>Thinking effort</FieldLabel>
+                  <Select value={runtimeThinkingEffort} onValueChange={(value) => setRuntimeThinkingEffort(value as "auto" | "low" | "medium" | "high")}>
+                    <SelectTrigger className={styles.createAgentModalSelectTrigger}>
+                      <SelectValue placeholder="Select thinking effort" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="auto">Auto</SelectItem>
+                      <SelectItem value="low">Low</SelectItem>
+                      <SelectItem value="medium">Medium</SelectItem>
+                      <SelectItem value="high">High</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="agent-runtime-args">Extra args</FieldLabel>
+                  <Input
+                    id="agent-runtime-args"
+                    value={runtimeArgs}
+                    onChange={(e) => setRuntimeArgs(e.target.value)}
+                    placeholder='--verbose --foo "bar baz"'
+                  />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="agent-runtime-timeout">Timeout (sec)</FieldLabel>
+                  <Input
+                    id="agent-runtime-timeout"
+                    value={runtimeTimeoutSec}
+                    onChange={(e) => setRuntimeTimeoutSec(e.target.value)}
+                    type="number"
+                    min={0}
+                    step="1"
+                  />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="agent-interrupt-grace">Interrupt grace period (sec)</FieldLabel>
+                  <Input
+                    id="agent-interrupt-grace"
+                    value={interruptGraceSec}
+                    onChange={(e) => setInterruptGraceSec(e.target.value)}
+                    type="number"
+                    min={0}
+                    step="1"
+                  />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="agent-runtime-cwd">Runtime working directory</FieldLabel>
+                  <Input
+                    id="agent-runtime-cwd"
+                    value={runtimeCwd}
+                    onChange={(e) => setRuntimeCwd(e.target.value)}
+                    placeholder="/path/to/workspace"
+                    required={runtimeCwdRequired}
+                  />
+                </Field>
+                {providerType === "codex" || providerType === "claude_code" ? (
+                  <Field orientation="horizontal">
+                    <Checkbox
+                      id="agent-skip-permissions"
+                      checked={sandboxMode === "full_access"}
+                      onCheckedChange={(checked) =>
+                        setSandboxMode(Boolean(checked) ? "full_access" : "workspace_write")
+                      }
+                    />
+                    <FieldContent>
+                      <FieldLabel htmlFor="agent-skip-permissions">{sandboxPermissionLabel}</FieldLabel>
+                    </FieldContent>
+                  </Field>
+                ) : null}
+              </FieldGroup>
+              <FieldGroup className={styles.createAgentModalFieldGroup}>
+                {providerSupportsWebSearch ? (
+                  <Field orientation="horizontal">
+                    <Checkbox
+                      id="agent-allow-web-search"
+                      checked={allowWebSearch}
+                      onCheckedChange={(checked) => setAllowWebSearch(Boolean(checked))}
+                    />
+                    <FieldContent>
+                      <FieldLabel htmlFor="agent-allow-web-search">Enable web search</FieldLabel>
+                    </FieldContent>
+                  </Field>
+                ) : null}
+                <Field orientation="horizontal">
+                  <Checkbox
+                    id="agent-can-hire"
+                    checked={canHireAgents}
+                    onCheckedChange={(checked) => setCanHireAgents(Boolean(checked))}
+                  />
+                  <FieldContent>
+                    <FieldLabel htmlFor="agent-can-hire">Can create new agents</FieldLabel>
+                  </FieldContent>
+                </Field>
+              </FieldGroup>
+              </section>
+              <section className={styles.createAgentModalSection}>
+              <FieldGroup>
+                <Field>
+                  <FieldLabel htmlFor="agent-bootstrap-prompt">Bootstrap prompt (first run)</FieldLabel>
+                  <Textarea
+                    id="agent-bootstrap-prompt"
+                    value={bootstrapPrompt}
+                    onChange={(e) => setBootstrapPrompt(e.target.value)}
+                    placeholder="Optional initial setup prompt for the first run"
+                  />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="agent-runtime-env">Environment variables</FieldLabel>
+                  <Textarea
+                    id="agent-runtime-env"
+                    className={styles.createAgentModalEnvTextarea}
+                    rows={4}
+                    wrap="hard"
+                    value={runtimeEnv}
+                    onChange={(e) => setRuntimeEnv(e.target.value)}
+                    placeholder={"KEY=value\nANOTHER_KEY=value"}
+                  />
+                </Field>
+              </FieldGroup>
+            </section>
+          </div>
           {error ? <p className={styles.createAgentModalText}>{error}</p> : null}
           <DialogFooter showCloseButton>
             <Button type="submit" disabled={isSubmitting}>

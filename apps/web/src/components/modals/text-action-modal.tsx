@@ -90,17 +90,19 @@ export function TextActionModal({
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         <form className={styles.textActionModalForm} onSubmit={handleSubmit}>
-          <Field>
-            <FieldLabel htmlFor="text-action-value" className={styles.textActionModalFieldLabel}>
-              Value
-            </FieldLabel>
-            {multiline ? (
-              <Textarea id="text-action-value" value={value} onChange={(event) => setValue(event.target.value)} placeholder={placeholder} />
-            ) : (
-              <Input id="text-action-value" value={value} onChange={(event) => setValue(event.target.value)} placeholder={placeholder} required />
-            )}
-            <FieldDescription>{multiline ? "Enter the full text value to save." : "Enter the updated value."}</FieldDescription>
-          </Field>
+          <div className="ui-dialog-content-scrollable">
+            <Field>
+              <FieldLabel htmlFor="text-action-value" className={styles.textActionModalFieldLabel}>
+                Value
+              </FieldLabel>
+              {multiline ? (
+                <Textarea id="text-action-value" value={value} onChange={(event) => setValue(event.target.value)} placeholder={placeholder} />
+              ) : (
+                <Input id="text-action-value" value={value} onChange={(event) => setValue(event.target.value)} placeholder={placeholder} required />
+              )}
+              <FieldDescription>{multiline ? "Enter the full text value to save." : "Enter the updated value."}</FieldDescription>
+            </Field>
+          </div>
           {error ? <p className={styles.textActionModalText}>{error}</p> : null}
           <DialogFooter showCloseButton>
             <Button type="submit" disabled={isSubmitting}>
