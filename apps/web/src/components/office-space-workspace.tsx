@@ -4,6 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import type { OfficeOccupant, OfficeRoom } from "bopodev-contracts";
 import { AppShell } from "@/components/app-shell";
 import { AgentAvatar } from "@/components/agent-avatar";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { subscribeToRealtime } from "@/lib/realtime";
 import { agentAvatarSeed } from "@/lib/agent-avatar";
@@ -145,7 +148,55 @@ function OfficeSpaceCanvas({
             />
       </div>
 
-      <div className={styles.sceneSurface}>
+      <div className="md:hidden space-y-4">
+        <Accordion type="multiple" className="rounded-lg border bg-card px-3">
+          {roomDefinitions.map((room) => {
+            const roomOccupants = occupantsByRoom.get(room.id) ?? [];
+            return (
+              <AccordionItem key={`mobile-${room.id}`} value={room.id}>
+                <AccordionTrigger>
+                  <span className="flex w-full items-center justify-between gap-3 pr-2">
+                    <span>{room.title}</span>
+                    <Badge variant="outline">{roomOccupants.length}</Badge>
+                  </span>
+                </AccordionTrigger>
+                <AccordionContent>
+                  {roomOccupants.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No agents currently in this room.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {roomOccupants.map((occupant) => (
+                        <Button
+                          key={occupant.id}
+                          type="button"
+                          variant="outline"
+                          className="w-full justify-start gap-3 h-auto py-2"
+                          onClick={() => onSelectOccupant(occupant.id)}
+                        >
+                          <AgentAvatar
+                            seed={agentAvatarSeed(occupant.id, occupant.displayName, occupant.avatarSeed)}
+                            name={occupant.displayName}
+                            className={styles.avatarBadge}
+                            size={64}
+                          />
+                          <span className="min-w-0 flex-1 text-left">
+                            <span className="block truncate">{occupant.displayName}</span>
+                            <span className="block text-xs text-muted-foreground">
+                              {occupant.status === "working" && occupant.taskLabel ? occupant.taskLabel : occupant.status}
+                            </span>
+                          </span>
+                        </Button>
+                      ))}
+                    </div>
+                  )}
+                </AccordionContent>
+              </AccordionItem>
+            );
+          })}
+        </Accordion>
+      </div>
+
+      <div className={cn(styles.sceneSurface, "hidden md:block")}>
         <div className={styles.sceneGrid}>
           {roomDefinitions.map((room) => {
             const roomOccupants = occupantsByRoom.get(room.id) ?? [];
@@ -169,9 +220,10 @@ function OfficeSpaceCanvas({
                       )}
                     >
                       {roomOccupants.map((occupant) => (
-                        <button
+                        <Button
                           key={occupant.id}
                           type="button"
+                          variant="ghost"
                           className={cn(
                             styles.occupantToken,
                             styles[`occupantToken${toPascalCase(occupant.status)}`],
@@ -189,7 +241,7 @@ function OfficeSpaceCanvas({
                             size={96}
                           />
                           <span className={styles.occupantName}>{occupant.displayName}</span>
-                        </button>
+                        </Button>
                       ))}
                     </div>
                   </CardContent>

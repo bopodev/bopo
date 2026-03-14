@@ -24,7 +24,7 @@
 }
 
 .createProjectModalWorkspaceModes {
-  @apply grid gap-6 md:grid-cols-3;
+  @apply grid gap-4 md:gap-6 md:grid-cols-3;
 }
 
 .createProjectModalMetaRow {

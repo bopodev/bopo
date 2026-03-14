@@ -180,7 +180,7 @@
 }
 
 .runTrendChartsGrid {
-  @apply mt-6 grid gap-6 md:grid-cols-2 xl:grid-cols-2;
+  @apply mt-6 grid gap-4 md:gap-6 md:grid-cols-2 xl:grid-cols-2;
 }
 
 .runInsightsChartContainer {
@@ -230,7 +230,7 @@
 }
 
 .dashboardSummaryStats {
-  @apply grid gap-6 sm:grid-cols-2 xl:grid-cols-3;
+  @apply grid gap-4 md:gap-6 sm:grid-cols-2 xl:grid-cols-3;
 }
 
 .dashboardBirdseyeGrid {
@@ -238,7 +238,7 @@
 }
 
 .dashboardAgentSpotlightGrid {
-  @apply grid gap-6 xl:grid-cols-2;
+  @apply grid gap-4 md:gap-6 xl:grid-cols-2;
 }
 
 .dashboardAgentSpotlightCard {

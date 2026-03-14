@@ -22,7 +22,8 @@ import {
   Users,
   Settings,
   Puzzle,
-  LayoutTemplate
+  LayoutTemplate,
+  Menu
 } from "lucide-react";
 import type { SectionLabel, SectionSlug } from "@/lib/sections";
 import {
@@ -40,6 +41,15 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger
+} from "@/components/ui/sheet";
 
 const navGroups: Array<{
   label: string;
@@ -108,6 +118,7 @@ export function AppShell({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [pendingApprovalsCountFromApi, setPendingApprovalsCountFromApi] = useState<number | null>(null);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   useEffect(() => {
     if (typeof pendingApprovalsCount === "number") {
@@ -149,9 +160,58 @@ export function AppShell({
     router.replace(href);
   }
 
-  const settingsHref = activeCompanyId
-    ? ({ pathname: "/settings" as Route, query: { companyId: activeCompanyId } } as const)
-    : ({ pathname: "/settings" as Route } as const);
+  function renderNavLinks(closeOnNavigate: boolean) {
+    return (
+      <div className="ui-shell-nav-groups">
+        {navGroups.map((group) => (
+          <div key={group.label} className="ui-shell-stack-sm">
+            <div className="ui-shell-group-label">{group.label}</div>
+            <nav className="ui-shell-nav">
+              {group.items.map((item) => {
+                const Icon = item.icon;
+                const isActive = activeNav === item.label;
+                const showPendingApprovalsBadge =
+                  item.slug === "governance" &&
+                  typeof resolvedPendingApprovalsCount === "number" &&
+                  resolvedPendingApprovalsCount > 0;
+                const navLink = (
+                  <Link
+                    key={item.slug}
+                    prefetch={false}
+                    href={
+                      activeCompanyId
+                        ? { pathname: `/${item.slug}` as Route, query: { companyId: activeCompanyId } }
+                        : ({ pathname: `/${item.slug}` as Route } as const)
+                    }
+                    onClick={closeOnNavigate ? () => setMobileNavOpen(false) : undefined}
+                    className={cn("ui-shell-nav-link ui-mobile-touch-target", isActive ? "ui-shell-nav-link-active" : "ui-shell-nav-link-inactive")}
+                  >
+                    <Icon className="ui-shell-nav-icon" />
+                    <span className="ui-shell-nav-label">{item.label}</span>
+                    {showPendingApprovalsBadge ? (
+                      <span className="ui-shell-nav-count-badge" aria-label={`${resolvedPendingApprovalsCount} pending approvals`}>
+                        {resolvedPendingApprovalsCount > 99 ? "99+" : resolvedPendingApprovalsCount}
+                      </span>
+                    ) : null}
+                  </Link>
+                );
+
+                if (closeOnNavigate) {
+                  return (
+                    <SheetClose asChild key={item.slug}>
+                      {navLink}
+                    </SheetClose>
+                  );
+                }
+
+                return navLink;
+              })}
+            </nav>
+          </div>
+        ))}
+      </div>
+    );
+  }
 
   return (
     <div className={hideSidebar ? "ui-shell-root-no-sidebar" : "ui-shell-root"}>
@@ -197,47 +257,7 @@ export function AppShell({
             <Separator className="ui-shell-separator" />
             <ScrollArea className="ui-shell-sidebar-scroll mt-8">
               <div className="ui-shell-sidebar-scroll-content">
-              <div className="ui-shell-nav-groups">
-                {navGroups.map((group) => (
-                  <div key={group.label} className="ui-shell-stack-sm">
-                    <div className="ui-shell-group-label">
-                      {group.label}
-                    </div>
-                    <nav className="ui-shell-nav">
-                      {group.items.map((item) => {
-                        const Icon = item.icon;
-                        const isActive = activeNav === item.label;
-                        const showPendingApprovalsBadge =
-                          item.slug === "governance" &&
-                          typeof resolvedPendingApprovalsCount === "number" &&
-                          resolvedPendingApprovalsCount > 0;
-                        return (
-                          <Link
-                            key={item.slug}
-                            // These pages are highly stateful (runs/logs/issue activity), so avoid
-                            // stale prefetched payloads when users navigate right after mutations.
-                            prefetch={false}
-                            href={
-                              activeCompanyId
-                                ? { pathname: `/${item.slug}` as Route, query: { companyId: activeCompanyId } }
-                                : ({ pathname: `/${item.slug}` as Route } as const)
-                            }
-                            className={cn("ui-shell-nav-link", isActive ? "ui-shell-nav-link-active" : "ui-shell-nav-link-inactive")}
-                          >
-                            <Icon className="ui-shell-nav-icon" />
-                            <span className="ui-shell-nav-label">{item.label}</span>
-                            {showPendingApprovalsBadge ? (
-                              <span className="ui-shell-nav-count-badge" aria-label={`${resolvedPendingApprovalsCount} pending approvals`}>
-                                {resolvedPendingApprovalsCount > 99 ? "99+" : resolvedPendingApprovalsCount}
-                              </span>
-                            ) : null}
-                          </Link>
-                        );
-                      })}
-                    </nav>
-                  </div>
-                ))}
-              </div>
+                {renderNavLinks(false)}
               </div>
             </ScrollArea>
             <div className="ui-shell-stack-sm">
@@ -254,14 +274,60 @@ export function AppShell({
       ) : null}
       <main className={cn("ui-shell-main", secondaryPane ? "ui-shell-main-with-secondary" : "")}>
         <header className="ui-shell-header">
-          <div className="ui-shell-row">
-            <div>
-              <div className="ui-shell-header-kicker">Control Plane</div>
-              <div className="ui-shell-header-title">{activeNav}</div>
+          <div className="ui-shell-header-left">
+            {!hideSidebar ? (
+              <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
+                <SheetTrigger asChild>
+                  <Button variant="outline" size="icon-sm" aria-label="Open navigation">
+                    <Menu />
+                  </Button>
+                </SheetTrigger>
+                <SheetContent side="left" className="ui-shell-mobile-nav-content">
+                  <SheetHeader>
+                    <SheetTitle>
+                      {companies.find((company) => company.id === activeCompanyId)?.name ?? "BopoDev"}
+                    </SheetTitle>
+                    <SheetDescription>Navigate the control plane.</SheetDescription>
+                  </SheetHeader>
+                  <div className="ui-shell-stack-sm mt-4">
+                    <div className="ui-shell-section-label">Company</div>
+                    {companies.length > 0 ? (
+                      <Select value={activeCompanyId ?? undefined} onValueChange={updateCompany}>
+                        <SelectTrigger className="ui-shell-company-trigger">
+                          <SelectValue placeholder="Select a company" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {companies.map((company) => (
+                            <SelectItem key={company.id} value={company.id}>
+                              {company.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <div className="ui-shell-company-empty">
+                        Create your first company to unlock the control plane.
+                      </div>
+                    )}
+                  </div>
+                  <ScrollArea className="ui-shell-mobile-nav-scroll">
+                    {renderNavLinks(true)}
+                  </ScrollArea>
+                  <div className="ui-shell-mobile-nav-footer ui-mobile-safe-bottom">
+                    <ThemePaletteSelect />
+                    <ThemeToggle />
+                  </div>
+                </SheetContent>
+              </Sheet>
+            ) : null}
+            <div className="ui-shell-row">
+              <div>
+                <div className="ui-shell-header-kicker">Control Plane</div>
+                <div className="ui-shell-header-title">{activeNav}</div>
+              </div>
             </div>
           </div>
           <div className="ui-shell-header-actions">
-            
           </div>
         </header>
         <section className={rightPane ? "ui-shell-content-with-pane" : "ui-shell-content"}>

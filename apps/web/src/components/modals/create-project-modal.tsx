@@ -288,30 +288,33 @@ export function CreateProjectModal({
                 <p className={styles.createProjectModalSectionDescription}>Configure a project workspace (local folder and/or GitHub repo).</p>
               </div>
               <div className={styles.createProjectModalWorkspaceModes}>
-                <button
+                <Button
                   type="button"
+                  variant={workspaceMode === "local" ? "secondary" : "outline"}
                   className={cn("ui-project-workspace-mode", workspaceMode === "local" && "ui-project-workspace-mode-active")}
                   onClick={() => setWorkspaceMode("local")}
                 >
                   <span className="ui-project-workspace-mode-title">A local folder</span>
                   <span className="ui-project-workspace-mode-description">Use a full path.</span>
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
+                  variant={workspaceMode === "github" ? "secondary" : "outline"}
                   className={cn("ui-project-workspace-mode", workspaceMode === "github" && "ui-project-workspace-mode-active")}
                   onClick={() => setWorkspaceMode("github")}
                 >
                   <span className="ui-project-workspace-mode-title">A GitHub repo</span>
                   <span className="ui-project-workspace-mode-description">Paste a GitHub URL.</span>
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
+                  variant={workspaceMode === "both" ? "secondary" : "outline"}
                   className={cn("ui-project-workspace-mode", workspaceMode === "both" && "ui-project-workspace-mode-active")}
                   onClick={() => setWorkspaceMode("both")}
                 >
                   <span className="ui-project-workspace-mode-title">Both</span>
                   <span className="ui-project-workspace-mode-description">Configure local + repo.</span>
-                </button>
+                </Button>
               </div>
               <Field>
                 <FieldLabel htmlFor="project-workspace-name">Workspace name</FieldLabel>

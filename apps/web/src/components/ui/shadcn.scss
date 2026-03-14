@@ -209,7 +209,7 @@ body {
 }
 
 .ui-data-table {
-  @apply space-y-4;
+  @apply min-w-0 space-y-4;
 }
 
 .ui-data-table-toolbar {
@@ -221,11 +221,24 @@ body {
 }
 
 .ui-data-table-toolbar-actions {
-  @apply flex items-center gap-4;
+  @apply flex items-center gap-3 flex-wrap;
+}
+
+.ui-data-table-toolbar-actions-inline {
+  @apply hidden md:flex md:items-center md:gap-4 md:flex-wrap;
+}
+
+.ui-data-table-toolbar-actions-mobile {
+  @apply md:hidden;
+}
+
+.ui-data-table-mobile-actions-trigger {
+  @apply w-full sm:w-auto;
 }
 
 .ui-data-table-surface {
-  @apply overflow-hidden rounded-xl border border-border/70 bg-card;
+  @apply w-full min-w-0 overflow-x-auto overflow-y-hidden rounded-xl border border-border/70 bg-card;
+  -webkit-overflow-scrolling: touch;
 }
 
 .ui-data-table-header-row {
@@ -341,7 +354,7 @@ body {
 }
 
 .ui-dialog-header {
-  @apply flex flex-col gap-2 text-center sm:text-left border-b border-border pb-6 mb-4;
+  @apply flex flex-col gap-2 text-left border-b border-border pb-6 mb-4;
 }
 
 .ui-dialog-footer {
@@ -354,6 +367,147 @@ body {
 
 .ui-dialog-description {
   @apply text-sm text-muted-foreground;
+}
+
+.ui-sheet-overlay {
+  @apply fixed inset-0 z-50 bg-black/50 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0;
+}
+
+.ui-sheet-content {
+  @apply fixed z-50 flex h-full w-full max-w-sm flex-col gap-4 border bg-background p-6 shadow-lg duration-200;
+  @apply data-[state=closed]:animate-out data-[state=open]:animate-in;
+  @apply data-[side=left]:inset-y-0 data-[side=left]:left-0 data-[side=left]:data-[state=closed]:slide-out-to-left data-[side=left]:data-[state=open]:slide-in-from-left;
+  @apply data-[side=right]:inset-y-0 data-[side=right]:right-0 data-[side=right]:data-[state=closed]:slide-out-to-right data-[side=right]:data-[state=open]:slide-in-from-right;
+  @apply data-[side=top]:inset-x-0 data-[side=top]:top-0 data-[side=top]:h-auto data-[side=top]:max-w-none data-[side=top]:data-[state=closed]:slide-out-to-top data-[side=top]:data-[state=open]:slide-in-from-top;
+  @apply data-[side=bottom]:inset-x-0 data-[side=bottom]:bottom-0 data-[side=bottom]:h-auto data-[side=bottom]:max-w-none data-[side=bottom]:data-[state=closed]:slide-out-to-bottom data-[side=bottom]:data-[state=open]:slide-in-from-bottom;
+}
+
+.ui-sheet-close {
+  @apply absolute top-4 right-4 rounded-xs opacity-70 transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring;
+}
+
+.ui-sheet-header {
+  @apply space-y-1.5 pr-8;
+}
+
+.ui-sheet-footer {
+  @apply mt-auto flex flex-col gap-2;
+}
+
+.ui-sheet-title {
+  @apply text-base font-semibold tracking-tight;
+}
+
+.ui-sheet-description {
+  @apply text-sm text-muted-foreground;
+}
+
+.ui-drawer-overlay {
+  @apply fixed inset-0 z-50 bg-black/50 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0;
+}
+
+.ui-drawer-content {
+  @apply fixed inset-x-0 bottom-0 z-50 mt-24 flex max-h-[88dvh] flex-col rounded-t-xl border bg-background p-4 shadow-lg;
+  @apply data-[state=closed]:animate-out data-[state=closed]:slide-out-to-bottom data-[state=open]:animate-in data-[state=open]:slide-in-from-bottom;
+}
+
+.ui-drawer-handle {
+  @apply mx-auto mb-3 h-1.5 w-12 rounded-full bg-muted-foreground/30;
+}
+
+.ui-drawer-header {
+  @apply space-y-1.5;
+}
+
+.ui-drawer-footer {
+  @apply mt-4 flex flex-col gap-2;
+}
+
+.ui-drawer-title {
+  @apply text-base font-semibold tracking-tight;
+}
+
+.ui-drawer-description {
+  @apply text-sm text-muted-foreground;
+}
+
+.ui-accordion-item {
+  @apply border-b;
+}
+
+.ui-accordion-header {
+  @apply flex;
+}
+
+.ui-accordion-trigger {
+  @apply flex flex-1 items-center justify-between py-4 text-sm font-medium transition-all hover:underline;
+}
+
+.ui-accordion-trigger-icon {
+  @apply size-4 shrink-0 text-muted-foreground transition-transform duration-200;
+}
+
+.ui-accordion-trigger[data-state=open] > .ui-accordion-trigger-icon {
+  @apply rotate-180;
+}
+
+.ui-accordion-content {
+  @apply overflow-hidden text-sm data-[state=closed]:animate-out data-[state=open]:animate-in;
+}
+
+.ui-accordion-content-inner {
+  @apply pb-4;
+}
+
+.ui-popover-content {
+  @apply z-50 w-72 rounded-md border bg-popover p-4 text-popover-foreground shadow-md outline-none;
+  @apply data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0;
+}
+
+.ui-tooltip-content {
+  @apply z-50 overflow-hidden rounded-md bg-foreground px-3 py-1.5 text-xs text-background;
+  @apply data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0;
+}
+
+.ui-command {
+  @apply flex h-full w-full flex-col overflow-hidden rounded-md border bg-popover text-popover-foreground;
+}
+
+.ui-command-input-wrap {
+  @apply flex items-center border-b px-3;
+}
+
+.ui-command-input-icon {
+  @apply mr-2 size-4 shrink-0 opacity-50;
+}
+
+.ui-command-input {
+  @apply flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground;
+}
+
+.ui-command-list {
+  @apply max-h-[320px] overflow-y-auto p-1;
+}
+
+.ui-command-empty {
+  @apply py-6 text-center text-sm;
+}
+
+.ui-command-group {
+  @apply overflow-hidden px-1 py-1.5 text-foreground;
+}
+
+.ui-command-separator {
+  @apply -mx-1 h-px bg-border;
+}
+
+.ui-command-item {
+  @apply relative flex w-full cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-left outline-none select-none;
+  @apply hover:bg-accent hover:text-accent-foreground;
+}
+
+.ui-command-shortcut {
+  @apply ml-auto text-xs tracking-widest text-muted-foreground;
 }
 
 .ui-dropdown-menu-content {
@@ -630,11 +784,11 @@ body {
 }
 
 .ui-table-container {
-  @apply relative w-full overflow-x-auto;
+  @apply relative w-full min-w-0 overflow-x-auto;
 }
 
 .ui-table {
-  @apply w-full caption-bottom text-sm;
+  @apply w-max min-w-full caption-bottom text-sm;
 }
 
 .ui-table-header {
@@ -693,15 +847,15 @@ body {
 }
 
 .ui-shell-root {
-  @apply h-dvh min-h-dvh max-h-dvh overflow-hidden bg-background;
+  @apply min-h-dvh bg-background lg:h-dvh lg:max-h-dvh lg:overflow-hidden;
 }
 
 .ui-shell-root-no-sidebar {
-  @apply h-dvh min-h-dvh max-h-dvh overflow-hidden bg-background;
+  @apply min-h-dvh bg-background lg:h-dvh lg:max-h-dvh lg:overflow-hidden;
 }
 
 .ui-shell-sidebar {
-  @apply self-stretch h-dvh min-h-dvh max-h-dvh overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground lg:fixed lg:inset-y-0 lg:left-0 lg:w-[296px];
+  @apply hidden self-stretch h-dvh min-h-dvh max-h-dvh overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground lg:fixed lg:inset-y-0 lg:left-0 lg:block lg:w-[296px];
 }
 
 .ui-shell-sidebar-scroll {
@@ -753,7 +907,7 @@ body {
 }
 
 .ui-shell-stack-sm {
-  @apply space-y-2;
+  @apply space-y-3;
 }
 
 .ui-shell-section-label {
@@ -837,7 +991,7 @@ body {
 }
 
 .ui-shell-main {
-  @apply grid h-dvh min-h-dvh max-h-dvh grid-rows-[minmax(0,1fr)] lg:ml-[296px];
+  @apply grid min-h-dvh overflow-x-hidden grid-rows-[auto_minmax(0,1fr)] lg:h-dvh lg:min-h-dvh lg:max-h-dvh lg:grid-rows-[minmax(0,1fr)] lg:ml-[296px];
 }
 
 .ui-shell-main-with-secondary {
@@ -857,43 +1011,67 @@ body {
 }
 
 .ui-shell-header {
-  @apply hidden items-center justify-between border-b bg-background px-8;
+  @apply flex items-center justify-between border-b bg-background px-4 py-3 lg:hidden;
 }
 
 .ui-shell-header-kicker {
-  @apply text-sm text-muted-foreground;
+  @apply text-xs uppercase tracking-wide text-muted-foreground;
 }
 
 .ui-shell-header-title {
-  @apply text-base font-semibold tracking-tight;
+  @apply text-sm font-semibold tracking-tight;
 }
 
 .ui-shell-header-actions {
   @apply flex items-center gap-2;
 }
 
+.ui-shell-header-left {
+  @apply flex items-center gap-4;
+}
+
+.ui-shell-mobile-nav-content {
+  @apply h-full bg-sidebar text-sidebar-foreground;
+}
+
+.ui-shell-mobile-nav-scroll {
+  @apply min-h-0 flex-1 mt-4;
+}
+
+.ui-shell-mobile-nav-footer {
+  @apply mt-4 space-y-2;
+}
+
 .ui-shell-content-with-pane {
-  @apply grid h-full min-h-0 items-stretch overflow-hidden lg:grid-cols-[minmax(0,1fr)_360px];
+  @apply flex min-h-0 flex-col overflow-visible lg:grid lg:h-full lg:items-stretch lg:overflow-hidden lg:grid-cols-[minmax(0,1fr)_360px];
 }
 
 .ui-shell-content {
-  @apply h-full min-h-0 overflow-hidden;
+  @apply min-h-0 overflow-x-hidden overflow-y-visible lg:h-full lg:overflow-hidden;
 }
 
 .ui-shell-left-pane {
-  @apply h-full min-h-0 overflow-y-auto space-y-6 p-8;
+  @apply min-h-0 overflow-x-hidden space-y-6 px-4 py-4 lg:h-full lg:overflow-y-auto lg:p-8;
 }
 
 .ui-shell-left-pane-static {
-  @apply h-full min-h-0 space-y-6 p-8;
+  @apply min-h-0 overflow-x-hidden space-y-6 px-4 py-4 lg:h-full lg:p-8;
 }
 
 .ui-shell-right-scroll {
-  @apply self-stretch h-full min-h-0 overflow-hidden border-l bg-muted/10;
+  @apply self-stretch min-h-0 overflow-hidden border-t bg-muted/10 lg:h-full lg:border-l lg:border-t-0;
 }
 
 .ui-shell-right-pane {
-  @apply min-h-full p-8;
+  @apply min-h-full p-4 lg:p-8;
+}
+
+.ui-mobile-touch-target {
+  @apply min-h-10;
+}
+
+.ui-mobile-safe-bottom {
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 0.5rem);
 }
 
 .ui-shell-content-with-pane > .ui-shell-main-scroll {
@@ -925,11 +1103,11 @@ body {
 }
 
 .ui-stats {
-  @apply grid gap-6 md:grid-cols-2 xl:grid-cols-4;
+  @apply grid gap-4 md:gap-6 md:grid-cols-2 xl:grid-cols-4;
 }
 
 .ui-cost-charts-grid {
-  @apply mt-4 grid gap-6 xl:grid-cols-2;
+  @apply mt-4 grid gap-4 md:gap-6 xl:grid-cols-2;
 }
 
 .ui-feature-empty-state {
@@ -974,15 +1152,15 @@ body {
 }
 
 .ui-project-workspace-mode {
-  @apply flex flex-col gap-2 justify-between rounded-md border border-border px-4 py-3 text-left transition-colors hover:border-muted-foreground/40;
+  @apply flex flex-col gap-2 items-start justify-between rounded-md border border-border px-4 py-3 min-h-20 text-left transition-colors hover:border-muted-foreground/40;
 }
 
 .ui-project-workspace-mode-active {
-  @apply border-primary bg-primary/5;
+  @apply border-primary bg-primary/5 dark:text-muted-foreground;
 }
 
 .ui-project-workspace-mode-title {
-  @apply text-sm font-medium;
+  @apply text-sm font-medium text-left;
 }
 
 .ui-project-workspace-mode-description {

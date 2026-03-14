@@ -7,8 +7,17 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerTrigger
+} from "@/components/ui/drawer";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SlidersHorizontal } from "lucide-react";
 import { subscribeToRealtime } from "@/lib/realtime";
 import { isSkippedRun } from "@/lib/workspace-logic";
 import type { HeartbeatRunDetailData, HeartbeatRunMessageRow } from "@/lib/workspace-data";
@@ -52,6 +61,7 @@ export function RunDetailPageClient({
   const [kindFilter, setKindFilter] = useState<"all" | HeartbeatRunMessageRow["kind"]>("all");
   const [signalFilter, setSignalFilter] = useState<"all" | HeartbeatRunMessageRow["signalLevel"]>("all");
   const [sourceFilter, setSourceFilter] = useState<"all" | HeartbeatRunMessageRow["source"]>("all");
+  const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
 
   useEffect(() => {
     const unsubscribe = subscribeToRealtime({
@@ -209,6 +219,30 @@ export function RunDetailPageClient({
       }
       leftPane={
         <div className="run-detail-pane">
+          <div className="lg:hidden rounded-lg border bg-card p-3">
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">Recent runs</div>
+            <div className="mt-2 space-y-2">
+              {visibleRecentRuns.slice(0, 6).map((entry) => (
+                <Link
+                  key={`mobile-${entry.id}`}
+                  href={{
+                    pathname: `/runs/${entry.id}`,
+                    query: { companyId, agentId: scopedAgentId ?? undefined }
+                  }}
+                  className={`run-sidebar-item${entry.id === run.id ? " run-sidebar-item--active" : ""}`}
+                >
+                  <div className="run-sidebar-item-header">
+                    <span className="run-sidebar-item-id" title={entry.id}>
+                      {entry.id}
+                    </span>
+                    <Badge variant="outline" className="run-sidebar-item-badge">
+                      {formatRunStatusLabel(entry.status)}
+                    </Badge>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
           <SectionHeading
               title={`Run ${run.id}`}
               description="Realtime status and summary for this run."
@@ -233,46 +267,106 @@ export function RunDetailPageClient({
               placeholder="Search text, payload, action, or label..."
               className="run-transcript-filters-search"
             />
-            <Select value={kindFilter} onValueChange={(value) => setKindFilter(value as typeof kindFilter)}>
-              <SelectTrigger className="run-transcript-filters-select">
-                <SelectValue placeholder="Kind" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All kinds</SelectItem>
-                <SelectItem value="assistant">assistant</SelectItem>
-                <SelectItem value="tool_call">tool_call</SelectItem>
-                <SelectItem value="tool_result">tool_result</SelectItem>
-                <SelectItem value="result">result</SelectItem>
-                <SelectItem value="thinking">thinking</SelectItem>
-                <SelectItem value="system">system</SelectItem>
-                <SelectItem value="stderr">stderr</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={signalFilter} onValueChange={(value) => setSignalFilter(value as typeof signalFilter)}>
-              <SelectTrigger className="run-transcript-filters-select">
-                <SelectValue placeholder="Signal" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All signal levels</SelectItem>
-                <SelectItem value="high">high</SelectItem>
-                <SelectItem value="medium">medium</SelectItem>
-                <SelectItem value="low">low</SelectItem>
-                <SelectItem value="noise">noise</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={sourceFilter} onValueChange={(value) => setSourceFilter(value as typeof sourceFilter)}>
-              <SelectTrigger className="run-transcript-filters-select">
-                <SelectValue placeholder="Source" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All sources</SelectItem>
-                {availableSources.map((source) => (
-                  <SelectItem key={source} value={source}>
-                    {source}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="hidden md:contents">
+              <Select value={kindFilter} onValueChange={(value) => setKindFilter(value as typeof kindFilter)}>
+                <SelectTrigger className="run-transcript-filters-select">
+                  <SelectValue placeholder="Kind" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All kinds</SelectItem>
+                  <SelectItem value="assistant">assistant</SelectItem>
+                  <SelectItem value="tool_call">tool_call</SelectItem>
+                  <SelectItem value="tool_result">tool_result</SelectItem>
+                  <SelectItem value="result">result</SelectItem>
+                  <SelectItem value="thinking">thinking</SelectItem>
+                  <SelectItem value="system">system</SelectItem>
+                  <SelectItem value="stderr">stderr</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={signalFilter} onValueChange={(value) => setSignalFilter(value as typeof signalFilter)}>
+                <SelectTrigger className="run-transcript-filters-select">
+                  <SelectValue placeholder="Signal" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All signal levels</SelectItem>
+                  <SelectItem value="high">high</SelectItem>
+                  <SelectItem value="medium">medium</SelectItem>
+                  <SelectItem value="low">low</SelectItem>
+                  <SelectItem value="noise">noise</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={sourceFilter} onValueChange={(value) => setSourceFilter(value as typeof sourceFilter)}>
+                <SelectTrigger className="run-transcript-filters-select">
+                  <SelectValue placeholder="Source" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All sources</SelectItem>
+                  {availableSources.map((source) => (
+                    <SelectItem key={source} value={source}>
+                      {source}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="md:hidden">
+              <Drawer open={mobileFilterOpen} onOpenChange={setMobileFilterOpen}>
+                <DrawerTrigger asChild>
+                  <Button variant="outline" size="sm" className="w-full">
+                    <SlidersHorizontal />
+                    Filters
+                  </Button>
+                </DrawerTrigger>
+                <DrawerContent className="ui-mobile-safe-bottom">
+                  <DrawerHeader>
+                    <DrawerTitle>Transcript filters</DrawerTitle>
+                    <DrawerDescription>Narrow the live transcript stream.</DrawerDescription>
+                  </DrawerHeader>
+                  <div className="space-y-3 pb-2">
+                    <Select value={kindFilter} onValueChange={(value) => setKindFilter(value as typeof kindFilter)}>
+                      <SelectTrigger className="run-transcript-filters-select">
+                        <SelectValue placeholder="Kind" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All kinds</SelectItem>
+                        <SelectItem value="assistant">assistant</SelectItem>
+                        <SelectItem value="tool_call">tool_call</SelectItem>
+                        <SelectItem value="tool_result">tool_result</SelectItem>
+                        <SelectItem value="result">result</SelectItem>
+                        <SelectItem value="thinking">thinking</SelectItem>
+                        <SelectItem value="system">system</SelectItem>
+                        <SelectItem value="stderr">stderr</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Select value={signalFilter} onValueChange={(value) => setSignalFilter(value as typeof signalFilter)}>
+                      <SelectTrigger className="run-transcript-filters-select">
+                        <SelectValue placeholder="Signal" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All signal levels</SelectItem>
+                        <SelectItem value="high">high</SelectItem>
+                        <SelectItem value="medium">medium</SelectItem>
+                        <SelectItem value="low">low</SelectItem>
+                        <SelectItem value="noise">noise</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Select value={sourceFilter} onValueChange={(value) => setSourceFilter(value as typeof sourceFilter)}>
+                      <SelectTrigger className="run-transcript-filters-select">
+                        <SelectValue placeholder="Source" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All sources</SelectItem>
+                        {availableSources.map((source) => (
+                          <SelectItem key={source} value={source}>
+                            {source}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </DrawerContent>
+              </Drawer>
+            </div>
           </div>
           {transcriptRows.length === 0 ? (
             <p className="run-transcript-empty">Waiting for transcript messages...</p>

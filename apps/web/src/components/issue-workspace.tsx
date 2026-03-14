@@ -301,12 +301,12 @@ export function IssueWorkspace({
       <Card key={issue.id} className={styles.issueCard1}>
         <CardContent className={styles.issueCardContent1}>
           <div className={styles.issueCardContainer1}>
-            <div className={styles.issueCardContainer2} onClick={() => openIssue(issue.id)}>
+            <button type="button" className={styles.issueCardContainer2} onClick={() => openIssue(issue.id)}>
               <div className={styles.issueCardContainer3}>{issue.title}</div>
               <div className={styles.issueCardContainer4}>
                 {issue.priority} · {selectedProjectNameFor(issue.projectId, projects)} · {formatDateTime(issue.updatedAt)}
               </div>
-            </div>
+            </button>
             <div className={styles.issueCardContainer5}>
               <CreateIssueModal
                 companyId={companyId}

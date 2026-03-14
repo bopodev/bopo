@@ -21,6 +21,16 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Input } from "@/components/ui/input";
 import { DataTablePagination } from "@/components/ui/data-table-pagination";
 import { DataTableViewOptions } from "@/components/ui/data-table-view-options";
+import { Button } from "@/components/ui/button";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerTrigger
+} from "@/components/ui/drawer";
+import { SlidersHorizontal } from "lucide-react";
 
 interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[];
@@ -49,6 +59,7 @@ export function DataTable<TData, TValue>({
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({});
   const [rowSelection, setRowSelection] = React.useState<RowSelectionState>({});
+  const [mobileFiltersOpen, setMobileFiltersOpen] = React.useState(false);
 
   const table = useReactTable({
     data,
@@ -81,7 +92,28 @@ export function DataTable<TData, TValue>({
               className="ui-data-table-filter-input"
             />
           ) : null}
-          {toolbarActions ? <div className="ui-data-table-toolbar-actions">{toolbarActions}</div> : null}
+          {toolbarActions ? (
+            <>
+              <div className="ui-data-table-toolbar-actions ui-data-table-toolbar-actions-inline">{toolbarActions}</div>
+              <div className="ui-data-table-toolbar-actions ui-data-table-toolbar-actions-mobile">
+                <Drawer open={mobileFiltersOpen} onOpenChange={setMobileFiltersOpen}>
+                  <DrawerTrigger asChild>
+                    <Button variant="outline" size="sm" className="ui-data-table-mobile-actions-trigger">
+                      <SlidersHorizontal />
+                      Filters
+                    </Button>
+                  </DrawerTrigger>
+                  <DrawerContent className="ui-mobile-safe-bottom">
+                    <DrawerHeader>
+                      <DrawerTitle>Filters</DrawerTitle>
+                      <DrawerDescription>Refine rows with quick mobile controls.</DrawerDescription>
+                    </DrawerHeader>
+                    <div className="space-y-3 pb-2">{toolbarActions}</div>
+                  </DrawerContent>
+                </Drawer>
+              </div>
+            </>
+          ) : null}
           {showViewOptions ? <DataTableViewOptions table={table} /> : null}
         </div>
       ) : null}
