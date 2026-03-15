@@ -1,5 +1,7 @@
 @reference "../../app/globals.css";
 
+@import "https://fonts.googleapis.com/css2?family=Geist+Mono:wght@100..900&display=swap";
+
 html {
   overscroll-behavior-y: none;
 }
@@ -931,7 +933,7 @@ body {
 }
 
 .ui-shell-group-label {
-  @apply px-2 text-xs font-bold text-sidebar-foreground/45 uppercase;
+  @apply px-2 text-sm font-bold text-sidebar-foreground/45 tracking-wider uppercase;
 }
 
 .ui-shell-nav {

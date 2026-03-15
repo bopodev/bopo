@@ -219,19 +219,6 @@ export function AppShell({
         <aside className="ui-shell-sidebar">
           <div className="ui-shell-sidebar-inner">
             <div className="ui-shell-sidebar-top">
-              <div className="ui-shell-brand-stack">
-                <div className="ui-shell-row">
-                  <div className="ui-shell-brand-icon-wrap">
-                    <Building2 className="ui-shell-building-icon" />
-                  </div>
-                  <div className="ui-shell-brand-copy">
-                    <div className="ui-shell-brand-title">
-                      {companies.find((company) => company.id === activeCompanyId)?.name ?? "BopoDev"}
-                    </div>
-                    <p className="ui-shell-brand-subtitle">AI operating workspace</p>
-                  </div>
-                </div>
-              </div>
               <div className="ui-shell-stack-sm">
                 <div className="ui-shell-section-label">Company</div>
                 {companies.length > 0 ? (
