@@ -165,9 +165,16 @@ export function AppShell({
   const resolvedSecondaryPane =
     secondaryPane ??
     (isSettingsRoute ? (
-      <ScrollArea className="ui-shell-secondary-scroll">
-        <div className="ui-shell-sidebar-scroll-content">{renderSettingsLinks(false)}</div>
-      </ScrollArea>
+      <div className="flex h-full min-h-0 flex-col">
+        <ScrollArea className="ui-shell-secondary-scroll min-h-0 flex-1">
+          <div className="ui-shell-sidebar-scroll-content">{renderSettingsLinks(false)}</div>
+        </ScrollArea>
+        <Separator className="ui-shell-separator" />
+        <div className="ui-shell-stack-sm pt-4">
+          <ThemePaletteSelect />
+          <ThemeToggle />
+        </div>
+      </div>
     ) : undefined);
 
   function updateCompany(companyId: string) {
@@ -314,10 +321,6 @@ export function AppShell({
                 {renderNavLinks(false)}
               </div>
             </ScrollArea>
-            <div className="ui-shell-stack-sm">
-              <ThemePaletteSelect />
-              <ThemeToggle />
-            </div>
           </div>
         </aside>
       ) : null}
@@ -370,10 +373,12 @@ export function AppShell({
                       {renderSettingsLinks(true)}
                     </div>
                   </ScrollArea>
-                  <div className="ui-shell-mobile-nav-footer ui-mobile-safe-bottom">
-                    <ThemePaletteSelect />
-                    <ThemeToggle />
-                  </div>
+                  {isSettingsRoute ? (
+                    <div className="ui-shell-mobile-nav-footer ui-mobile-safe-bottom">
+                      <ThemePaletteSelect />
+                      <ThemeToggle />
+                    </div>
+                  ) : null}
                 </SheetContent>
               </Sheet>
             ) : null}
