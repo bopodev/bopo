@@ -9,7 +9,6 @@ import { apiGet } from "@/lib/api";
 import {
   Activity,
   BarChart3,
-  Building2,
   Clock3,
   BriefcaseBusiness,
   Inbox,
@@ -53,7 +52,12 @@ import {
 
 const navGroups: Array<{
   label: string;
-  items: Array<{ slug: SectionSlug; label: SectionLabel; icon: React.ComponentType<{ className?: string }> }>;
+  items: Array<{
+    slug: SectionSlug;
+    label: SectionLabel;
+    icon: React.ComponentType<{ className?: string }>;
+    href?: string;
+  }>;
 }> = [
   {
     label: "Work",
@@ -80,16 +84,25 @@ const navGroups: Array<{
       { slug: "org-chart", label: "Organization", icon: GitBranch },
       { slug: "office-space", label: "Office", icon: Map },
       { slug: "costs", label: "Costs", icon: BarChart3 },
+      { slug: "settings", label: "Settings", icon: Settings, href: "/settings/models" }
     ]
-  },
+  }
+];
+
+const settingsNavItems: Array<{
+  href: string;
+  label: SectionLabel;
+  icon: React.ComponentType<{ className?: string }>;
+  isActive: (pathname: string) => boolean;
+}> = [
+  { href: "/settings/models", label: "Models", icon: BarChart3, isActive: (pathname) => pathname.startsWith("/settings/models") },
+  { href: "/settings/templates", label: "Templates", icon: LayoutTemplate, isActive: (pathname) => pathname.startsWith("/settings/templates") },
+  { href: "/settings/plugins", label: "Plugins", icon: Puzzle, isActive: (pathname) => pathname.startsWith("/settings/plugins") },
   {
+    href: "/settings",
     label: "Settings",
-    items: [
-      { slug: "models", label: "Models", icon: BarChart3 },
-      { slug: "templates", label: "Templates", icon: LayoutTemplate },
-      { slug: "plugins", label: "Plugins", icon: Puzzle },
-      { slug: "settings", label: "Settings", icon: Settings }
-    ]
+    icon: Settings,
+    isActive: (pathname) => pathname === "/settings" || pathname.startsWith("/settings/settings")
   }
 ];
 
@@ -148,6 +161,14 @@ export function AppShell({
 
   const resolvedPendingApprovalsCount =
     typeof pendingApprovalsCount === "number" ? pendingApprovalsCount : pendingApprovalsCountFromApi;
+  const isSettingsRoute = pathname.startsWith("/settings");
+  const resolvedSecondaryPane =
+    secondaryPane ??
+    (isSettingsRoute ? (
+      <ScrollArea className="ui-shell-secondary-scroll">
+        <div className="ui-shell-sidebar-scroll-content">{renderSettingsLinks(false)}</div>
+      </ScrollArea>
+    ) : undefined);
 
   function updateCompany(companyId: string) {
     const next = new URLSearchParams(searchParams.toString());
@@ -169,7 +190,7 @@ export function AppShell({
             <nav className="ui-shell-nav">
               {group.items.map((item) => {
                 const Icon = item.icon;
-                const isActive = activeNav === item.label;
+                const isActive = item.slug === "settings" && isSettingsRoute ? true : activeNav === item.label;
                 const showPendingApprovalsBadge =
                   item.slug === "governance" &&
                   typeof resolvedPendingApprovalsCount === "number" &&
@@ -180,8 +201,8 @@ export function AppShell({
                     prefetch={false}
                     href={
                       activeCompanyId
-                        ? { pathname: `/${item.slug}` as Route, query: { companyId: activeCompanyId } }
-                        : ({ pathname: `/${item.slug}` as Route } as const)
+                        ? { pathname: (item.href ?? (`/${item.slug}` as Route)), query: { companyId: activeCompanyId } }
+                        : ({ pathname: (item.href ?? (`/${item.slug}` as Route)) } as const)
                     }
                     onClick={closeOnNavigate ? () => setMobileNavOpen(false) : undefined}
                     className={cn("ui-shell-nav-link ui-mobile-touch-target", isActive ? "ui-shell-nav-link-active" : "ui-shell-nav-link-inactive")}
@@ -209,6 +230,52 @@ export function AppShell({
             </nav>
           </div>
         ))}
+      </div>
+    );
+  }
+
+  function renderSettingsLinks(closeOnNavigate: boolean) {
+    if (!isSettingsRoute) {
+      return null;
+    }
+
+    return (
+      <div className="ui-shell-nav-groups">
+        <div className="ui-shell-stack-sm">
+          <div className="ui-shell-group-label">Settings</div>
+          <nav className="ui-shell-nav">
+            {settingsNavItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = item.isActive(pathname);
+              const settingsLink = (
+                <Link
+                  key={item.href}
+                  prefetch={false}
+                  href={
+                    activeCompanyId
+                      ? { pathname: item.href as Route, query: { companyId: activeCompanyId } }
+                      : ({ pathname: item.href as Route } as const)
+                  }
+                  onClick={closeOnNavigate ? () => setMobileNavOpen(false) : undefined}
+                  className={cn("ui-shell-nav-link ui-mobile-touch-target", isActive ? "ui-shell-nav-link-active" : "ui-shell-nav-link-inactive")}
+                >
+                  <Icon className="ui-shell-nav-icon" />
+                  <span className="ui-shell-nav-label">{item.label}</span>
+                </Link>
+              );
+
+              if (closeOnNavigate) {
+                return (
+                  <SheetClose asChild key={item.href}>
+                    {settingsLink}
+                  </SheetClose>
+                );
+              }
+
+              return settingsLink;
+            })}
+          </nav>
+        </div>
       </div>
     );
   }
@@ -254,12 +321,12 @@ export function AppShell({
           </div>
         </aside>
       ) : null}
-      {secondaryPane ? (
+      {resolvedSecondaryPane ? (
         <aside className="ui-shell-secondary-sidebar">
-          <div className="ui-shell-secondary-pane">{secondaryPane}</div>
+          <div className="ui-shell-secondary-pane">{resolvedSecondaryPane}</div>
         </aside>
       ) : null}
-      <main className={cn("ui-shell-main", secondaryPane ? "ui-shell-main-with-secondary" : "")}>
+      <main className={cn("ui-shell-main", resolvedSecondaryPane ? "ui-shell-main-with-secondary" : "")}>
         <header className="ui-shell-header">
           <div className="ui-shell-header-left">
             {!hideSidebar ? (
@@ -298,7 +365,10 @@ export function AppShell({
                     )}
                   </div>
                   <ScrollArea className="ui-shell-mobile-nav-scroll">
-                    {renderNavLinks(true)}
+                    <div className="ui-shell-nav-groups">
+                      {renderNavLinks(true)}
+                      {renderSettingsLinks(true)}
+                    </div>
                   </ScrollArea>
                   <div className="ui-shell-mobile-nav-footer ui-mobile-safe-bottom">
                     <ThemePaletteSelect />

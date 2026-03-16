@@ -82,19 +82,12 @@
 }
 
 .roomFloor {
-  @apply mt-5 grid h-[calc(100%-4rem)] rounded-lg px-12 py-10;
-}
-
-.roomFloorCompact {
-  @apply grid-cols-2 content-start gap-x-10 gap-y-12;
-}
-
-.roomFloorWide {
-  @apply grid-cols-5 content-start gap-x-8 gap-y-12;
+  @apply relative mt-5 h-[clamp(18rem,36vh,26rem)] overflow-hidden rounded-lg px-12 py-10;
 }
 
 .occupantToken {
-  @apply relative h-auto min-w-0 flex-col items-center gap-2 bg-transparent py-2 text-center transition-transform duration-500 ease-out;
+  @apply absolute z-10 h-auto min-w-0 -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-2 bg-transparent py-2 text-center transition-transform duration-500 ease-out;
+  width: min(9rem, 20%);
 }
 
 .occupantToken:hover {

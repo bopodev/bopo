@@ -1,9 +1,7 @@
-import { apiGet } from "@/lib/api";
+import { TemplatesPageClient } from "@/components/workspace/templates-page-client";
 import { loadWorkspaceData } from "@/lib/workspace-data";
-import { PluginsWorkspacePageClient } from "@/components/workspace/plugins-page-client";
-import type { PluginRow } from "@/components/workspace/types";
 
-export default async function SettingsPluginsPage({
+export default async function SettingsTemplatesPage({
   searchParams
 }: {
   searchParams: Promise<{ companyId?: string }>;
@@ -12,7 +10,6 @@ export default async function SettingsPluginsPage({
   const workspaceData = await loadWorkspaceData(companyId, {
     include: {
       issues: false,
-      agents: false,
       heartbeatRuns: false,
       goals: false,
       approvals: false,
@@ -22,14 +19,9 @@ export default async function SettingsPluginsPage({
       projects: false
     }
   });
-  const scopedCompanyId = workspaceData.companyId;
-  const plugins =
-    scopedCompanyId !== null
-      ? ((await apiGet("/plugins", scopedCompanyId)) as { ok: true; data: PluginRow[] }).data
-      : [];
 
   return (
-    <PluginsWorkspacePageClient
+    <TemplatesPageClient
       companyId={workspaceData.companyId}
       activeCompany={workspaceData.activeCompany}
       companies={workspaceData.companies}
@@ -42,7 +34,7 @@ export default async function SettingsPluginsPage({
       auditEvents={workspaceData.auditEvents}
       costEntries={workspaceData.costEntries}
       projects={workspaceData.projects}
-      plugins={plugins}
+      templates={workspaceData.templates}
     />
   );
 }

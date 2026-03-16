@@ -3324,7 +3324,7 @@ export function WorkspaceClient({
         return (
           <div className={styles.renderSectionActionsContainer1}>
             <Button asChild variant="outline" size="sm">
-              <Link href={{ pathname: "/templates", query: { companyId: scopedCompanyId } }}>Open templates</Link>
+              <Link href={{ pathname: "/settings/templates", query: { companyId: scopedCompanyId } }}>Open templates</Link>
             </Button>
           </div>
         );
@@ -3344,7 +3344,7 @@ export function WorkspaceClient({
       <div className={styles.renderSectionActionsContainer1}>
         <CreateCompanyModal companyId="bootstrap-company" />
         <Button asChild variant="outline" size="sm">
-          <Link href={{ pathname: "/templates" as Route }}>Browse templates</Link>
+          <Link href={{ pathname: "/settings/templates" as Route }}>Browse templates</Link>
         </Button>
       </div>
       <Card>

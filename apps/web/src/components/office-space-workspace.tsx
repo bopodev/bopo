@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import type { OfficeOccupant, OfficeRoom } from "bopodev-contracts";
 import { AppShell } from "@/components/app-shell";
 import { AgentAvatar } from "@/components/agent-avatar";
@@ -18,22 +18,18 @@ import { SectionHeading } from "./workspace/shared";
 const roomDefinitions: Array<{
   id: OfficeRoom;
   title: string;
-  columns: number;
 }> = [
   {
     id: "waiting_room",
-    title: "Lounge",
-    columns: 2
+    title: "Lounge"
   },
   {
     id: "security",
-    title: "Approvals",
-    columns: 2
+    title: "Approvals"
   },
   {
     id: "work_space",
-    title: "Workspace",
-    columns: 5
+    title: "Workspace"
   }
 ];
 
@@ -209,22 +205,22 @@ function OfficeSpaceCanvas({
                   <CardHeader>
                     <CardTitle>{room.title}</CardTitle>
                     <CardDescription>
-                      {room.id === "work_space" ? `There are ${roomOccupants.length} agents working` : room.id === "security" ? `There are ${roomOccupants.length} agents waiting for approvals` : ` THere are ${roomOccupants.length} agents waiting for work`}
+                      {room.id === "work_space"
+                        ? `There are ${roomOccupants.length} agents working`
+                        : room.id === "security"
+                          ? `There are ${roomOccupants.length} agents waiting for approvals`
+                          : `There are ${roomOccupants.length} agents waiting for work`}
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div
-                      className={cn(
-                        styles.roomFloor,
-                        room.columns === 2 ? styles.roomFloorCompact : styles.roomFloorWide
-                      )}
-                    >
-                      {roomOccupants.map((occupant) => (
+                    <div className={styles.roomFloor}>
+                      {roomOccupants.map((occupant, index) => (
                         <Button
                           key={occupant.id}
                           type="button"
                           variant="ghost"
                           size="sm"
+                          style={getRoomOccupantStyle(room.id, index, roomOccupants.length)}
                           className={cn(
                             styles.occupantToken,
                             styles[`occupantToken${toPascalCase(occupant.status)}`],
@@ -307,5 +303,34 @@ function toPascalCase(value: string) {
     .split("_")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join("");
+}
+
+function getRoomOccupantStyle(roomId: OfficeRoom, index: number, total: number): CSSProperties {
+  if (total <= 0) {
+    return {};
+  }
+
+  // Slightly denser packing in workspace because the room is wider.
+  const roomDensity = roomId === "work_space" ? 1.1 : 0.9;
+  const maxRingRadius = 40 * roomDensity;
+  const radialStep = maxRingRadius / Math.max(Math.sqrt(total), 1);
+  const angle = index * 2.399963229728653; // golden angle in radians
+  const radius = Math.sqrt(index + 0.5) * radialStep;
+
+  const leftPercent = clamp(50 + Math.cos(angle) * radius, 12, 88);
+  const topPercent = clamp(50 + Math.sin(angle) * radius * 0.86, 24, 80);
+
+  // Scale down tokens as rooms get more crowded so all agents stay inside.
+  const scale = clamp(1.08 - total * 0.032, 0.58, 1);
+
+  return {
+    left: `${leftPercent}%`,
+    top: `${topPercent}%`,
+    transform: `translate(-50%, -50%) scale(${scale})`
+  };
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
 }
 

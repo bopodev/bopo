@@ -1009,7 +1009,7 @@ body {
 }
 
 .ui-shell-secondary-pane {
-  @apply min-h-full min-w-0 w-full overflow-hidden p-4;
+  @apply min-h-full min-w-0 w-full overflow-hidden px-4 py-6;
 }
 
 .ui-shell-header {
