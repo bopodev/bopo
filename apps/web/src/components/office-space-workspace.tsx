@@ -224,6 +224,7 @@ function OfficeSpaceCanvas({
                           key={occupant.id}
                           type="button"
                           variant="ghost"
+                          size="sm"
                           className={cn(
                             styles.occupantToken,
                             styles[`occupantToken${toPascalCase(occupant.status)}`],

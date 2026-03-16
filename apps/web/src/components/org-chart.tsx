@@ -120,7 +120,7 @@ export function OrgChart({ agents }: { agents: AgentNode[] }) {
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
-  const lineColor = "hsl(var(--border))";
+  const lineColor = "var(--border)";
   const panStartRef = useRef({
     x: 0,
     y: 0,

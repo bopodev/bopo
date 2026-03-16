@@ -51,7 +51,7 @@
 }
 
 .orgCard {
-  @apply w-[220px] rounded-lg border bg-card px-5 py-4 text-left;
+  @apply inline-flex w-[220px] flex-col rounded-lg border border-border bg-card px-5 py-4 text-left;
 }
 
 .treeContainer {
@@ -65,7 +65,7 @@
 .treeContainer :global(li::before),
 .treeContainer :global(li::after),
 .treeContainer :global(ul ul::before) {
-  border-color: hsl(var(--border)) !important;
+  border-color: var(--border) !important;
 }
 
 .treeContainer :global(li::before),

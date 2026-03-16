@@ -94,7 +94,7 @@
 }
 
 .occupantToken {
-  @apply relative flex min-w-0 flex-col items-center gap-2 bg-transparent text-center transition-transform duration-500 ease-out;
+  @apply relative h-auto min-w-0 flex-col items-center gap-2 bg-transparent py-2 text-center transition-transform duration-500 ease-out;
 }
 
 .occupantToken:hover {
@@ -138,7 +138,7 @@
 }
 
 .avatarBadge {
-  @apply inline-flex size-10 mb-1 rounded-full bg-background bg-cover bg-center bg-no-repeat;
+  @apply mb-1 inline-flex h-10 w-10 shrink-0 overflow-hidden rounded-full border border-border/60 bg-background bg-cover bg-center bg-no-repeat shadow-sm;
 }
 
 .occupantName {

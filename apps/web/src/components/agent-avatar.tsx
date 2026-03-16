@@ -12,11 +12,14 @@ export function AgentAvatar({ seed, name, className, size = 128 }: AgentAvatarPr
   const avatarUrl = buildAgentAvatarUrl({ seed, size });
 
   return (
-    <span
-      role="img"
-      aria-label={`${name} avatar`}
+    <img
+      src={avatarUrl}
+      alt={`${name} avatar`}
+      width={size}
+      height={size}
+      loading="lazy"
+      decoding="async"
       className={cn(className)}
-      style={{ backgroundImage: `url("${avatarUrl}")` }}
     />
   );
 }
