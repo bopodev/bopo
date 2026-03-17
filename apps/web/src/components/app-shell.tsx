@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import type { Route } from "next";
+import packageJson from "../../../../package.json";
 import { cn } from "@/lib/utils";
 import { apiGet } from "@/lib/api";
 import {
@@ -22,7 +23,8 @@ import {
   Settings,
   Puzzle,
   LayoutTemplate,
-  Menu
+  Menu,
+  Plus
 } from "lucide-react";
 import type { SectionLabel, SectionSlug } from "@/lib/sections";
 import {
@@ -49,6 +51,7 @@ import {
   SheetTitle,
   SheetTrigger
 } from "@/components/ui/sheet";
+import { CreateCompanyModal } from "@/components/modals/create-company-modal";
 
 const navGroups: Array<{
   label: string;
@@ -105,6 +108,8 @@ const settingsNavItems: Array<{
     isActive: (pathname) => pathname === "/settings" || pathname.startsWith("/settings/settings")
   }
 ];
+
+const appVersion = packageJson.version;
 
 export function AppShell({
   leftPane,
@@ -294,7 +299,22 @@ export function AppShell({
           <div className="ui-shell-sidebar-inner">
             <div className="ui-shell-sidebar-top">
               <div className="ui-shell-stack-sm">
-                <div className="ui-shell-section-label">Company</div>
+                <div className="ui-shell-company-header">
+                  <div className="ui-shell-section-label">Company</div>
+                  <CreateCompanyModal
+                    companyId={activeCompanyId ?? "bootstrap-company"}
+                    trigger={
+                      <Button
+                        variant="outline"
+                        size="icon-xs"
+                        className="ui-shell-company-create-button"
+                        aria-label="Create company"
+                      >
+                        <Plus />
+                      </Button>
+                    }
+                  />
+                </div>
                 {companies.length > 0 ? (
                   <Select value={activeCompanyId ?? undefined} onValueChange={updateCompany}>
                     <SelectTrigger className="ui-shell-company-trigger">
@@ -321,6 +341,7 @@ export function AppShell({
                 {renderNavLinks(false)}
               </div>
             </ScrollArea>
+            <div className="ui-shell-version">{`v${appVersion}`}</div>
           </div>
         </aside>
       ) : null}
@@ -347,7 +368,22 @@ export function AppShell({
                     <SheetDescription>Navigate the control plane.</SheetDescription>
                   </SheetHeader>
                   <div className="ui-shell-stack-sm mt-4">
-                    <div className="ui-shell-section-label">Company</div>
+                    <div className="ui-shell-company-header">
+                      <div className="ui-shell-section-label">Company</div>
+                      <CreateCompanyModal
+                        companyId={activeCompanyId ?? "bootstrap-company"}
+                        trigger={
+                          <Button
+                            variant="outline"
+                            size="icon-xs"
+                            className="ui-shell-company-create-button"
+                            aria-label="Create company"
+                          >
+                            <Plus />
+                          </Button>
+                        }
+                      />
+                    </div>
                     {companies.length > 0 ? (
                       <Select value={activeCompanyId ?? undefined} onValueChange={updateCompany}>
                         <SelectTrigger className="ui-shell-company-trigger">

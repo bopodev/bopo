@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { createCompany, deleteCompany, listCompanies, updateCompany } from "bopodev-db";
+import { createAgent, createCompany, deleteCompany, listCompanies, updateCompany } from "bopodev-db";
 import type { AppContext } from "../context";
 import { sendError, sendOk } from "../http";
 import { ensureCompanyModelPricingDefaults } from "../services/model-pricing";
@@ -33,6 +33,17 @@ export function createCompaniesRouter(ctx: AppContext) {
       return sendError(res, parsed.error.message, 422);
     }
     const company = await createCompany(ctx.db, parsed.data);
+    await createAgent(ctx.db, {
+      companyId: company.id,
+      role: "CEO",
+      name: "CEO",
+      providerType: "shell",
+      heartbeatCron: "*/5 * * * *",
+      monthlyBudgetUsd: "100.0000",
+      canHireAgents: true,
+      runtimeCommand: "echo",
+      runtimeArgsJson: JSON.stringify(["ceo bootstrap heartbeat"])
+    });
     await ensureCompanyBuiltinPluginDefaults(ctx.db, company.id);
     await ensureCompanyBuiltinTemplateDefaults(ctx.db, company.id);
     await ensureCompanyModelPricingDefaults(ctx.db, company.id);
