@@ -120,7 +120,8 @@ export function AppShell({
   activeCompanyId,
   pendingApprovalsCount,
   hideSidebar = false,
-  leftPaneScrollable = true
+  leftPaneScrollable = true,
+  singleScroll = false
 }: {
   leftPane: ReactNode;
   rightPane?: ReactNode;
@@ -131,6 +132,7 @@ export function AppShell({
   pendingApprovalsCount?: number;
   hideSidebar?: boolean;
   leftPaneScrollable?: boolean;
+  singleScroll?: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -293,7 +295,12 @@ export function AppShell({
   }
 
   return (
-    <div className={hideSidebar ? "ui-shell-root-no-sidebar" : "ui-shell-root"}>
+    <div
+      className={cn(
+        hideSidebar ? "ui-shell-root-no-sidebar" : "ui-shell-root",
+        singleScroll ? "ui-shell-root-single-scroll" : null
+      )}
+    >
       {!hideSidebar ? (
         <aside className="ui-shell-sidebar">
           <div className="ui-shell-sidebar-inner">
@@ -350,7 +357,13 @@ export function AppShell({
           <div className="ui-shell-secondary-pane">{resolvedSecondaryPane}</div>
         </aside>
       ) : null}
-      <main className={cn("ui-shell-main", resolvedSecondaryPane ? "ui-shell-main-with-secondary" : "")}>
+      <main
+        className={cn(
+          "ui-shell-main",
+          resolvedSecondaryPane ? "ui-shell-main-with-secondary" : "",
+          singleScroll ? "ui-shell-main-single-scroll" : null
+        )}
+      >
         <header className="ui-shell-header">
           <div className="ui-shell-header-left">
             {!hideSidebar ? (
@@ -428,8 +441,20 @@ export function AppShell({
           <div className="ui-shell-header-actions">
           </div>
         </header>
-        <section className={rightPane ? "ui-shell-content-with-pane" : "ui-shell-content"}>
-          <div className={leftPaneScrollable ? "ui-shell-left-pane" : "ui-shell-left-pane-static"}>{leftPane}</div>
+        <section
+          className={cn(
+            rightPane ? "ui-shell-content-with-pane" : "ui-shell-content",
+            singleScroll ? "ui-shell-content-single-scroll" : null
+          )}
+        >
+          <div
+            className={cn(
+              leftPaneScrollable ? "ui-shell-left-pane" : "ui-shell-left-pane-static",
+              singleScroll ? "ui-shell-left-pane-single-scroll" : null
+            )}
+          >
+            {leftPane}
+          </div>
           {rightPane ? (
             <ScrollArea className="ui-shell-right-scroll">
               <div className="ui-shell-right-pane">{rightPane}</div>
