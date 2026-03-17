@@ -188,6 +188,7 @@ export function RunDetailPageClient({
       leftPaneScrollable={false}
       secondaryPane={
         <div className="run-sidebar-pane">
+          <div className="run-sidebar-title">Recent runs</div>
           <div className="run-sidebar-list">
             {sidebarRecentRuns.map((entry) => {
               const isActive = entry.id === run.id;
