@@ -29,6 +29,7 @@ import {
   resolveAgentFallbackWorkspacePath,
   resolveProjectWorkspacePath
 } from "../lib/instance-paths";
+import { buildDefaultCeoBootstrapPrompt } from "../lib/ceo-bootstrap-prompt";
 import { resolveDefaultRuntimeCwdForCompany } from "../lib/workspace-policy";
 import { ensureCompanyModelPricingDefaults } from "../services/model-pricing";
 import { applyTemplateManifest } from "../services/template-apply-service";
@@ -122,6 +123,10 @@ export async function ensureOnboardingSeed(input: {
       });
       let ceoId = existingCeo?.id ?? null;
       if (!existingCeo) {
+        const ceoCreateRuntimeConfig = {
+          ...defaultRuntimeConfig,
+          bootstrapPrompt: buildDefaultCeoBootstrapPrompt()
+        };
         const ceo = await createAgent(db, {
           companyId,
           role: "CEO",
@@ -130,13 +135,13 @@ export async function ensureOnboardingSeed(input: {
           heartbeatCron: "*/5 * * * *",
           monthlyBudgetUsd: "100.0000",
           canHireAgents: true,
-          ...runtimeConfigToDb(defaultRuntimeConfig),
-          initialState: runtimeConfigToStateBlobPatch(defaultRuntimeConfig)
+          ...runtimeConfigToDb(ceoCreateRuntimeConfig),
+          initialState: runtimeConfigToStateBlobPatch(ceoCreateRuntimeConfig)
         });
         ceoId = ceo.id;
         ceoCreated = true;
         ceoProviderType = agentProvider;
-        ceoRuntimeModel = ceo.runtimeModel ?? defaultRuntimeConfig.runtimeModel ?? null;
+        ceoRuntimeModel = ceo.runtimeModel ?? ceoCreateRuntimeConfig.runtimeModel ?? null;
       } else if (isBootstrapCeoRuntime(existingCeo.providerType, existingCeo.stateBlob)) {
         const nextState = {
           ...stripRuntimeFromState(existingCeo.stateBlob),

@@ -78,6 +78,11 @@ type ProviderOption = {
   label: string;
 };
 
+type ProjectOption = {
+  id: string;
+  name: string;
+};
+
 const EDIT_AGENT_VISIBLE_PROVIDER_TYPES: ProviderType[] = ["claude_code", "codex", "opencode", "gemini_cli"];
 
 const defaultVisibleProviders: ProviderOption[] = [
@@ -91,6 +96,8 @@ export function CreateAgentModal({
   companyId,
   agent,
   availableAgents,
+  projects,
+  ceoAgentId,
   suggestedRuntimeCwd,
   fallbackDefaults,
   triggerLabel,
@@ -120,6 +127,8 @@ export function CreateAgentModal({
     stateBlob?: string;
   };
   availableAgents?: Array<{ id: string; name: string }>;
+  projects?: ProjectOption[];
+  ceoAgentId?: string | null;
   suggestedRuntimeCwd?: string | null;
   fallbackDefaults?: {
     providerType?: ProviderType | null;
@@ -151,6 +160,10 @@ export function CreateAgentModal({
   const [interruptGraceSec, setInterruptGraceSec] = useState("15");
   const [sandboxMode, setSandboxMode] = useState<"workspace_write" | "full_access">("workspace_write");
   const [allowWebSearch, setAllowWebSearch] = useState(false);
+  const isEditing = Boolean(agent);
+  const [creationMode, setCreationMode] = useState<"intro" | "delegate" | "advanced">(isEditing ? "advanced" : "intro");
+  const [delegateProjectId, setDelegateProjectId] = useState("");
+  const [delegateRequest, setDelegateRequest] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [adapterMetadataByProvider, setAdapterMetadataByProvider] = useState<
@@ -162,7 +175,6 @@ export function CreateAgentModal({
     >
   >({});
   const [modelRegistryRows, setModelRegistryRows] = useState<ModelRegistryRow[]>([]);
-  const isEditing = Boolean(agent);
   const providerMetadata = adapterMetadataByProvider[providerType];
   const visibleProviders: ProviderOption[] = (
     Object.values(adapterMetadataByProvider).filter(Boolean).length > 0
@@ -389,6 +401,7 @@ export function CreateAgentModal({
       );
       setSandboxMode(runPolicy.sandboxMode as "workspace_write" | "full_access");
       setAllowWebSearch(runPolicy.allowWebSearch);
+      setCreationMode("advanced");
       setError(null);
       return;
     }
@@ -421,6 +434,9 @@ export function CreateAgentModal({
     setInterruptGraceSec(effectiveDefaults.interruptGraceSec);
     setSandboxMode(effectiveDefaults.sandboxMode);
     setAllowWebSearch(effectiveDefaults.allowWebSearch);
+    setCreationMode("intro");
+    setDelegateProjectId(projects?.[0]?.id ?? "");
+    setDelegateRequest("");
     setError(null);
     if (!initialRuntimeCwd) {
       void apiGet<{ runtimeCwd: string }>("/agents/runtime-default-cwd", companyId)
@@ -431,7 +447,7 @@ export function CreateAgentModal({
           // Silent fallback: keep field empty when suggestion lookup fails.
         });
     }
-  }, [open, isEditing, agent, suggestedRuntimeCwd, companyId, fallbackDefaults]);
+  }, [open, isEditing, agent, suggestedRuntimeCwd, companyId, fallbackDefaults, projects]);
 
   useEffect(() => {
     if (!open) {
@@ -486,6 +502,45 @@ export function CreateAgentModal({
     setIsSubmitting(true);
     setError(null);
     try {
+      if (!isEditing && creationMode === "intro") {
+        setError("Choose whether to ask the CEO or configure the agent yourself.");
+        return;
+      }
+      if (!isEditing && creationMode === "delegate") {
+        if (!ceoAgentId) {
+          setError("No CEO agent found. Create a CEO agent first, then ask the CEO to create agents.");
+          return;
+        }
+        if (!delegateProjectId) {
+          setError("Select a project for the CEO request.");
+          return;
+        }
+        const requestNotes = delegateRequest.trim();
+        const managerName = managerOptions.find((entry) => entry.id === managerAgentId)?.name ?? "No manager";
+        const issueBody = [
+          "Please create a new agent with the following profile:",
+          "",
+          `- Name: ${name || "(decide best fit)"}`,
+          `- Role: ${role || "Engineer"}`,
+          `- Reports to: ${managerName}`,
+          `- Preferred provider: ${providerType}`,
+          `- Preferred model: ${runtimeModel || "(CEO choose best model)"}`,
+          "",
+          "Additional request details:",
+          requestNotes || "- None provided."
+        ].join("\n");
+        await apiPost("/issues", companyId, {
+          projectId: delegateProjectId,
+          title: `Create a new agent: ${role || "Engineer"}`,
+          body: issueBody,
+          status: "todo",
+          assigneeAgentId: ceoAgentId,
+          labels: ["agent-hiring", "delegated"]
+        });
+        setOpen(false);
+        router.refresh();
+        return;
+      }
       const normalizedRuntimeEnv = normalizeRuntimeEnvInput(runtimeEnv);
       if (normalizedRuntimeEnv !== runtimeEnv) {
         setRuntimeEnv(normalizedRuntimeEnv);
@@ -602,6 +657,91 @@ export function CreateAgentModal({
         </DialogHeader>
         <form className={styles.createAgentModalForm} onSubmit={onSubmit}>
           <div className="ui-dialog-content-scrollable">
+            {!isEditing && creationMode === "intro" ? (
+              <section className={styles.createAgentModalSection}>
+                <p className={styles.createAgentModalSectionDescription}>
+                  We recommend letting your CEO handle agent setup. They can align reporting lines, permissions, and runtime defaults.
+                </p>
+                <Button
+                  type="button"
+                  onClick={() => {
+                    setCreationMode("delegate");
+                    setError(null);
+                  }}
+                >
+                  Ask the CEO to create a new agent
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => {
+                    setCreationMode("advanced");
+                    setError(null);
+                  }}
+                >
+                  I want advanced configuration myself
+                </Button>
+              </section>
+            ) : null}
+            {!isEditing && creationMode === "delegate" ? (
+              <section className={styles.createAgentModalSection}>
+                <FieldGroup>
+                  <Field>
+                    <FieldLabel>Project</FieldLabel>
+                    <Select value={delegateProjectId} onValueChange={setDelegateProjectId}>
+                      <SelectTrigger className={styles.createAgentModalSelectTrigger}>
+                        <SelectValue placeholder="Select a project" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(projects ?? []).map((project) => (
+                          <SelectItem key={project.id} value={project.id}>
+                            {project.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {(projects ?? []).length === 0 ? (
+                      <FieldDescription>Create a project first so delegation requests have a destination.</FieldDescription>
+                    ) : null}
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="agent-name">Requested agent name</FieldLabel>
+                    <Input id="agent-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Ada" />
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="agent-role">Requested title</FieldLabel>
+                    <Input id="agent-role" value={role} onChange={(e) => setRole(e.target.value)} placeholder="CTO, SEO, Engineer" />
+                  </Field>
+                  <Field>
+                    <FieldLabel>Reports to</FieldLabel>
+                    <Select value={managerAgentId ?? "__none"} onValueChange={(value) => setManagerAgentId(value === "__none" ? null : value)}>
+                      <SelectTrigger className={styles.createAgentModalSelectTrigger}>
+                        <SelectValue placeholder="No manager (top level)" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none">No manager</SelectItem>
+                        {managerOptions.map((entry) => (
+                          <SelectItem key={entry.id} value={entry.id}>
+                            {entry.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="delegate-request-notes">Request details</FieldLabel>
+                    <Textarea
+                      id="delegate-request-notes"
+                      value={delegateRequest}
+                      onChange={(e) => setDelegateRequest(e.target.value)}
+                      placeholder="Describe what kind of agent you want and any constraints."
+                    />
+                  </Field>
+                </FieldGroup>
+              </section>
+            ) : null}
+            {isEditing || creationMode === "advanced" ? (
+              <>
             <section className={styles.createAgentModalSection}>
               <FieldGroup className={styles.createAgentModalFieldGroup}>
                 <Field>
@@ -824,12 +964,16 @@ export function CreateAgentModal({
                 </Field>
               </FieldGroup>
             </section>
+              </>
+            ) : null}
           </div>
           {error ? <p className={styles.createAgentModalText}>{error}</p> : null}
           <DialogFooter showCloseButton>
-            <Button type="submit" disabled={isSubmitting}>
-              {isEditing ? "Save" : "Submit for approval"}
-            </Button>
+            {isEditing || creationMode !== "intro" ? (
+              <Button type="submit" disabled={isSubmitting}>
+                {isEditing ? "Save" : creationMode === "delegate" ? "Create request" : "Submit for approval"}
+              </Button>
+            ) : null}
           </DialogFooter>
         </form>
       </DialogContent>

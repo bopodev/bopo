@@ -6,6 +6,7 @@ import { createAgent, createCompany, deleteCompany, listCompanies, updateCompany
 import type { AppContext } from "../context";
 import { sendError, sendOk } from "../http";
 import { normalizeRuntimeConfig, resolveRuntimeModelForProvider, runtimeConfigToDb, runtimeConfigToStateBlobPatch } from "../lib/agent-config";
+import { buildDefaultCeoBootstrapPrompt } from "../lib/ceo-bootstrap-prompt";
 import { resolveOpencodeRuntimeModel } from "../lib/opencode-model";
 import { resolveDefaultRuntimeCwdForCompany } from "../lib/workspace-policy";
 import { canAccessCompany, requireBoardRole, requirePermission } from "../middleware/request-actor";
@@ -77,6 +78,7 @@ export function createCompaniesRouter(ctx: AppContext) {
       defaultRuntimeCwd,
       runtimeConfig: {
         runtimeModel: resolvedRuntimeModel,
+        bootstrapPrompt: buildDefaultCeoBootstrapPrompt(),
         runtimeEnv: resolveSeedRuntimeEnv(providerType),
         ...(providerType === "shell"
           ? {

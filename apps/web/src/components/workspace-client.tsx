@@ -660,16 +660,19 @@ export function WorkspaceClient({
     inputUsdPer1M: string;
     outputUsdPer1M: string;
   } | null>(null);
+  const ceoAgent = useMemo(
+    () => agents.find((entry) => entry.role === "CEO" || entry.name === "CEO") ?? null,
+    [agents]
+  );
   const onboardingRuntimeFallback = useMemo(() => {
-    const ceo = agents.find((entry) => entry.role === "CEO" || entry.name === "CEO");
-    if (!ceo || !isRuntimeDefaultsProviderType(ceo.providerType)) {
+    if (!ceoAgent || !isRuntimeDefaultsProviderType(ceoAgent.providerType)) {
       return undefined;
     }
     return {
-      providerType: ceo.providerType,
-      runtimeModel: ceo.runtimeModel ?? parseRuntimeModelFromStateBlob(ceo.stateBlob)
+      providerType: ceoAgent.providerType,
+      runtimeModel: ceoAgent.runtimeModel ?? parseRuntimeModelFromStateBlob(ceoAgent.stateBlob)
     };
-  }, [agents]);
+  }, [ceoAgent]);
   const deleteCompanyDetails = useMemo(
     () =>
       [
@@ -3372,6 +3375,8 @@ export function WorkspaceClient({
             <CreateAgentModal
               companyId={scopedCompanyId}
               availableAgents={agents.map((entry) => ({ id: entry.id, name: entry.name }))}
+              projects={projects.map((project) => ({ id: project.id, name: project.name }))}
+              ceoAgentId={ceoAgent?.id ?? null}
               suggestedRuntimeCwd={suggestedAgentRuntimeCwd}
               fallbackDefaults={onboardingRuntimeFallback}
             />
@@ -3706,6 +3711,8 @@ export function WorkspaceClient({
                 <CreateAgentModal
                   companyId={companyId}
                   availableAgents={agents.map((entry) => ({ id: entry.id, name: entry.name }))}
+                  projects={projects.map((project) => ({ id: project.id, name: project.name }))}
+                  ceoAgentId={ceoAgent?.id ?? null}
                   suggestedRuntimeCwd={suggestedAgentRuntimeCwd}
                   fallbackDefaults={onboardingRuntimeFallback}
                 />
