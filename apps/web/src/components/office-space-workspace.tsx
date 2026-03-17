@@ -206,7 +206,7 @@ function OfficeSpaceCanvas({
                               <span className="min-w-0 flex-1 text-left">
                                 <span className="block truncate">{occupant.displayName}</span>
                                 <span className="block text-base text-muted-foreground">
-                                  {occupant.status === "working" ? occupant.taskLabel : toOfficeStatusLabel(occupant.status)}
+                                  {occupant.status === "working" ? occupant.taskLabel : occupant.status}
                                 </span>
                               </span>
                             </Button>
@@ -324,23 +324,6 @@ function EmptyOfficeState() {
 function OfficeOccupantPopoverBody({ occupant }: { occupant: OfficeOccupant }) {
   return (
     <div className={styles.occupantPopoverBody}>
-      <div className={styles.occupantPopoverHeader}>
-        <AgentAvatar
-          seed={agentAvatarSeed(occupant.id, occupant.displayName, occupant.avatarSeed)}
-          name={occupant.displayName}
-          className={styles.occupantPopoverAvatar}
-          size={64}
-        />
-        <div className={styles.occupantPopoverIdentity}>
-          <div className={styles.occupantPopoverName}>{occupant.displayName}</div>
-          <div className={styles.occupantPopoverRole}>{occupant.role ?? "No role set"}</div>
-        </div>
-      </div>
-      <div className={styles.occupantPopoverBadges}>
-        <Badge variant="outline">{toOfficeStatusLabel(occupant.status)}</Badge>
-        <Badge variant="outline">{toRoomTitle(occupant.room)}</Badge>
-        {occupant.providerType ? <Badge variant="outline">{occupant.providerType}</Badge> : null}
-      </div>
       <div className={styles.occupantPopoverSection}>
         <div className={styles.occupantPopoverSectionLabel}>Current work</div>
         <p className={styles.occupantPopoverSectionText}>{occupant.taskLabel}</p>
@@ -372,29 +355,6 @@ function sortOccupants(occupants: OfficeOccupant[]) {
     }
     return a.displayName.localeCompare(b.displayName);
   });
-}
-
-function toOfficeStatusLabel(status: OfficeOccupant["status"]) {
-  if (status === "waiting_for_approval") {
-    return "Waiting for approval";
-  }
-  if (status === "working") {
-    return "Working";
-  }
-  if (status === "paused") {
-    return "Paused";
-  }
-  return "Idle";
-}
-
-function toRoomTitle(room: OfficeRoom) {
-  if (room === "work_space") {
-    return "Workspace";
-  }
-  if (room === "security") {
-    return "Approvals";
-  }
-  return "Lounge";
 }
 
 function toPascalCase(value: string) {
