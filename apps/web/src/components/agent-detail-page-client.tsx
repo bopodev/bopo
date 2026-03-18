@@ -983,15 +983,6 @@ export function AgentDetailPageClient({
 
       <div className={styles.costSectionContainer}>
         <div className={styles.costGridCardContent}>
-          <MetricCard label="Input tokens" value={costSummary.input.toLocaleString()} />
-          <MetricCard label="Output tokens" value={costSummary.output.toLocaleString()} />
-          <MetricCard
-            label="Monthly budget"
-            value={typeof agent.monthlyBudgetUsd === "number" ? `$${agent.monthlyBudgetUsd.toFixed(2)}` : "Not set"}
-          />
-          <MetricCard label="Budget used (month)" value={`$${usedBudgetUsd.toFixed(2)}`} />
-        </div>
-        <div className={styles.costGridCardContent}>
           <MetricCard label="Open issues" value={openAssignedIssueCount.toLocaleString()} />
           <MetricCard label="Blocked issues" value={blockedIssueCount.toLocaleString()} />
           <MetricCard label="Run success rate" value={`${runHealth.successRate.toFixed(1)}%`} />
@@ -1115,6 +1106,18 @@ export function AgentDetailPageClient({
           <ConfigRow label="Agent ID" value={agent.id} />
           <ConfigRow label="Status" value={liveStatus} detail={liveStatusDetail} />
           <ConfigRow label="Heartbeat" value={formatHeartbeatCadence(agent.heartbeatCron)} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className={styles.configCardContent}>
+          <ConfigRow
+            label="Monthly budget"
+            value={typeof agent.monthlyBudgetUsd === "number" ? `$${agent.monthlyBudgetUsd.toFixed(2)}` : "Not set"}
+          />
+          <ConfigRow label="Budget used (month)" value={`$${usedBudgetUsd.toFixed(2)}`} />
+          <ConfigRow label="Input tokens" value={costSummary.input.toLocaleString()} />
+          <ConfigRow label="Output tokens" value={costSummary.output.toLocaleString()} />
         </CardContent>
       </Card>
     </div>
