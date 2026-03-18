@@ -360,3 +360,55 @@
 .modelPricingDialogPricingGroup {
   @apply grid gap-6 md:grid-cols-2;
 }
+
+.attentionDialogBody {
+  @apply space-y-4;
+}
+
+.attentionDialogMetaGrid {
+  @apply grid gap-6 sm:grid-cols-2 mb-6;
+}
+
+.attentionDialogMetaItem {
+  @apply flex flex-col gap-2 rounded-md border bg-muted/20 px-5 py-4 text-sidebar-foreground capitalize;
+}
+
+.attentionDialogMetaLabel {
+  @apply text-xs uppercase tracking-[0.08em] text-sidebar-foreground/50 font-semibold;
+}
+
+.attentionDialogMetaValue {
+  @apply mt-1 flex flex-wrap items-center gap-2 text-base text-sidebar-foreground capitalize;
+}
+
+.attentionDialogBadge {
+  @apply mt-1 w-fit;
+}
+
+.attentionDialogOverdueBadge {
+  @apply border-amber-500/40 bg-amber-500/10 text-amber-200;
+}
+
+.attentionDialogSection {
+  @apply flex flex-col gap-2 rounded-md border bg-muted/20 px-5 py-4 text-sidebar-foreground mb-6 last:mb-0;
+}
+
+.attentionDialogSectionHeader {
+  @apply flex items-center justify-between gap-2;
+}
+
+.attentionDialogPayloadToggle {
+  @apply h-7 px-2 text-xs;
+}
+
+.attentionDialogPayload {
+  @apply mt-1 max-h-[320px] overflow-auto rounded-md border bg-muted p-3 text-sm whitespace-pre-wrap break-all;
+}
+
+.attentionDialogFooter {
+  @apply w-full flex-row items-center justify-end;
+}
+
+.attentionDialogActionGroup {
+  @apply flex items-center gap-6;
+}

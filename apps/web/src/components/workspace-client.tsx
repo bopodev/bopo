@@ -722,6 +722,9 @@ export function WorkspaceClient({
   const [attentionCategoryFilter, setAttentionCategoryFilter] = useState<"all" | AttentionRow["category"]>("all");
   const [attentionActorFilter, setAttentionActorFilter] = useState<"all" | AttentionRow["requiredActor"]>("all");
   const [attentionOverdueFilter, setAttentionOverdueFilter] = useState<"all" | "overdue" | "on_track">("all");
+  const [selectedAttentionItem, setSelectedAttentionItem] = useState<AttentionRow | null>(null);
+  const [attentionDetailsOpen, setAttentionDetailsOpen] = useState(false);
+  const [attentionPayloadExpanded, setAttentionPayloadExpanded] = useState(false);
   const [pluginsQuery, setPluginsQuery] = useState("");
   const [pluginsStatusFilter, setPluginsStatusFilter] = useState<"all" | "active" | "installed" | "not_installed">("all");
   const [pluginsKindFilter, setPluginsKindFilter] = useState<string>("all");
@@ -1136,6 +1139,16 @@ export function WorkspaceClient({
     [approvals, isDashboardNav]
   );
   const approvalById = useMemo(() => new Map(approvals.map((approval) => [approval.id, approval])), [approvals]);
+  const selectedAttentionApproval = useMemo(() => {
+    const approvalId = selectedAttentionItem?.evidence.approvalId;
+    if (!approvalId) {
+      return null;
+    }
+    return approvalById.get(approvalId) ?? null;
+  }, [approvalById, selectedAttentionItem]);
+  const selectedAttentionHasPendingApproval = selectedAttentionApproval?.status === "pending";
+  const selectedAttentionIsPendingHireApproval =
+    selectedAttentionHasPendingApproval && selectedAttentionApproval.action === "hire_agent";
   const pendingApprovalsCount = useMemo(
     () =>
       attentionItems.reduce(
@@ -3177,17 +3190,6 @@ export function WorkspaceClient({
         )
       },
       {
-        id: "state",
-        accessorFn: (row) => row.state,
-        header: ({ column }) => <DataTableColumnHeader column={column} title="State" />,
-        cell: ({ row }) => (
-          <div className={styles.formatDurationContainer3}>
-            <Badge variant="outline">{row.original.state.replaceAll("_", " ")}</Badge>
-            {!row.original.seenAt ? <Badge variant="outline">Unseen</Badge> : null}
-          </div>
-        )
-      },
-      {
         id: "source",
         accessorFn: (row) => row.sourceTimestamp,
         header: ({ column }) => <DataTableColumnHeader column={column} title="Updated" />,
@@ -3197,103 +3199,115 @@ export function WorkspaceClient({
         id: "actions",
         header: () => <div className={styles.tableHeaderAlignRight}>Actions</div>,
         enableSorting: false,
-        cell: ({ row }) => (
-          <div className={styles.formatDurationContainer3}>
-            {!row.original.seenAt ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => markAttentionSeen(row.original.key)}
-                disabled={isActionPending(`attention:${row.original.key}:seen`)}
-              >
-                Mark seen
-              </Button>
-            ) : null}
-            {row.original.state === "open" ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => acknowledgeAttention(row.original.key)}
-                disabled={isActionPending(`attention:${row.original.key}:acknowledge`)}
-              >
-                Acknowledge
-              </Button>
-            ) : null}
-            {row.original.state !== "dismissed" ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => dismissAttention(row.original.key)}
-                disabled={isActionPending(`attention:${row.original.key}:dismiss`)}
-              >
-                Dismiss
-              </Button>
-            ) : (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => undismissAttention(row.original.key)}
-                disabled={isActionPending(`attention:${row.original.key}:undismiss`)}
-              >
-                Restore
-              </Button>
-            )}
-            {row.original.state !== "resolved" ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => resolveAttention(row.original.key)}
-                disabled={isActionPending(`attention:${row.original.key}:resolve`)}
-              >
-                Resolve
-              </Button>
-            ) : null}
-            {row.original.category === "approval_required" &&
-            row.original.evidence.approvalId &&
-            approvalById.get(row.original.evidence.approvalId)?.status === "pending" ? (
-              <>
-                <ConfirmActionModal
-                  triggerLabel="Approve"
-                  triggerVariant="outline"
-                  triggerSize="sm"
-                  title="Approve request?"
-                  description="Apply the queued change to the control plane."
-                  details={formatApprovalPayloadDetails(approvalById.get(row.original.evidence.approvalId)?.payload)}
-                  confirmLabel="Approve"
-                  onConfirm={() => resolveApproval(row.original.evidence.approvalId!, "approved")}
-                  triggerDisabled={isActionPending(`approval:${row.original.evidence.approvalId}:resolve`)}
-                />
-                <ConfirmActionModal
-                  triggerLabel="Reject"
-                  triggerVariant="outline"
-                  triggerSize="sm"
-                  title="Reject request?"
-                  description="Reject this governance request."
-                  details={formatApprovalPayloadDetails(approvalById.get(row.original.evidence.approvalId)?.payload)}
-                  confirmLabel="Reject"
-                  onConfirm={() => resolveApproval(row.original.evidence.approvalId!, "rejected")}
-                  triggerDisabled={isActionPending(`approval:${row.original.evidence.approvalId}:resolve`)}
-                />
-                <ConfirmActionModal
-                  triggerLabel="Override"
-                  triggerVariant="outline"
-                  triggerSize="sm"
-                  title="Override request?"
-                  description="Mark the request as overridden without applying it."
-                  details={formatApprovalPayloadDetails(approvalById.get(row.original.evidence.approvalId)?.payload)}
-                  confirmLabel="Override"
-                  onConfirm={() => resolveApproval(row.original.evidence.approvalId!, "overridden")}
-                  triggerDisabled={isActionPending(`approval:${row.original.evidence.approvalId}:resolve`)}
-                />
-              </>
-            ) : null}
-            <Button asChild variant="outline" size="sm">
-              <a href={toAttentionActionHref(row.original.actionHref, companyId)}>
-                {row.original.actionLabel}
-              </a>
-            </Button>
-          </div>
-        )
+        cell: ({ row }) => {
+          const linkedApproval =
+            row.original.category === "approval_required" && row.original.evidence.approvalId
+              ? approvalById.get(row.original.evidence.approvalId)
+              : undefined;
+          const isPendingHireApproval = linkedApproval?.status === "pending" && linkedApproval.action === "hire_agent";
+          const showStandardAttentionActions = !isPendingHireApproval;
+          const showApprovalResolutionActions = linkedApproval?.status === "pending" && Boolean(row.original.evidence.approvalId);
+
+          return (
+            <div className={styles.formatDurationContainer3} onClick={(event) => event.stopPropagation()}>
+              {showStandardAttentionActions && !row.original.seenAt ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => markAttentionSeen(row.original.key)}
+                  disabled={isActionPending(`attention:${row.original.key}:seen`)}
+                >
+                  Mark seen
+                </Button>
+              ) : null}
+              {showStandardAttentionActions && row.original.state === "open" ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => acknowledgeAttention(row.original.key)}
+                  disabled={isActionPending(`attention:${row.original.key}:acknowledge`)}
+                >
+                  Acknowledge
+                </Button>
+              ) : null}
+              {row.original.state !== "dismissed" ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => dismissAttention(row.original.key)}
+                  disabled={isActionPending(`attention:${row.original.key}:dismiss`)}
+                >
+                  Dismiss
+                </Button>
+              ) : showStandardAttentionActions ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => undismissAttention(row.original.key)}
+                  disabled={isActionPending(`attention:${row.original.key}:undismiss`)}
+                >
+                  Restore
+                </Button>
+              ) : null}
+              {showStandardAttentionActions && row.original.state !== "resolved" ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => resolveAttention(row.original.key)}
+                  disabled={isActionPending(`attention:${row.original.key}:resolve`)}
+                >
+                  Resolve
+                </Button>
+              ) : null}
+              {showApprovalResolutionActions ? (
+                <>
+                  <ConfirmActionModal
+                    triggerLabel="Approve"
+                    triggerVariant="outline"
+                    triggerSize="sm"
+                    title="Approve request?"
+                    description="Apply the queued change to the control plane."
+                    details={formatApprovalPayloadDetails(linkedApproval?.payload)}
+                    confirmLabel="Approve"
+                    onConfirm={() => resolveApproval(row.original.evidence.approvalId!, "approved")}
+                    triggerDisabled={isActionPending(`approval:${row.original.evidence.approvalId}:resolve`)}
+                  />
+                  {isPendingHireApproval ? null : (
+                    <>
+                      <ConfirmActionModal
+                        triggerLabel="Reject"
+                        triggerVariant="outline"
+                        triggerSize="sm"
+                        title="Reject request?"
+                        description="Reject this governance request."
+                        details={formatApprovalPayloadDetails(linkedApproval?.payload)}
+                        confirmLabel="Reject"
+                        onConfirm={() => resolveApproval(row.original.evidence.approvalId!, "rejected")}
+                        triggerDisabled={isActionPending(`approval:${row.original.evidence.approvalId}:resolve`)}
+                      />
+                      <ConfirmActionModal
+                        triggerLabel="Override"
+                        triggerVariant="outline"
+                        triggerSize="sm"
+                        title="Override request?"
+                        description="Mark the request as overridden without applying it."
+                        details={formatApprovalPayloadDetails(linkedApproval?.payload)}
+                        confirmLabel="Override"
+                        onConfirm={() => resolveApproval(row.original.evidence.approvalId!, "overridden")}
+                        triggerDisabled={isActionPending(`approval:${row.original.evidence.approvalId}:resolve`)}
+                      />
+                    </>
+                  )}
+                </>
+              ) : null}
+              {showStandardAttentionActions ? (
+                <Button asChild variant="outline" size="sm">
+                  <a href={toAttentionActionHref(row.original.actionHref, companyId)}>{row.original.actionLabel}</a>
+                </Button>
+              ) : null}
+            </div>
+          );
+        }
       }
     ],
     [approvalById, companyId, isActionPending]
@@ -4340,6 +4354,11 @@ export function WorkspaceClient({
               columns={attentionColumns}
               data={filteredAttentionItems}
               emptyMessage="No attention items match current filters."
+              onRowClick={(item) => {
+                setSelectedAttentionItem(item);
+                setAttentionPayloadExpanded(false);
+                setAttentionDetailsOpen(true);
+              }}
               toolbarActions={
                 <div className={styles.governanceFiltersCardContent}>
                   <Input
@@ -4415,45 +4434,139 @@ export function WorkspaceClient({
                       <SelectItem value="system">System</SelectItem>
                     </SelectContent>
                   </Select>
-                  <Select
-                    value={attentionOverdueFilter}
-                    onValueChange={(value) => setAttentionOverdueFilter(value as "all" | "overdue" | "on_track")}
-                  >
-                    <SelectTrigger className={styles.governanceFiltersSelect}>
-                      <SelectValue placeholder="SLA" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Overdue + on track</SelectItem>
-                      <SelectItem value="overdue">Overdue only</SelectItem>
-                      <SelectItem value="on_track">On track only</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Select value={inboxSeenFilter} onValueChange={(value) => setInboxSeenFilter(value as "all" | "seen" | "unseen")}>
-                    <SelectTrigger className={styles.governanceFiltersSelect}>
-                      <SelectValue placeholder="Seen" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Seen + unseen</SelectItem>
-                      <SelectItem value="unseen">Unseen only</SelectItem>
-                      <SelectItem value="seen">Seen only</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Select
-                    value={inboxDismissedFilter}
-                    onValueChange={(value) => setInboxDismissedFilter(value as "all" | "active" | "dismissed")}
-                  >
-                    <SelectTrigger className={styles.governanceFiltersSelect}>
-                      <SelectValue placeholder="Dismissed" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All dismissal states</SelectItem>
-                      <SelectItem value="active">Not dismissed</SelectItem>
-                      <SelectItem value="dismissed">Dismissed only</SelectItem>
-                    </SelectContent>
-                  </Select>
                 </div>
               }
             />
+            <Dialog
+              open={attentionDetailsOpen}
+              onOpenChange={(open) => {
+                setAttentionDetailsOpen(open);
+                if (!open) {
+                  setSelectedAttentionItem(null);
+                  setAttentionPayloadExpanded(false);
+                }
+              }}
+            >
+              <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle>{selectedAttentionItem?.title ?? "Inbox item details"}</DialogTitle>
+                  <DialogDescription>
+                    {selectedAttentionItem?.contextSummary ?? "Review details and take action."}
+                  </DialogDescription>
+                </DialogHeader>
+                {selectedAttentionItem ? (
+                  <div className={styles.attentionDialogBody}>
+                    <div className={styles.attentionDialogMetaGrid}>
+                      <div className={styles.attentionDialogMetaItem}>
+                        <div className={styles.attentionDialogMetaLabel}>Category</div>
+                        {formatAttentionCategoryLabel(selectedAttentionItem.category)}
+                      </div>
+                      <div className={styles.attentionDialogMetaItem}>
+                        <div className={styles.attentionDialogMetaLabel}>Severity</div>
+                        {selectedAttentionItem.severity}
+                      </div>
+                      <div className={styles.attentionDialogMetaItem}>
+                        <div className={styles.attentionDialogMetaLabel}>Required actor</div>
+                        {selectedAttentionItem.requiredActor}
+                      </div>
+                      <div className={styles.attentionDialogMetaItem}>
+                        <div className={styles.attentionDialogMetaLabel}>State</div>
+                        {selectedAttentionItem.state.replaceAll("_", " ")}
+                      </div>
+                      <div className={styles.attentionDialogMetaItem}>
+                        <div className={styles.attentionDialogMetaLabel}>Updated</div>
+                        <div className={styles.attentionDialogMetaValue}>{formatDateTime(selectedAttentionItem.sourceTimestamp)}</div>
+                      </div>
+                      <div className={styles.attentionDialogMetaItem}>
+                        <div className={styles.attentionDialogMetaLabel}>Age</div>
+                        <div className={styles.attentionDialogMetaValue}>
+                          {formatRelativeAgeCompact(selectedAttentionItem.sourceTimestamp)}
+                          {isAttentionOverdue(selectedAttentionItem) ? (
+                            <Badge variant="outline" className={styles.attentionDialogOverdueBadge}>
+                              Overdue
+                            </Badge>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+                    <div className={styles.attentionDialogSection}>
+                      <div className={styles.attentionDialogMetaLabel}>Impact summary</div>
+                      <div className={styles.attentionDialogMetaValue}>{selectedAttentionItem.impactSummary || "No impact summary."}</div>
+                    </div>
+                    {selectedAttentionApproval ? (
+                      <>
+                        <div className={styles.attentionDialogSection}>
+                          <div className={styles.attentionDialogMetaLabel}>Approval action</div>
+                          <div className={styles.attentionDialogMetaValue}>{formatApprovalActionLabel(selectedAttentionApproval.action)}</div>
+                        </div>
+                        <div className={styles.attentionDialogSection}>
+                          <div className={styles.attentionDialogSectionHeader}>
+                            <div className={styles.attentionDialogMetaLabel}>Approval payload</div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className={styles.attentionDialogPayloadToggle}
+                              onClick={() => setAttentionPayloadExpanded((current) => !current)}
+                            >
+                              {attentionPayloadExpanded ? "Hide payload" : "Show payload"}
+                            </Button>
+                          </div>
+                          <div className={styles.attentionDialogMetaValue}>{describeApprovalPayload(selectedAttentionApproval.payload)}</div>
+                          {attentionPayloadExpanded ? (
+                            <pre className={styles.attentionDialogPayload}>
+                              {formatApprovalPayloadDetails(selectedAttentionApproval.payload)}
+                            </pre>
+                          ) : null}
+                        </div>
+                      </>
+                    ) : null}
+                  </div>
+                ) : null}
+                <DialogFooter className={styles.attentionDialogFooter}>
+                  <div className={styles.attentionDialogActionGroup}>
+                    {selectedAttentionItem && selectedAttentionItem.state !== "dismissed" ? (
+                      <Button
+                        variant={selectedAttentionIsPendingHireApproval ? "outline" : "secondary"}
+                        size="sm"
+                        onClick={() => {
+                          setAttentionDetailsOpen(false);
+                          void dismissAttention(selectedAttentionItem.key);
+                        }}
+                        disabled={isActionPending(`attention:${selectedAttentionItem.key}:dismiss`)}
+                      >
+                        Dismiss
+                      </Button>
+                    ) : selectedAttentionItem ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setAttentionDetailsOpen(false);
+                          void undismissAttention(selectedAttentionItem.key);
+                        }}
+                        disabled={isActionPending(`attention:${selectedAttentionItem.key}:undismiss`)}
+                      >
+                        Restore
+                      </Button>
+                    ) : null}
+                    {selectedAttentionHasPendingApproval && selectedAttentionItem?.evidence.approvalId ? (
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={() => {
+                          setAttentionDetailsOpen(false);
+                          void resolveApproval(selectedAttentionItem.evidence.approvalId!, "approved");
+                        }}
+                        disabled={isActionPending(`approval:${selectedAttentionItem.evidence.approvalId}:resolve`)}
+                      >
+                        {isActionPending(`approval:${selectedAttentionItem.evidence.approvalId}:resolve`) ? "Approving..." : "Approve"}
+                      </Button>
+                    ) : null}
+                  </div>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </>
         );
       case "Logs":
