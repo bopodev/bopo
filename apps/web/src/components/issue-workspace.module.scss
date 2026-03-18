@@ -37,7 +37,7 @@
 }
 
 .issueCard1 {
-  @apply gap-4 py-4 transition hover:border-primary/40;
+  @apply flex items-start justify-start gap-4 py-4 transition hover:border-primary/40 bg-muted-foreground/10 text-left;
 }
 
 .issueCardContent1 {
@@ -65,7 +65,7 @@
 }
 
 .issueCardContainer6 {
-  @apply space-y-6;
+  @apply flex h-full min-h-0 w-full min-w-0 max-w-full flex-col space-y-6 overflow-x-hidden;
 }
 
 .issueCardContainer7 {
@@ -89,7 +89,7 @@
 }
 
 .issueCardContainer11 {
-  @apply space-y-6;
+  @apply flex min-h-0 flex-1 flex-col w-full min-w-0 max-w-full space-y-6 overflow-x-hidden;
 }
 
 .issueCardContainer12 {
@@ -101,7 +101,8 @@
 }
 
 .issueCardContainer13 {
-  @apply space-y-3;
+  @apply flex min-h-0 flex-1 w-full min-w-0 max-w-full flex-col gap-3 overflow-x-hidden pb-4;
+  contain: inline-size;
 }
 
 .issueCardContainer14 {
@@ -109,7 +110,7 @@
 }
 
 .issueCardContainer15 {
-  @apply grid gap-3 xl:grid-cols-4;
+  @apply mt-2 flex h-full min-h-full flex-nowrap items-stretch gap-6 pr-2;
 }
 
 .issueCard2 {
@@ -121,7 +122,7 @@
 }
 
 .issueCardTitle2 {
-  @apply text-base capitalize;
+  @apply text-base text-sidebar-foreground/50 capitalize;
 }
 
 .issueCardContent2 {
@@ -129,7 +130,23 @@
 }
 
 .issueFiltersCardContent {
-  @apply flex flex-wrap items-center gap-6;
+  @apply flex min-w-0 flex-1 flex-nowrap items-center gap-6;
+}
+
+.issueFiltersToolbar {
+  @apply flex w-full min-w-0 flex-nowrap items-center gap-3 overflow-x-auto pb-1;
+}
+
+.issueFiltersToggleRight {
+  @apply ml-auto flex shrink-0 items-center pl-2;
+}
+
+.issueViewToggleGroup {
+  @apply shrink-0;
+}
+
+.issueViewToggleButton {
+  @apply h-8 rounded-md px-3;
 }
 
 .issueFiltersInput {
@@ -138,4 +155,47 @@
 
 .issueMetricValueContainer {
   @apply text-2xl font-semibold tracking-tight;
+}
+
+.issueBoardColumnsScroll {
+  @apply block h-full w-full max-w-full min-w-0 flex-1 overflow-x-auto overflow-y-hidden pb-4;
+  min-height: 0;
+  contain: inline-size;
+}
+
+.issueBoardTrack {
+  @apply inline-block h-full min-w-full align-top;
+  width: max-content;
+}
+
+.issueBoardColumn {
+  @apply w-[18rem] shrink-0 gap-3 px-3 pt-4 pb-5;
+}
+
+.issueBoardColumnActive {
+  @apply border-primary/60 bg-primary/5;
+}
+
+.issueBoardColumnHeader {
+  @apply px-3 pb-2;
+}
+
+.issueBoardColumnHeaderRow {
+  @apply flex items-center justify-between gap-2;
+}
+
+.issueBoardColumnContent {
+  @apply flex-1 px-2 py-0;
+}
+
+.issueBoardColumnList {
+  @apply h-full space-y-5;
+}
+
+.issueCardDragging {
+  @apply opacity-70 shadow-lg;
+}
+
+.issueBoardHint {
+  @apply text-base text-muted-foreground;
 }

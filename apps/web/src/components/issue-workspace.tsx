@@ -3,11 +3,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ColumnDef } from "@tanstack/react-table";
+import { DndContext, PointerSensor, closestCenter, useDroppable, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import type { IssueStatus } from "bopodev-contracts";
 import { CreateIssueModal } from "@/components/modals/create-issue-modal";
 import { ApiError, apiPut } from "@/lib/api";
 import { getStatusBadgeClassName } from "@/lib/status-presentation";
-import { resolveWindowStart, selectedProjectNameFor } from "@/lib/workspace-logic";
+import { selectedProjectNameFor } from "@/lib/workspace-logic";
+import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
@@ -53,6 +56,7 @@ const issueStatusOptions = [
 ] as const;
 
 const priorityOptions = ["all", "none", "low", "medium", "high", "urgent"] as const;
+const boardColumns = issueStatusOptions as readonly { value: IssueStatus; label: string }[];
 
 function EmptyState({ children }: { children: React.ReactNode }) {
   return <div className={styles.issueWorkspaceEmptyStateContainer}>{children}</div>;
@@ -107,37 +111,17 @@ export function IssueWorkspace({
   const [assigneeFilter, setAssigneeFilter] = useState<string>("all");
   const [projectFilter, setProjectFilter] = useState<string>("all");
   const [hierarchyFilter, setHierarchyFilter] = useState<"top_level" | "all">("top_level");
-  const [windowFilter, setWindowFilter] = useState<"today" | "7d" | "30d" | "90d" | "all">("30d");
   const [query, setQuery] = useState("");
   const [viewMode, setViewMode] = useState<"list" | "board">("list");
-  const [savedView, setSavedView] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const raw = window.localStorage.getItem("bopodev_saved_issue_view");
-    if (!raw) {
-      return;
-    }
-
-    try {
-      const parsed = JSON.parse(raw) as {
-        statusFilter: "all" | IssueStatus;
-        priorityFilter?: (typeof priorityOptions)[number];
-        viewMode?: "list" | "board";
-      };
-      setStatusFilter(parsed.statusFilter);
-      setPriorityFilter(parsed.priorityFilter ?? "all");
-      setSavedView("My Saved View");
-    } catch {
-      window.localStorage.removeItem("bopodev_saved_issue_view");
-    }
-  }, []);
+  const [boardIssues, setBoardIssues] = useState<IssueRow[]>(issues);
+  const [draggingIssueId, setDraggingIssueId] = useState<string | null>(null);
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
   const filteredIssues = useMemo(
     () =>
       issues.filter((issue) => {
         const normalizedQuery = query.trim().toLowerCase();
-        const windowStart = resolveWindowStart(windowFilter);
         const matchStatus = statusFilter === "all" || issue.status === statusFilter;
         const matchPriority = priorityFilter === "all" || issue.priority.toLowerCase() === priorityFilter;
         const matchAssignee =
@@ -145,7 +129,6 @@ export function IssueWorkspace({
           (assigneeFilter === "unassigned" ? issue.assigneeAgentId === null : issue.assigneeAgentId === assigneeFilter);
         const matchProject = projectFilter === "all" || issue.projectId === projectFilter;
         const matchHierarchy = hierarchyFilter === "all" || issue.parentIssueId === null;
-        const matchWindow = !windowStart || new Date(issue.updatedAt) >= windowStart;
         const agentName = issue.assigneeAgentId
           ? agents.find((agent) => agent.id === issue.assigneeAgentId)?.name ?? ""
           : "unassigned";
@@ -158,19 +141,28 @@ export function IssueWorkspace({
           issue.status.toLowerCase().includes(normalizedQuery) ||
           selectedProjectNameFor(issue.projectId, projects).toLowerCase().includes(normalizedQuery) ||
           agentName.toLowerCase().includes(normalizedQuery);
-        return matchStatus && matchPriority && matchAssignee && matchProject && matchHierarchy && matchWindow && matchQuery;
+        return matchStatus && matchPriority && matchAssignee && matchProject && matchHierarchy && matchQuery;
       }),
-    [agents, assigneeFilter, hierarchyFilter, issues, priorityFilter, projectFilter, projects, query, statusFilter, windowFilter]
+    [agents, assigneeFilter, hierarchyFilter, issues, priorityFilter, projectFilter, projects, query, statusFilter]
   );
 
   const grouped = useMemo(
-    () => ({
-      todo: filteredIssues.filter((issue) => issue.status === "todo"),
-      in_progress: filteredIssues.filter((issue) => issue.status === "in_progress"),
-      in_review: filteredIssues.filter((issue) => issue.status === "in_review"),
-      done: filteredIssues.filter((issue) => issue.status === "done")
-    }),
-    [filteredIssues]
+    () => {
+      const initial = boardColumns.reduce(
+        (acc, column) => {
+          acc[column.value] = [];
+          return acc;
+        },
+        {} as Record<IssueStatus, IssueRow[]>
+      );
+      for (const issue of boardIssues) {
+        if (initial[issue.status]) {
+          initial[issue.status].push(issue);
+        }
+      }
+      return initial;
+    },
+    [boardIssues]
   );
   const issueSummary = useMemo(() => {
     const total = issues.length;
@@ -180,35 +172,30 @@ export function IssueWorkspace({
     return { total, open, done, unassigned };
   }, [issues]);
 
+  useEffect(() => {
+    setBoardIssues(filteredIssues);
+  }, [filteredIssues]);
+
   async function runIssueAction(action: () => Promise<void>, fallbackMessage: string) {
     setActionError(null);
     try {
       await action();
       router.refresh();
+      return true;
     } catch (error) {
       setActionError(error instanceof ApiError ? error.message : fallbackMessage);
+      return false;
     }
   }
 
   async function updateStatus(issueId: string, status: IssueStatus) {
-    await runIssueAction(async () => {
+    return runIssueAction(async () => {
       await apiPut(`/issues/${issueId}`, companyId, { status });
     }, "Failed to update issue status.");
   }
 
   function openIssue(issueId: string) {
     router.push(`/issues/${issueId}?companyId=${companyId}` as Parameters<typeof router.push>[0]);
-  }
-
-  function saveView() {
-    window.localStorage.setItem(
-      "bopodev_saved_issue_view",
-      JSON.stringify({
-        statusFilter,
-        priorityFilter
-      })
-    );
-    setSavedView("My Saved View");
   }
 
   const issueColumns = useMemo<ColumnDef<IssueRow>[]>(
@@ -275,41 +262,187 @@ export function IssueWorkspace({
     [agents, companyId, projects]
   );
 
-  function renderIssueCard(issue: IssueRow) {
+  function SortableIssueCard({ issue }: { issue: IssueRow }) {
+    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+      id: issue.id
+    });
+    const cardStyle = transform
+      ? {
+          transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
+          transition
+        }
+      : { transition };
+
     return (
-      <Card key={issue.id} className={styles.issueCard1}>
-        <CardContent className={styles.issueCardContent1}>
-          <div className={styles.issueCardContainer1}>
-            <button type="button" className={styles.issueCardContainer2} onClick={() => openIssue(issue.id)}>
-              <div className={styles.issueCardContainer3}>{issue.title}</div>
-              <div className={styles.issueCardContainer4}>
-                {issue.priority} · {selectedProjectNameFor(issue.projectId, projects)} · {formatDateTime(issue.updatedAt)}
-              </div>
-            </button>
-            <div className={styles.issueCardContainer5}>
-              <CreateIssueModal
-                companyId={companyId}
-                projects={projects}
-                agents={agents}
-                issue={issue}
-                triggerLabel="Edit"
-                triggerVariant="outline"
-                triggerSize="sm"
-              />
+      <div ref={setNodeRef} style={cardStyle}>
+        <Card
+          className={cn(styles.issueCard1, isDragging ? styles.issueCardDragging : undefined)}
+          {...attributes}
+          {...listeners}
+          data-dragging={isDragging ? "true" : undefined}
+        >
+          <CardContent className={styles.issueCardContent1}>
+            <div className={styles.issueCardContainer1}>
+              <button type="button" className={styles.issueCardContainer2} onClick={() => openIssue(issue.id)}>
+                <div className={styles.issueCardContainer3}>{issue.title}</div>
+                <div className={styles.issueCardContainer4}>
+                  {issue.priority} · {selectedProjectNameFor(issue.projectId, projects)} · {formatDateTime(issue.updatedAt)}
+                </div>
+              </button>
             </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  function getDropStatus(overId: string) {
+    if (overId.startsWith("column:")) {
+      return overId.replace("column:", "") as IssueStatus;
+    }
+    return boardIssues.find((issue) => issue.id === overId)?.status ?? null;
+  }
+
+  function BoardColumn({ status, label, items }: { status: IssueStatus; label: string; items: IssueRow[] }) {
+    const { setNodeRef, isOver } = useDroppable({
+      id: `column:${status}`
+    });
+
+    return (
+      <Card className={cn(styles.issueBoardColumn, isOver ? styles.issueBoardColumnActive : undefined)} ref={setNodeRef}>
+        <CardHeader className={styles.issueBoardColumnHeader}>
+          <div className={styles.issueBoardColumnHeaderRow}>
+            <CardTitle className={styles.issueCardTitle2}>{label}</CardTitle>
+            <Badge variant="outline" className={getStatusBadgeClassName(status)}>
+              {items.length}
+            </Badge>
           </div>
-          <div className={styles.issueCardContainer5}>
-            <IssueStatusSelect value={issue.status} onValueChange={(value) => void updateStatus(issue.id, value as IssueStatus)} />
-            {issue.labels?.slice(0, 2).map((label) => (
-              <Badge key={label} variant="secondary">
-                {label}
-              </Badge>
-            ))}
-          </div>
+        </CardHeader>
+        <CardContent className={styles.issueBoardColumnContent}>
+          <SortableContext items={items.map((issue) => issue.id)} strategy={verticalListSortingStrategy}>
+            <div className={styles.issueBoardColumnList}>
+              {items.length > 0 ? items.map((issue) => <SortableIssueCard key={issue.id} issue={issue} />) : ''}
+            </div>
+          </SortableContext>
         </CardContent>
       </Card>
     );
   }
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    setDraggingIssueId(null);
+    if (!over) {
+      return;
+    }
+
+    const issueId = String(active.id);
+    const destinationStatus = getDropStatus(String(over.id));
+    if (!destinationStatus) {
+      return;
+    }
+
+    const draggedIssue = boardIssues.find((issue) => issue.id === issueId);
+    if (!draggedIssue || draggedIssue.status === destinationStatus) {
+      return;
+    }
+
+    const previousState = boardIssues;
+    setBoardIssues((current) =>
+      current.map((issue) =>
+        issue.id === issueId ? { ...issue, status: destinationStatus, updatedAt: new Date().toISOString() } : issue
+      )
+    );
+
+    void updateStatus(issueId, destinationStatus).then((success) => {
+      if (!success) {
+        setBoardIssues(previousState);
+      }
+    });
+  }
+
+  const issueFilterControls = (
+    <div className={styles.issueFiltersCardContent}>
+      <Input
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+        placeholder="Search issue title, id, status, assignee, or project..."
+        className={styles.issueFiltersInput}
+      />
+      <IssueStatusSelect
+        value={statusFilter}
+        onValueChange={(value) => setStatusFilter(value as "all" | IssueStatus)}
+        includeAllOption
+      />
+      <Select value={priorityFilter} onValueChange={(value) => setPriorityFilter(value as (typeof priorityOptions)[number])}>
+        <SelectTrigger className={styles.issueCardSelectTrigger}>
+          <SelectValue placeholder="Priority" />
+        </SelectTrigger>
+        <SelectContent>
+          {priorityOptions.map((option) => (
+            <SelectItem key={option} value={option}>
+              {option === "all" ? "All priorities" : `${option.slice(0, 1).toUpperCase()}${option.slice(1)}`}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Select value={assigneeFilter} onValueChange={setAssigneeFilter}>
+        <SelectTrigger className={styles.issueCardSelectTrigger}>
+          <SelectValue placeholder="Assignee" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">All assignees</SelectItem>
+          {agents.map((agent) => (
+            <SelectItem key={agent.id} value={agent.id}>
+              {agent.name}
+            </SelectItem>
+          ))}
+          <SelectItem value="unassigned">Unassigned</SelectItem>
+        </SelectContent>
+      </Select>
+      <Select value={projectFilter} onValueChange={setProjectFilter}>
+        <SelectTrigger className={styles.issueCardSelectTrigger}>
+          <SelectValue placeholder="Project" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">All projects</SelectItem>
+          {projects.map((project) => (
+            <SelectItem key={project.id} value={project.id}>
+              {project.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+
+  const issueViewToggle = (
+    <ButtonGroup className={styles.issueViewToggleGroup}>
+      <Button
+        variant={viewMode === "list" ? "default" : "outline"}
+        size="xs"
+        className={styles.issueViewToggleButton}
+        onClick={() => setViewMode("list")}
+      >
+        List
+      </Button>
+      <Button
+        variant={viewMode === "board" ? "default" : "outline"}
+        size="xs"
+        className={styles.issueViewToggleButton}
+        onClick={() => setViewMode("board")}
+      >
+        Board
+      </Button>
+    </ButtonGroup>
+  );
+
+  const boardToolbarControls = (
+    <div className={styles.issueFiltersToolbar}>
+      {issueFilterControls}
+      <div className={styles.issueFiltersToggleRight}>{issueViewToggle}</div>
+    </div>
+  );
 
   return (
     <div className={styles.issueCardContainer6}>
@@ -341,92 +474,31 @@ export function IssueWorkspace({
               data={filteredIssues}
               emptyMessage="No issues match the current view."
               onRowClick={(issue) => openIssue(issue.id)}
-              toolbarActions={
-                <div className={styles.issueFiltersCardContent}>
-                  <Input
-                    value={query}
-                    onChange={(event) => setQuery(event.target.value)}
-                    placeholder="Search issue title, id, status, assignee, or project..."
-                    className={styles.issueFiltersInput}
-                  />
-                  <IssueStatusSelect
-                    value={statusFilter}
-                    onValueChange={(value) => setStatusFilter(value as "all" | IssueStatus)}
-                    includeAllOption
-                  />
-                  <Select value={priorityFilter} onValueChange={(value) => setPriorityFilter(value as (typeof priorityOptions)[number])}>
-                    <SelectTrigger className={styles.issueCardSelectTrigger}>
-                      <SelectValue placeholder="Priority" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {priorityOptions.map((option) => (
-                        <SelectItem key={option} value={option}>
-                          {option === "all" ? "All priorities" : `${option.slice(0, 1).toUpperCase()}${option.slice(1)}`}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Select value={assigneeFilter} onValueChange={setAssigneeFilter}>
-                    <SelectTrigger className={styles.issueCardSelectTrigger}>
-                      <SelectValue placeholder="Assignee" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All assignees</SelectItem>
-                      {agents.map((agent) => (
-                        <SelectItem key={agent.id} value={agent.id}>
-                          {agent.name}
-                        </SelectItem>
-                      ))}
-                      <SelectItem value="unassigned">Unassigned</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Select value={projectFilter} onValueChange={setProjectFilter}>
-                    <SelectTrigger className={styles.issueCardSelectTrigger}>
-                      <SelectValue placeholder="Project" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All projects</SelectItem>
-                      {projects.map((project) => (
-                        <SelectItem key={project.id} value={project.id}>
-                          {project.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Select
-                    value={windowFilter}
-                    onValueChange={(value) => setWindowFilter(value as "today" | "7d" | "30d" | "90d" | "all")}
-                  >
-                    <SelectTrigger className={styles.issueCardSelectTrigger}>
-                      <SelectValue placeholder="Window" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="today">Today</SelectItem>
-                      <SelectItem value="7d">Last 7 days</SelectItem>
-                      <SelectItem value="30d">Last 30 days</SelectItem>
-                      <SelectItem value="90d">Last 90 days</SelectItem>
-                      <SelectItem value="all">All time</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              }
+              toolbarActions={issueFilterControls}
+              toolbarTrailing={issueViewToggle}
               showViewOptions
             />
           ) : (
             <div className={styles.issueCardContainer13}>
-              <div className={styles.issueCardContainer15}>
-                {Object.entries(grouped).map(([column, items]) => (
-                  <Card key={column} className={styles.issueCard2}>
-                    <CardHeader className={styles.issueCardHeader}>
-                      <CardTitle className={styles.issueCardTitle2}>{column.replace("_", " ")}</CardTitle>
-                      <CardDescription>{items.length} issues</CardDescription>
-                    </CardHeader>
-                    <CardContent className={styles.issueCardContent2}>
-                      {items.length > 0 ? items.map((issue) => renderIssueCard(issue)) : <EmptyState>No issues in this column.</EmptyState>}
-                    </CardContent>
-                  </Card>
-                ))}
+              {boardToolbarControls}
+              <div className={styles.issueBoardColumnsScroll}>
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragStart={(event) => setDraggingIssueId(String(event.active.id))}
+                  onDragCancel={() => setDraggingIssueId(null)}
+                  onDragEnd={handleDragEnd}
+                >
+                  <div className={styles.issueBoardTrack}>
+                    <div className={styles.issueCardContainer15}>
+                      {boardColumns.map((column) => (
+                        <BoardColumn key={column.value} status={column.value} label={column.label} items={grouped[column.value] ?? []} />
+                      ))}
+                    </div>
+                  </div>
+                </DndContext>
               </div>
+              {draggingIssueId ? <div className={styles.issueBoardHint}>Release to move issue to a new status column.</div> : null}
             </div>
           )}
         </div>

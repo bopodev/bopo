@@ -262,7 +262,7 @@ body {
 }
 
 .ui-data-table-toolbar {
-  @apply flex flex-col gap-4 mb-7 lg:flex-row lg:items-center;
+  @apply flex flex-col gap-4 mb-6 lg:flex-row lg:items-center;
 }
 
 .ui-data-table-filter-input {
@@ -279,6 +279,10 @@ body {
 
 .ui-data-table-toolbar-actions-mobile {
   @apply md:hidden;
+}
+
+.ui-data-table-toolbar-right {
+  @apply ml-auto flex items-center gap-6 shrink-0;
 }
 
 .ui-data-table-mobile-actions-trigger {

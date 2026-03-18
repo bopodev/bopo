@@ -41,6 +41,7 @@ interface DataTableProps<TData, TValue> {
   filterColumn?: string;
   filterPlaceholder?: string;
   toolbarActions?: React.ReactNode;
+  toolbarTrailing?: React.ReactNode;
   showViewOptions?: boolean;
 }
 
@@ -53,6 +54,7 @@ export function DataTable<TData, TValue>({
   filterColumn,
   filterPlaceholder = "Filter...",
   toolbarActions,
+  toolbarTrailing,
   showViewOptions = true
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = React.useState<SortingState>([]);
@@ -82,7 +84,7 @@ export function DataTable<TData, TValue>({
 
   return (
     <div className="ui-data-table">
-      {filterColumn || toolbarActions || showViewOptions ? (
+      {filterColumn || toolbarActions || toolbarTrailing || showViewOptions ? (
         <div className="ui-data-table-toolbar">
           {filterColumn ? (
             <Input
@@ -114,7 +116,12 @@ export function DataTable<TData, TValue>({
               </div>
             </>
           ) : null}
-          {showViewOptions ? <DataTableViewOptions table={table} /> : null}
+          {toolbarTrailing || showViewOptions ? (
+            <div className="ui-data-table-toolbar-right">
+              {toolbarTrailing}
+              {showViewOptions ? <DataTableViewOptions table={table} /> : null}
+            </div>
+          ) : null}
         </div>
       ) : null}
       <div className="ui-data-table-surface">
