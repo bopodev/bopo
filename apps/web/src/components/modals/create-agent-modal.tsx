@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { AGENT_ROLE_KEYS, AGENT_ROLE_LABELS, type AgentRoleKey } from "bopodev-contracts";
-import { ApiError, apiGet, apiPost, apiPut } from "@/lib/api";
+import { ApiError, apiDelete, apiGet, apiPost, apiPut } from "@/lib/api";
 import { formatArgsInput, formatEnvInput, parseArgsInput, parseEnvInput } from "@/lib/agent-config-form";
 import { agentDefaultsStorageKey, readAgentRuntimeDefaults } from "@/lib/agent-defaults";
 import {
@@ -185,6 +185,7 @@ export function CreateAgentModal({
   const [delegateProjectId, setDelegateProjectId] = useState("");
   const [delegateRequest, setDelegateRequest] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [adapterMetadataByProvider, setAdapterMetadataByProvider] = useState<
     Partial<
@@ -684,6 +685,27 @@ export function CreateAgentModal({
     }
   }
 
+  async function onDeleteAgent() {
+    if (!agent) {
+      return;
+    }
+    setError(null);
+    setIsDeleting(true);
+    try {
+      await apiDelete(`/agents/${agent.id}`, companyId);
+      setOpen(false);
+      router.push(`/agents?companyId=${companyId}` as Parameters<typeof router.push>[0]);
+    } catch (deleteError) {
+      if (deleteError instanceof ApiError) {
+        setError(deleteError.message);
+      } else {
+        setError("Failed to delete agent.");
+      }
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
@@ -1051,9 +1073,14 @@ export function CreateAgentModal({
             ) : null}
           </div>
           {error ? <p className={styles.createAgentModalText}>{error}</p> : null}
-          <DialogFooter showCloseButton>
+          <DialogFooter showCloseButton={!isEditing}>
+            {isEditing ? (
+              <Button type="button" variant="destructive" onClick={() => void onDeleteAgent()} disabled={isSubmitting || isDeleting}>
+                {isDeleting ? "Deleting..." : "Delete"}
+              </Button>
+            ) : null}
             {isEditing || creationMode !== "intro" ? (
-              <Button type="submit" disabled={isSubmitting}>
+              <Button type="submit" disabled={isSubmitting || isDeleting}>
                 {isEditing ? "Save" : creationMode === "delegate" ? "Create request" : "Submit for approval"}
               </Button>
             ) : null}

@@ -124,6 +124,7 @@ export function CreateProjectModal({
     project ? goals.filter((goal) => goal.projectId === project.id).map((goal) => goal.id) : []
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const isEditing = Boolean(project);
 
@@ -252,6 +253,27 @@ export function CreateProjectModal({
       }
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function onDeleteProject() {
+    if (!project) {
+      return;
+    }
+    setError(null);
+    setIsDeleting(true);
+    try {
+      await apiDelete(`/projects/${project.id}`, companyId);
+      setOpen(false);
+      router.push(`/projects?companyId=${companyId}` as Parameters<typeof router.push>[0]);
+    } catch (deleteError) {
+      if (deleteError instanceof ApiError) {
+        setError(deleteError.message);
+      } else {
+        setError("Failed to delete project.");
+      }
+    } finally {
+      setIsDeleting(false);
     }
   }
 
@@ -451,8 +473,13 @@ export function CreateProjectModal({
             </FieldGroup>
           </div>
           {error ? <p className={styles.createProjectModalText}>{error}</p> : null}
-          <DialogFooter showCloseButton>
-            <Button type="submit" disabled={isSubmitting}>
+          <DialogFooter showCloseButton={!isEditing}>
+            {isEditing ? (
+              <Button type="button" variant="destructive" onClick={() => void onDeleteProject()} disabled={isSubmitting || isDeleting}>
+                {isDeleting ? "Deleting..." : "Delete"}
+              </Button>
+            ) : null}
+            <Button type="submit" disabled={isSubmitting || isDeleting}>
               {isEditing ? "Save" : "Create"}
             </Button>
           </DialogFooter>

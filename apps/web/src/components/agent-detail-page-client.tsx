@@ -15,7 +15,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ApiError, apiDelete, apiPost, apiPut } from "@/lib/api";
+import { ApiError, apiPost, apiPut } from "@/lib/api";
 import { agentAvatarSeed } from "@/lib/agent-avatar";
 import { parseRuntimeFromAgentColumns } from "@/lib/agent-detail-logic";
 import { getModelOptionsForProvider, heartbeatCronToIntervalSec } from "@/lib/agent-runtime-options";
@@ -617,13 +617,6 @@ export function AgentDetailPageClient({
     }, "Failed to redo run.", `run:${runId}:redo`);
   }
 
-  async function removeAgent() {
-    await runAgentAction(async () => {
-      await apiDelete(`/agents/${agent.id}`, companyId);
-      router.push(`/agents?companyId=${companyId}` as Parameters<typeof router.push>[0]);
-    }, "Failed to delete agent.", `agent:${agent.id}:delete`);
-  }
-
   async function pauseAgent() {
     await runAgentAction(async () => {
       await apiPost(`/agents/${agent.id}/pause`, companyId, {});
@@ -841,16 +834,6 @@ export function AgentDetailPageClient({
             triggerLabel="Edit"
             triggerVariant="outline"
             triggerSize="sm"
-          />
-          <ConfirmActionModal
-            triggerLabel="Delete"
-              triggerVariant="outline"
-              triggerSize="sm"
-            title="Delete agent?"
-            description={`Delete "${agent.name}".`}
-            confirmLabel="Delete"
-            onConfirm={removeAgent}
-            triggerDisabled={isActionPending(`agent:${agent.id}:delete`)}
           />
         </div>
       </div>

@@ -3,7 +3,7 @@
 import { useState, type ChangeEvent, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import type { IssuePriority, IssueStatus } from "bopodev-contracts";
-import { ApiError, apiPost, apiPostFormData, apiPut } from "@/lib/api";
+import { ApiError, apiDelete, apiPost, apiPostFormData, apiPut } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -107,6 +107,7 @@ export function CreateIssueModal({
   const [labels, setLabels] = useState(issue?.labels?.join(", ") ?? "");
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const isEditing = Boolean(issue);
 
@@ -184,6 +185,27 @@ export function CreateIssueModal({
       }
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function onDeleteIssue() {
+    if (!issue) {
+      return;
+    }
+    setError(null);
+    setIsDeleting(true);
+    try {
+      await apiDelete(`/issues/${issue.id}`, companyId);
+      setOpen(false);
+      router.push(`/issues?companyId=${companyId}` as Parameters<typeof router.push>[0]);
+    } catch (deleteError) {
+      if (deleteError instanceof ApiError) {
+        setError(deleteError.message);
+      } else {
+        setError("Failed to delete issue.");
+      }
+    } finally {
+      setIsDeleting(false);
     }
   }
 
@@ -296,8 +318,13 @@ export function CreateIssueModal({
             </FieldGroup>
           </div>
           {error ? <p className={styles.createIssueModalText}>{error}</p> : null}
-          <DialogFooter showCloseButton>
-            <Button type="submit" disabled={isSubmitting || projects.length === 0}>
+          <DialogFooter showCloseButton={!isEditing}>
+            {isEditing ? (
+              <Button type="button" variant="destructive" onClick={() => void onDeleteIssue()} disabled={isSubmitting || isDeleting}>
+                {isDeleting ? "Deleting..." : "Delete"}
+              </Button>
+            ) : null}
+            <Button type="submit" disabled={isSubmitting || isDeleting || projects.length === 0}>
               {isEditing ? "Save" : "Create"}
             </Button>
           </DialogFooter>

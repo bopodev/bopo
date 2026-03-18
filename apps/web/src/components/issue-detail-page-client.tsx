@@ -10,7 +10,6 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { AppShell } from "@/components/app-shell";
 import { AgentAvatar } from "@/components/agent-avatar";
-import { ConfirmActionModal } from "@/components/modals/confirm-action-modal";
 import { CreateIssueModal } from "@/components/modals/create-issue-modal";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -420,25 +419,19 @@ export function IssueDetailPageClient({
     () => agents.find((agent) => agent.id === issue.assigneeAgentId) ?? null,
     [agents, issue.assigneeAgentId]
   );
-  const selectedAssigneeManager = useMemo(() => {
-    if (!selectedAssignee?.managerAgentId) {
-      return null;
-    }
-    return agents.find((agent) => agent.id === selectedAssignee.managerAgentId) ?? null;
-  }, [agents, selectedAssignee?.managerAgentId]);
   const recipientOptions = useMemo(
     () =>
       agents
         .filter((agent) => agent.status !== "terminated")
         .map((agent) => ({
           key: makeRecipientKey("agent", agent.id),
-          label: `${agent.name} (${getAgentDisplayRole(agent)})`
+          label: agent.name.trim() || getAgentDisplayRole(agent)
         })),
     [agents]
   );
   const selectedRecipientLabel = useMemo(() => {
     if (!selectedRecipientKey) {
-      return "Select recipient";
+      return "Mention";
     }
     if (selectedRecipientKey === boardRecipientKey) {
       return boardRecipientLabel;
@@ -607,10 +600,6 @@ export function IssueDetailPageClient({
     }
   }
 
-  function applyQuickRecipientSelection(nextKey: string) {
-    setSelectedRecipientKey(nextKey);
-  }
-
   function formatRecipientDisplay(
     recipient: IssueCommentRow["recipients"][number]
   ) {
@@ -647,13 +636,6 @@ export function IssueDetailPageClient({
     await runIssueAction(async () => {
       await apiPut(`/issues/${issue.id}`, companyId, payload);
     }, "Failed to update issue.");
-  }
-
-  async function removeIssue() {
-    await runIssueAction(async () => {
-      await apiDelete(`/issues/${issue.id}`, companyId);
-      router.push(`/issues?companyId=${companyId}` as Parameters<typeof router.push>[0]);
-    }, "Failed to delete issue.");
   }
 
   async function runAssigneeHeartbeat() {
@@ -771,15 +753,6 @@ export function IssueDetailPageClient({
               triggerLabel="Edit issue"
               triggerVariant="outline"
               triggerSize="sm"
-            />
-            <ConfirmActionModal
-              triggerLabel="Delete issue"
-              triggerVariant="outline"
-              triggerSize="sm"
-              title="Delete issue?"
-              description={`Delete "${issue.title}".`}
-              confirmLabel="Delete"
-              onConfirm={() => removeIssue()}
             />
           </div>
         </div>
@@ -923,17 +896,6 @@ export function IssueDetailPageClient({
                       ))}
                     </DropdownMenuContent>
                   </DropdownMenu>
-                  {selectedAssigneeManager ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={isSubmittingComment}
-                      onClick={() => applyQuickRecipientSelection(makeRecipientKey("agent", selectedAssigneeManager.id))}
-                    >
-                      Send to manager
-                    </Button>
-                  ) : null}
                   <Button type="submit" disabled={!draftComment.trim() || isSubmittingComment}>
                     {isSubmittingComment ? "Saving..." : "Comment"}
                   </Button>

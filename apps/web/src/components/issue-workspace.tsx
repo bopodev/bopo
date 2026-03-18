@@ -4,9 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ColumnDef } from "@tanstack/react-table";
 import type { IssueStatus } from "bopodev-contracts";
-import { ConfirmActionModal } from "@/components/modals/confirm-action-modal";
 import { CreateIssueModal } from "@/components/modals/create-issue-modal";
-import { ApiError, apiDelete, apiPut } from "@/lib/api";
+import { ApiError, apiPut } from "@/lib/api";
 import { getStatusBadgeClassName } from "@/lib/status-presentation";
 import { resolveWindowStart, selectedProjectNameFor } from "@/lib/workspace-logic";
 import { Badge } from "@/components/ui/badge";
@@ -197,12 +196,6 @@ export function IssueWorkspace({
     }, "Failed to update issue status.");
   }
 
-  async function removeIssue(issue: IssueRow) {
-    await runIssueAction(async () => {
-      await apiDelete(`/issues/${issue.id}`, companyId);
-    }, "Failed to delete issue.");
-  }
-
   function openIssue(issueId: string) {
     router.push(`/issues/${issueId}?companyId=${companyId}` as Parameters<typeof router.push>[0]);
   }
@@ -235,6 +228,15 @@ export function IssueWorkspace({
         )
       },
       {
+        id: "assignee",
+        header: "Assignee",
+        cell: ({ row }) => (
+          <div className={styles.savedViewContainer5}>
+            {row.original.assigneeAgentId ? agents.find((agent) => agent.id === row.original.assigneeAgentId)?.name ?? "Unknown" : "Unassigned"}
+          </div>
+        )
+      },
+      {
         accessorKey: "priority",
         header: ({ column }) => <DataTableColumnHeader column={column} title="Priority" />,
         cell: ({ row }) => <Badge variant="outline">{row.original.priority}</Badge>
@@ -246,15 +248,6 @@ export function IssueWorkspace({
           <Badge variant="outline" className={getStatusBadgeClassName(row.original.status)}>
             {row.original.status}
           </Badge>
-        )
-      },
-      {
-        id: "assignee",
-        header: "Assignee",
-        cell: ({ row }) => (
-          <div className={styles.savedViewContainer5}>
-            {row.original.assigneeAgentId ? agents.find((agent) => agent.id === row.original.assigneeAgentId)?.name ?? "Unknown" : "Unassigned"}
-          </div>
         )
       },
       {
@@ -273,15 +266,6 @@ export function IssueWorkspace({
                 triggerLabel="Edit"
                 triggerVariant="outline"
                 triggerSize="sm"
-              />
-              <ConfirmActionModal
-                triggerLabel="Delete"
-                triggerVariant="outline"
-                triggerSize="sm"
-                title="Delete issue?"
-                description={`Delete "${issue.title}".`}
-                confirmLabel="Delete"
-                onConfirm={() => removeIssue(issue)}
               />
             </div>
           );
@@ -311,13 +295,6 @@ export function IssueWorkspace({
                 triggerLabel="Edit"
                 triggerVariant="outline"
                 triggerSize="sm"
-              />
-              <ConfirmActionModal
-                triggerLabel="Delete"
-                title="Delete issue?"
-                description={`Delete "${issue.title}".`}
-                confirmLabel="Delete"
-                onConfirm={() => removeIssue(issue)}
               />
             </div>
           </div>

@@ -849,12 +849,6 @@ export function WorkspaceClient({
     }, "Failed to delete goal.", `goal:${goal.id}:delete`);
   }
 
-  async function removeProject(project: ProjectRow) {
-    await runCrudAction(async () => {
-      await apiDelete(`/projects/${project.id}`, companyId!);
-    }, "Failed to delete project.", `project:${project.id}:delete`);
-  }
-
   async function removeCompany(company: CompanyRow) {
     if (company.id === companyId) {
       setActionError("Cannot delete the active company.");
@@ -883,12 +877,6 @@ export function WorkspaceClient({
       `company:${activeCompany.id}:delete:active`,
       { refresh: false }
     );
-  }
-
-  async function removeAgent(agent: AgentRow) {
-    await runCrudAction(async () => {
-      await apiDelete(`/agents/${agent.id}`, companyId!);
-    }, "Failed to delete agent.", `agent:${agent.id}:delete`);
   }
 
   async function resolveApproval(approvalId: string, status: "approved" | "rejected" | "overridden") {
@@ -2548,22 +2536,12 @@ export function WorkspaceClient({
                 triggerVariant="outline"
                 triggerSize="sm"
               />
-              <ConfirmActionModal
-                triggerLabel="Delete"
-                triggerVariant="outline"
-                triggerSize="sm"
-                title="Delete project?"
-                description={`Delete "${project.name}" and all linked issues.`}
-                confirmLabel="Delete"
-                onConfirm={() => removeProject(project)}
-                triggerDisabled={isActionPending(`project:${project.id}:delete`)}
-              />
             </div>
           );
         }
       }
     ],
-    [companyId, goals, isActionPending]
+    [companyId, goals]
   );
 
   const goalColumns = useMemo<ColumnDef<GoalRow>[]>(
@@ -2755,22 +2733,12 @@ export function WorkspaceClient({
                 triggerVariant="outline"
                 triggerSize="sm"
               />
-              <ConfirmActionModal
-                triggerLabel="Delete"
-                triggerVariant="outline"
-                triggerSize="sm"
-                title="Delete agent?"
-                description={`Delete "${agent.name}".`}
-                confirmLabel="Delete"
-                onConfirm={() => removeAgent(agent)}
-                triggerDisabled={isActionPending(`agent:${agent.id}:delete`)}
-              />
             </div>
           );
         }
       }
     ],
-    [agentNameById, agents, companyId, isActionPending, onboardingRuntimeFallback, suggestedAgentRuntimeCwd]
+    [agentNameById, agents, companyId, onboardingRuntimeFallback, suggestedAgentRuntimeCwd]
   );
 
   const approvalColumns = useMemo<ColumnDef<ApprovalRow>[]>(
