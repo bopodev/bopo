@@ -82,6 +82,8 @@ export function DataTable<TData, TValue>({
     }
   });
 
+  const shouldHidePagination = table.getPageCount() <= 1;
+
   return (
     <div className="ui-data-table">
       {filterColumn || toolbarActions || toolbarTrailing || showViewOptions ? (
@@ -163,7 +165,7 @@ export function DataTable<TData, TValue>({
           </TableBody>
         </Table>
       </div>
-      <DataTablePagination table={table} />
+      {shouldHidePagination ? null : <DataTablePagination table={table} />}
     </div>
   );
 }
