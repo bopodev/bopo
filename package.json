@@ -1,6 +1,6 @@
 {
   "name": "bopodev-workspace",
-  "version": "0.1.23",
+  "version": "0.1.24",
   "license": "MIT",
   "private": true,
   "packageManager": "pnpm@9.12.0",
