@@ -15,7 +15,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ApiError, apiPost, apiPut } from "@/lib/api";
+import { ApiError, apiGet, apiPost, apiPut } from "@/lib/api";
 import { agentAvatarSeed } from "@/lib/agent-avatar";
 import { parseRuntimeFromAgentColumns } from "@/lib/agent-detail-logic";
 import { getModelOptionsForProvider, heartbeatCronToIntervalSec } from "@/lib/agent-runtime-options";
@@ -135,6 +135,26 @@ interface AuditRow {
   entityType: string;
   entityId: string;
   payload?: Record<string, unknown>;
+}
+
+interface AgentMemoryListItem {
+  agentId: string;
+  relativePath: string;
+  path: string;
+}
+
+interface AgentMemoryListResponse {
+  items: AgentMemoryListItem[];
+}
+
+interface AgentMemoryFileResponse {
+  relativePath: string;
+  content: string;
+  sizeBytes: number;
+}
+
+interface MemoryContextPreviewResponse {
+  compiledPreview: string;
 }
 
 type RuntimeState = {
@@ -411,7 +431,13 @@ export function AgentDetailPageClient({
   const router = useRouter();
   const [actionError, setActionError] = useState<string | null>(null);
   const [sidebarError, setSidebarError] = useState<string | null>(null);
+  const [memoryError, setMemoryError] = useState<string | null>(null);
   const [pendingActionKeys, setPendingActionKeys] = useState<Record<string, boolean>>({});
+  const [memoryFiles, setMemoryFiles] = useState<AgentMemoryListItem[]>([]);
+  const [selectedMemoryPath, setSelectedMemoryPath] = useState<string>("");
+  const [selectedMemoryContent, setSelectedMemoryContent] = useState<string>("");
+  const [compiledContextPreview, setCompiledContextPreview] = useState<string>("");
+  const [memoryLoading, setMemoryLoading] = useState(false);
   const managerNameById = useMemo(() => new Map(agents.map((entry) => [entry.id, entry.name])), [agents]);
 
   const agentIssues = useMemo(
@@ -571,6 +597,84 @@ export function AgentDetailPageClient({
   useEffect(() => {
     setSelectedManagerAgentId(agent.managerAgentId ?? "__none");
   }, [agent.managerAgentId]);
+
+  useEffect(() => {
+    let mounted = true;
+    if (!companyId) {
+      return () => {
+        mounted = false;
+      };
+    }
+    void (async () => {
+      setMemoryLoading(true);
+      setMemoryError(null);
+      try {
+        const [filesResponse, previewResponse] = await Promise.all([
+          apiGet<AgentMemoryListResponse>(
+            `/observability/memory?agentId=${encodeURIComponent(agent.id)}&limit=40`,
+            companyId
+          ),
+          apiGet<MemoryContextPreviewResponse>(`/observability/memory/${encodeURIComponent(agent.id)}/context-preview`, companyId)
+        ]);
+        if (!mounted) {
+          return;
+        }
+        const nextFiles = filesResponse.data.items
+          .filter((entry) => entry.agentId === agent.id)
+          .sort((left, right) => left.relativePath.localeCompare(right.relativePath));
+        setMemoryFiles(nextFiles);
+        setCompiledContextPreview(previewResponse.data.compiledPreview ?? "");
+        setSelectedMemoryPath((prev) => {
+          if (prev && nextFiles.some((entry) => entry.relativePath === prev)) {
+            return prev;
+          }
+          return nextFiles[0]?.relativePath ?? "";
+        });
+      } catch (error) {
+        if (!mounted) {
+          return;
+        }
+        setMemoryError(error instanceof ApiError ? error.message : "Failed to load memory context.");
+      } finally {
+        if (mounted) {
+          setMemoryLoading(false);
+        }
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [agent.id, companyId]);
+
+  useEffect(() => {
+    let mounted = true;
+    if (!companyId || !selectedMemoryPath) {
+      setSelectedMemoryContent("");
+      return () => {
+        mounted = false;
+      };
+    }
+    void (async () => {
+      try {
+        const response = await apiGet<AgentMemoryFileResponse>(
+          `/observability/memory/${encodeURIComponent(agent.id)}/file?path=${encodeURIComponent(selectedMemoryPath)}`,
+          companyId
+        );
+        if (!mounted) {
+          return;
+        }
+        setSelectedMemoryContent(response.data.content ?? "");
+      } catch (error) {
+        if (!mounted) {
+          return;
+        }
+        setMemoryError(error instanceof ApiError ? error.message : "Failed to read memory file.");
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [agent.id, companyId, selectedMemoryPath]);
 
   const isActionPending = useCallback(
     (actionKey: string) => pendingActionKeys[actionKey] === true,
@@ -944,6 +1048,40 @@ export function AgentDetailPageClient({
               </div>
             ))
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Memory Context</CardTitle>
+          <CardDescription>Inspect durable notes and the effective context preview used for this agent.</CardDescription>
+        </CardHeader>
+        <CardContent className={styles.issueListCardContent}>
+          {memoryError ? <Alert variant="destructive"><AlertDescription>{memoryError}</AlertDescription></Alert> : null}
+          <Field>
+            <FieldLabel>Memory file</FieldLabel>
+            <Select
+              value={selectedMemoryPath || "__none"}
+              onValueChange={(value) => setSelectedMemoryPath(value === "__none" ? "" : value)}
+              disabled={memoryLoading || memoryFiles.length === 0}
+            >
+              <SelectTrigger className={styles.agentSidebarSelectTrigger}>
+                <SelectValue placeholder={memoryFiles.length > 0 ? "Select a memory file" : "No memory files yet"} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none">No file selected</SelectItem>
+                {memoryFiles.map((file) => (
+                  <SelectItem key={file.relativePath} value={file.relativePath}>
+                    {file.relativePath}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <div className={styles.memoryPreviewLabel}>Selected file contents</div>
+          <pre className={styles.memoryPreviewBlock}>{selectedMemoryContent || "No file selected."}</pre>
+          <div className={styles.memoryPreviewLabel}>Effective context preview</div>
+          <pre className={styles.memoryPreviewBlock}>{compiledContextPreview || "No preview available."}</pre>
         </CardContent>
       </Card>
     </div>

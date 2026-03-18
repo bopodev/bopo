@@ -734,11 +734,6 @@ export async function runHeartbeatForAgent(
       ...state,
       runtime: workspaceResolution.runtime
     };
-    memoryContext = await loadAgentMemoryContext({
-      companyId,
-      agentId
-    });
-
     let context = await buildHeartbeatContext(db, companyId, {
       agentId,
       agentName: agent.name,
@@ -752,6 +747,24 @@ export async function runHeartbeatForAgent(
       workItems: contextWorkItems,
       wakeContext: resolvedWakeContext
     });
+    const memoryQueryText = [
+      context.company.mission ?? "",
+      ...(context.goalContext?.companyGoals ?? []),
+      ...(context.goalContext?.projectGoals ?? []),
+      ...context.workItems.map((item) => `${item.title} ${item.body ?? ""}`)
+    ]
+      .join(" ")
+      .trim();
+    memoryContext = await loadAgentMemoryContext({
+      companyId,
+      agentId,
+      projectIds: context.workItems.map((item) => item.projectId),
+      queryText: memoryQueryText
+    });
+    context = {
+      ...context,
+      memoryContext
+    };
     if (workspaceResolution.warnings.length > 0) {
       await appendAuditEvent(db, {
         companyId,
@@ -996,7 +1009,12 @@ export async function runHeartbeatForAgent(
       runId,
       status: execution.status,
       summary: execution.summary,
-      outcomeKind: executionOutcome?.kind ?? null
+      outcomeKind: executionOutcome?.kind ?? null,
+      mission: context.company.mission ?? null,
+      goalContext: {
+        companyGoals: context.goalContext?.companyGoals ?? [],
+        projectGoals: context.goalContext?.projectGoals ?? []
+      }
     });
     await appendAuditEvent(db, {
       companyId,
@@ -1035,6 +1053,26 @@ export async function runHeartbeatForAgent(
         });
       }
     }
+    const missionAlignment = computeMissionAlignmentSignal({
+      summary: execution.summary,
+      mission: context.company.mission ?? null,
+      companyGoals: context.goalContext?.companyGoals ?? [],
+      projectGoals: context.goalContext?.projectGoals ?? []
+    });
+    await appendAuditEvent(db, {
+      companyId,
+      actorType: "system",
+      eventType: "heartbeat.memory_alignment_scored",
+      entityType: "heartbeat_run",
+      entityId: runId,
+      correlationId: options?.requestId ?? runId,
+      payload: {
+        agentId,
+        score: missionAlignment.score,
+        matchedMissionTerms: missionAlignment.matchedMissionTerms,
+        matchedGoalTerms: missionAlignment.matchedGoalTerms
+      }
+    });
 
     if (
       execution.nextState ||
@@ -1335,6 +1373,33 @@ export async function runHeartbeatForAgent(
         args: runtimeLaunchSummary.args ?? [],
         cwd: runtimeLaunchSummary.cwd ?? null
       };
+    }
+    try {
+      const failedMemory = await persistHeartbeatMemory({
+        companyId,
+        agentId,
+        runId,
+        status: "failed",
+        summary: executionSummary,
+        outcomeKind: executionOutcome?.kind ?? null
+      });
+      await appendAuditEvent(db, {
+        companyId,
+        actorType: "system",
+        eventType: "heartbeat.memory_updated",
+        entityType: "heartbeat_run",
+        entityId: runId,
+        correlationId: options?.requestId ?? runId,
+        payload: {
+          agentId,
+          memoryRoot: failedMemory.memoryRoot,
+          dailyNotePath: failedMemory.dailyNotePath,
+          candidateFacts: failedMemory.candidateFacts,
+          failurePath: true
+        }
+      });
+    } catch {
+      // best effort; do not mask primary heartbeat failure.
     }
     const runtimeModelId = resolveRuntimeModelId({
       runtimeModel: persistedRuntime.runtimeModel,
@@ -1979,6 +2044,40 @@ function parseStringArray(value: string | null) {
   } catch {
     return [];
   }
+}
+
+function computeMissionAlignmentSignal(input: {
+  summary: string;
+  mission: string | null;
+  companyGoals: string[];
+  projectGoals: string[];
+}) {
+  const summaryTokens = new Set(tokenizeAlignmentText(input.summary));
+  const missionTokens = tokenizeAlignmentText(input.mission ?? "");
+  const goalTokens = tokenizeAlignmentText([...input.companyGoals, ...input.projectGoals].join(" "));
+  const matchedMissionTerms = missionTokens.filter((token) => summaryTokens.has(token));
+  const matchedGoalTerms = goalTokens.filter((token) => summaryTokens.has(token));
+  const missionScore = missionTokens.length > 0 ? matchedMissionTerms.length / missionTokens.length : 0;
+  const goalScore = goalTokens.length > 0 ? matchedGoalTerms.length / goalTokens.length : 0;
+  const score = Number(Math.min(1, missionScore * 0.55 + goalScore * 0.45).toFixed(3));
+  return {
+    score,
+    matchedMissionTerms,
+    matchedGoalTerms
+  };
+}
+
+function tokenizeAlignmentText(value: string) {
+  return Array.from(
+    new Set(
+      value
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, " ")
+        .split(/\s+/)
+        .map((entry) => entry.trim())
+        .filter((entry) => entry.length >= 3)
+    )
+  );
 }
 
 async function loadProjectIdsForRunBudgetCheck(

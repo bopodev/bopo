@@ -207,3 +207,12 @@
 .runtimeContainer {
   @apply text-base text-muted-foreground;
 }
+
+.memoryPreviewLabel {
+  @apply mt-2 text-base uppercase tracking-[0.12em] text-muted-foreground;
+}
+
+.memoryPreviewBlock {
+  @apply max-h-64 overflow-auto rounded-md border bg-muted/20 p-3 text-base leading-6;
+  white-space: pre-wrap;
+}

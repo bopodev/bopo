@@ -78,6 +78,17 @@ export function resolveAgentMemoryRootPath(companyId: string, agentId: string) {
   return join(resolveAgentFallbackWorkspacePath(companyId, agentId), "memory");
 }
 
+export function resolveCompanyMemoryRootPath(companyId: string) {
+  const safeCompanyId = assertPathSegment(companyId, "companyId");
+  return join(resolveBopoInstanceRoot(), "workspaces", safeCompanyId, "memory");
+}
+
+export function resolveProjectMemoryRootPath(companyId: string, projectId: string) {
+  const safeCompanyId = assertPathSegment(companyId, "companyId");
+  const safeProjectId = assertPathSegment(projectId, "projectId");
+  return join(resolveBopoInstanceRoot(), "workspaces", safeCompanyId, "projects", safeProjectId, "memory");
+}
+
 export function resolveAgentDurableMemoryPath(companyId: string, agentId: string) {
   return join(resolveAgentMemoryRootPath(companyId, agentId), "life");
 }

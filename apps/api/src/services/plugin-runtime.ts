@@ -133,7 +133,12 @@ const builtinExecutors: Record<string, BuiltinPluginExecutor> = {
     blockers: [],
     diagnostics: {
       runId: context.runId,
-      summaryPresent: typeof context.summary === "string" && context.summary.trim().length > 0
+      summaryPresent: typeof context.summary === "string" && context.summary.trim().length > 0,
+      usefulnessScore: scoreMemorySummaryUsefulness(context.summary ?? ""),
+      outcomeKind:
+        context.outcome && typeof context.outcome === "object" && "kind" in context.outcome
+          ? String((context.outcome as Record<string, unknown>).kind ?? "")
+          : ""
     }
   }),
   "queue-publisher": async (context) => ({
@@ -157,6 +162,33 @@ const builtinExecutors: Record<string, BuiltinPluginExecutor> = {
     }
   })
 };
+
+function scoreMemorySummaryUsefulness(summary: string) {
+  const normalized = summary.trim();
+  if (!normalized) {
+    return 0;
+  }
+  const tokenCount = normalized
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((entry) => entry.length >= 3).length;
+  const evidenceTerms = /\b(test|validated|verified|implemented|deployed|fixed|refactor|migration|metric)\b/i.test(normalized);
+  const blockersTerms = /\b(blocked|failed|unknown|maybe)\b/i.test(normalized);
+  let score = 0.3;
+  if (tokenCount >= 20) {
+    score += 0.3;
+  } else if (tokenCount >= 8) {
+    score += 0.15;
+  }
+  if (evidenceTerms) {
+    score += 0.25;
+  }
+  if (!blockersTerms) {
+    score += 0.15;
+  }
+  return Number(Math.min(1, Math.max(0, score)).toFixed(3));
+}
 
 export function pluginSystemEnabled() {
   const disabled = process.env.BOPO_PLUGIN_SYSTEM_DISABLED;

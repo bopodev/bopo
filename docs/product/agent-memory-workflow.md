@@ -13,11 +13,19 @@ Provide operators a practical model for memory behavior so run outcomes are easi
 
 ## Memory Layers
 
-Agent memory is file-backed and company-scoped. Each layer has a different role:
+Agent memory is file-backed and scope-aware. Each layer has a different role:
 
 - **Tacit memory** (`MEMORY.md`): stable guidance about operating patterns and preferences.
 - **Daily episodic notes** (`memory/YYYY-MM-DD.md`): chronological run-by-run capture of outcomes.
 - **Durable facts** (`life/items.yaml`, optional `life/summary.md`): promoted facts intended for reuse in future runs.
+
+Memory is merged from multiple scopes at runtime:
+
+- company memory root
+- project memory roots (for active run projects)
+- agent memory root
+
+Prompt recall prefers higher-relevance records (keyword overlap, recency, confidence, and scope weighting) while staying within fixed prompt memory limits.
 
 ## Directory Model
 
@@ -50,7 +58,7 @@ After the run, the system appends a daily entry to `memory/YYYY-MM-DD.md` with r
 
 ### 3) Candidate fact promotion
 
-When a run completes successfully, candidate facts can be promoted into `life/items.yaml`. This supports low-friction learning between runs.
+When a run completes successfully, candidate facts can be promoted into `life/items.yaml`. Promotion now records metadata such as confidence, scope, impact tags, and supersession references to keep durable memory cleaner over time.
 
 ### 4) Governance-driven promotion
 
@@ -76,6 +84,7 @@ Recommended debugging flow:
 - Keep durable facts concise, stable, and reusable across tasks.
 - Prefer superseding stale facts over deleting historical context.
 - Keep promotions intentional; avoid noisy or duplicate fact entries.
+- Favor stable lessons over one-off status updates when promoting facts.
 
 ## Related Pages
 

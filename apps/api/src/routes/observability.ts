@@ -2,9 +2,11 @@ import { Router } from "express";
 import { z } from "zod";
 import {
   getHeartbeatRun,
+  listCompanies,
   listAgents,
   listAuditEvents,
   listCostEntries,
+  listGoals,
   listHeartbeatRunMessages,
   listHeartbeatRuns,
   listModelPricing,
@@ -15,7 +17,7 @@ import type { AppContext } from "../context";
 import { sendError, sendOk } from "../http";
 import { requireCompanyScope } from "../middleware/company-scope";
 import { requirePermission } from "../middleware/request-actor";
-import { listAgentMemoryFiles, readAgentMemoryFile } from "../services/memory-file-service";
+import { listAgentMemoryFiles, loadAgentMemoryContext, readAgentMemoryFile } from "../services/memory-file-service";
 
 export function createObservabilityRouter(ctx: AppContext) {
   const router = Router();
@@ -264,6 +266,65 @@ export function createObservabilityRouter(ctx: AppContext) {
     } catch (error) {
       return sendError(res, String(error), 422);
     }
+  });
+
+  router.get("/memory/:agentId/context-preview", async (req, res) => {
+    const companyId = req.companyId!;
+    const agentId = req.params.agentId;
+    const projectIds = typeof req.query.projectIds === "string"
+      ? req.query.projectIds
+          .split(",")
+          .map((entry) => entry.trim())
+          .filter(Boolean)
+      : [];
+    const queryText = typeof req.query.query === "string" ? req.query.query.trim() : "";
+    const [agents, goals, companies] = await Promise.all([
+      listAgents(ctx.db, companyId),
+      listGoals(ctx.db, companyId),
+      listCompanies(ctx.db)
+    ]);
+    const agent = agents.find((entry) => entry.id === agentId);
+    if (!agent) {
+      return sendError(res, "Agent not found", 404);
+    }
+    const company = companies.find((entry) => entry.id === companyId);
+    const memoryContext = await loadAgentMemoryContext({
+      companyId,
+      agentId,
+      projectIds,
+      queryText: queryText.length > 0 ? queryText : undefined
+    });
+    const activeCompanyGoals = goals
+      .filter((goal) => goal.status === "active" && goal.level === "company")
+      .map((goal) => goal.title);
+    const activeProjectGoals = goals
+      .filter((goal) => goal.status === "active" && goal.level === "project" && goal.projectId && projectIds.includes(goal.projectId))
+      .map((goal) => goal.title);
+    const activeAgentGoals = goals
+      .filter((goal) => goal.status === "active" && goal.level === "agent")
+      .map((goal) => goal.title);
+    const compiledPreview = [
+      `Agent: ${agent.name} (${agent.role})`,
+      `Company mission: ${company?.mission ?? "No mission set"}`,
+      `Company goals: ${activeCompanyGoals.length > 0 ? activeCompanyGoals.join(" | ") : "None"}`,
+      `Project goals: ${activeProjectGoals.length > 0 ? activeProjectGoals.join(" | ") : "None"}`,
+      `Agent goals: ${activeAgentGoals.length > 0 ? activeAgentGoals.join(" | ") : "None"}`,
+      `Tacit notes: ${memoryContext.tacitNotes ?? "None"}`,
+      `Durable facts: ${memoryContext.durableFacts.join(" | ") || "None"}`,
+      `Daily notes: ${memoryContext.dailyNotes.join(" | ") || "None"}`
+    ].join("\n");
+    return sendOk(res, {
+      agentId,
+      projectIds,
+      companyMission: company?.mission ?? null,
+      goalContext: {
+        companyGoals: activeCompanyGoals,
+        projectGoals: activeProjectGoals,
+        agentGoals: activeAgentGoals
+      },
+      memoryContext,
+      compiledPreview
+    });
   });
 
   router.get("/plugins/runs", async (req, res) => {

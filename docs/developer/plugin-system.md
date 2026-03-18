@@ -98,8 +98,8 @@ See also: `docs/product/governance-and-approvals.md`.
 
 MVP built-ins are registered on API startup:
 
-- `trace-exporter` (enabled by default)
-- `memory-enricher` (enabled by default)
+- `trace-exporter` (installed, disabled by default)
+- `memory-enricher` (installed, disabled by default)
 - `queue-publisher` (installed, disabled by default)
 - `heartbeat-tagger` (installed, disabled by default)
 
