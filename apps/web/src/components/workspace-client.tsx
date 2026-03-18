@@ -4240,7 +4240,7 @@ export function WorkspaceClient({
               <MetricCard label="Runs in scope" value={runsSummary.total} />
               <MetricCard label="Success rate" value={`${runsSummary.successRate.toFixed(1)}%`} />
               <MetricCard label="Failed runs" value={runsSummary.failed} />
-              <MetricCard label="Avg duration" value={runsSummary.avgDuration} hint={`${runsSummary.running} currently running`} />
+              <MetricCard label="Avg duration" value={runsSummary.avgDuration} />
             </div>
             {hasRunsChartData ? (
               <div className={styles.runTrendChartsGrid}>

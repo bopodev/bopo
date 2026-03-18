@@ -240,6 +240,8 @@ const PROVIDER_LABELS: Record<string, string> = {
   shell: "Shell"
 };
 
+const SIDEBAR_VISIBLE_PROVIDER_TYPES: RuntimeProviderType[] = ["claude_code", "codex", "opencode", "gemini_cli"];
+
 function normalizeRuntimeProvider(providerType: string): RuntimeProviderType | null {
   if (
     providerType === "claude_code" ||
@@ -268,6 +270,10 @@ function getModelLabel(providerType: string, modelId: string) {
   }
   const matching = getModelOptionsForProvider(runtimeProvider, modelId).find((option) => option.value === modelId);
   return matching?.label ?? modelId;
+}
+
+function providerRequiresNamedModel(providerType: RuntimeProviderType) {
+  return providerType !== "http" && providerType !== "shell";
 }
 
 function parseStateBlob(raw: string | undefined) {
@@ -457,23 +463,35 @@ export function AgentDetailPageClient({
         .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)),
     [agent.id, agents]
   );
+  const configuredProviderType = normalizeRuntimeProvider(agent.providerType);
   const configuredModelId =
     state.runtime?.model?.trim() ||
     agent.runtimeModel?.trim() ||
     (() => {
-      const provider = normalizeRuntimeProvider(agent.providerType);
+      const provider = configuredProviderType;
       return provider ? getDefaultModelForProvider(provider) ?? "" : "";
     })();
   const configuredModelLabel = configuredModelId ? getModelLabel(agent.providerType, configuredModelId) : "Not configured";
+  const [selectedProviderType, setSelectedProviderType] = useState(agent.providerType);
+  const [selectedModelId, setSelectedModelId] = useState(configuredModelId);
+  const providerOptions = useMemo(() => {
+    const options = SIDEBAR_VISIBLE_PROVIDER_TYPES.map((providerType) => ({
+      value: providerType,
+      label: getProviderLabel(providerType)
+    }));
+    if (options.some((option) => option.value === selectedProviderType)) {
+      return options;
+    }
+    return [...options, { value: selectedProviderType, label: getProviderLabel(selectedProviderType) }];
+  }, [selectedProviderType]);
   const modelOptions = useMemo(() => {
-    const provider = normalizeRuntimeProvider(agent.providerType);
+    const provider = normalizeRuntimeProvider(selectedProviderType);
     if (!provider) {
       return [];
     }
-    return getModelOptionsForProvider(provider, configuredModelId).filter((option) => option.value.trim().length > 0);
-  }, [agent.providerType, configuredModelId]);
+    return getModelOptionsForProvider(provider, selectedModelId).filter((option) => option.value.trim().length > 0);
+  }, [selectedProviderType, selectedModelId]);
   const configuredThinkingEffort = state.runtime?.thinkingEffort ?? agent.runtimeThinkingEffort ?? "auto";
-  const [selectedModelId, setSelectedModelId] = useState(configuredModelId);
   const [selectedThinkingEffort, setSelectedThinkingEffort] = useState<"auto" | "low" | "medium" | "high">(
     configuredThinkingEffort
   );
@@ -530,6 +548,10 @@ export function AgentDetailPageClient({
       : agent.status === "terminated"
         ? "Agent is terminated and cannot run."
         : null;
+
+  useEffect(() => {
+    setSelectedProviderType(agent.providerType);
+  }, [agent.providerType]);
 
   useEffect(() => {
     setSelectedModelId(configuredModelId);
@@ -623,6 +645,7 @@ export function AgentDetailPageClient({
   async function updateSidebarSettings(
     payload: {
       runtimeConfig?: { runtimeModel?: string; runtimeThinkingEffort?: "auto" | "low" | "medium" | "high" };
+      providerType?: RuntimeProviderType;
       managerAgentId?: string | null;
     },
     actionKey: string
@@ -656,6 +679,43 @@ export function AgentDetailPageClient({
     try {
       await updateSidebarSettings({ runtimeConfig: { runtimeModel: nextModelId } }, `agent:${agent.id}:runtime-model`);
     } catch {
+      setSelectedModelId(previousModelId);
+    }
+  }
+
+  async function handleProviderChange(nextProviderType: string) {
+    const nextProvider = normalizeRuntimeProvider(nextProviderType);
+    if (!nextProvider || nextProviderType === selectedProviderType) {
+      return;
+    }
+    const previousProviderType = selectedProviderType;
+    const previousModelId = selectedModelId;
+    const nextProviderModelOptions = getModelOptionsForProvider(nextProvider, selectedModelId).filter(
+      (option) => option.value.trim().length > 0
+    );
+    const nextProviderDefaultModel = getDefaultModelForProvider(nextProvider) ?? "";
+    const nextProviderHasCurrentModel = nextProviderModelOptions.some((option) => option.value === selectedModelId);
+    const nextProviderModelId = nextProviderHasCurrentModel
+      ? selectedModelId
+      : (nextProviderModelOptions.find((option) => option.value === nextProviderDefaultModel)?.value ??
+        nextProviderModelOptions[0]?.value ??
+        "");
+    if (providerRequiresNamedModel(nextProvider) && nextProviderModelId.trim().length === 0) {
+      setSidebarError("No models are available for the selected provider.");
+      return;
+    }
+    setSelectedProviderType(nextProvider);
+    setSelectedModelId(nextProviderModelId);
+    try {
+      await updateSidebarSettings(
+        {
+          providerType: nextProvider,
+          runtimeConfig: { runtimeModel: nextProviderModelId }
+        },
+        `agent:${agent.id}:provider`
+      );
+    } catch {
+      setSelectedProviderType(previousProviderType);
       setSelectedModelId(previousModelId);
     }
   }
@@ -905,18 +965,38 @@ export function AgentDetailPageClient({
         <CardContent className={styles.agentSidebarControlsCardContent}>
           <Field>
             <FieldLabel>Provider</FieldLabel>
-            <div className={styles.agentSidebarStaticValue}>{getProviderLabel(agent.providerType)}</div>
+            <Select
+              value={selectedProviderType}
+              onValueChange={(value) => void handleProviderChange(value)}
+              disabled={isActionPending(`agent:${agent.id}:provider`) || agent.status === "terminated"}
+            >
+              <SelectTrigger className={styles.agentSidebarSelectTrigger}>
+                <SelectValue placeholder="Select a provider" />
+              </SelectTrigger>
+              <SelectContent>
+                {providerOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Field>
 
-          <Field>
+          <Field className={styles.agentSidebarField}>
             <FieldLabel>Model</FieldLabel>
             <Select
               value={selectedModelId}
               onValueChange={(value) => void handleModelChange(value)}
-              disabled={modelOptions.length === 0 || isActionPending(`agent:${agent.id}:runtime-model`) || agent.status === "terminated"}
+              disabled={
+                modelOptions.length === 0 ||
+                isActionPending(`agent:${agent.id}:runtime-model`) ||
+                isActionPending(`agent:${agent.id}:provider`) ||
+                agent.status === "terminated"
+              }
             >
               <SelectTrigger className={styles.agentSidebarSelectTrigger}>
-                <SelectValue placeholder={modelOptions.length === 0 ? "Not configurable for this adapter" : "Select a model"} />
+                <SelectValue placeholder={modelOptions.length === 0 ? "Not configurable for this provider" : "Select a model"} />
               </SelectTrigger>
               <SelectContent>
                 {modelOptions.map((option) => (
