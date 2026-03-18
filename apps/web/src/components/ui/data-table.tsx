@@ -43,6 +43,7 @@ interface DataTableProps<TData, TValue> {
   toolbarActions?: React.ReactNode;
   toolbarTrailing?: React.ReactNode;
   showViewOptions?: boolean;
+  showHorizontalScrollbarOnHover?: boolean;
 }
 
 export function DataTable<TData, TValue>({
@@ -55,7 +56,8 @@ export function DataTable<TData, TValue>({
   filterPlaceholder = "Filter...",
   toolbarActions,
   toolbarTrailing,
-  showViewOptions = true
+  showViewOptions = true,
+  showHorizontalScrollbarOnHover = false
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
@@ -126,7 +128,7 @@ export function DataTable<TData, TValue>({
           ) : null}
         </div>
       ) : null}
-      <div className="ui-data-table-surface">
+      <div className={cn("ui-data-table-surface", showHorizontalScrollbarOnHover ? "ui-data-table-surface-hover-scrollbar" : undefined)}>
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (

@@ -1945,16 +1945,6 @@ export function WorkspaceClient({
       );
     });
   }, [isProjectsNav, projectIssueSummaryById, projects, projectsActivityFilter, projectsQuery]);
-  const projectsSummary = useMemo(() => {
-    const total = projects.length;
-    const withOpenIssues = projects.filter((project) => (projectIssueSummaryById.get(project.id)?.open ?? 0) > 0).length;
-    const noOpenIssues = projects.filter((project) => {
-      const summary = projectIssueSummaryById.get(project.id) ?? { total: 0, open: 0 };
-      return summary.total > 0 && summary.open === 0;
-    }).length;
-    const noIssues = projects.filter((project) => (projectIssueSummaryById.get(project.id)?.total ?? 0) === 0).length;
-    return { total, withOpenIssues, noOpenIssues, noIssues };
-  }, [projectIssueSummaryById, projects]);
   const suggestedAgentRuntimeCwd = useMemo(() => {
     const uniqueWorkspacePaths = Array.from(
       new Set(
@@ -2030,69 +2020,6 @@ export function WorkspaceClient({
       );
     });
   }, [agents, agentsModelFilter, agentsProviderFilter, agentsQuery, agentsReportToFilter, agentsStatusFilter, isAgentsNav]);
-  const agentsSummary = useMemo(() => {
-    if (!isAgentsNav) {
-      return {
-        inScope: 0,
-        total: 0,
-        runs14d: 0,
-        completed14d: 0,
-        failed14d: 0,
-        successRate14d: 0,
-        spend30d: 0,
-        managedAgents: 0,
-        uniqueProviders: 0,
-        unconfiguredModels: 0
-      };
-    }
-    const now = Date.now();
-    const last14dMs = 14 * 24 * 60 * 60 * 1000;
-    const last30dMs = 30 * 24 * 60 * 60 * 1000;
-    const inScopeIds = new Set(filteredAgents.map((agent) => agent.id));
-    let runs14d = 0;
-    let completed14d = 0;
-    let failed14d = 0;
-    for (const run of heartbeatRuns) {
-      if (!inScopeIds.has(run.agentId)) {
-        continue;
-      }
-      if (now - new Date(run.startedAt).getTime() > last14dMs) {
-        continue;
-      }
-      runs14d += 1;
-      if (run.status === "completed") {
-        completed14d += 1;
-      } else if (run.status === "failed") {
-        failed14d += 1;
-      }
-    }
-    const spend30d = costEntries.reduce((sum, entry) => {
-      if (!entry.agentId || !inScopeIds.has(entry.agentId)) {
-        return sum;
-      }
-      if (now - new Date(entry.createdAt).getTime() > last30dMs) {
-        return sum;
-      }
-      return sum + entry.usdCost;
-    }, 0);
-    const relevantRuns14d = completed14d + failed14d;
-    const successRate14d = relevantRuns14d > 0 ? (completed14d / relevantRuns14d) * 100 : 0;
-    const managedAgents = filteredAgents.filter((agent) => Boolean(agent.managerAgentId)).length;
-    const uniqueProviders = new Set(filteredAgents.map((agent) => agent.providerType)).size;
-    const unconfiguredModels = filteredAgents.filter((agent) => (resolveNamedModelForAgent(agent) ?? "unconfigured") === "unconfigured").length;
-    return {
-      inScope: filteredAgents.length,
-      total: agents.length,
-      runs14d,
-      completed14d,
-      failed14d,
-      successRate14d,
-      spend30d,
-      managedAgents,
-      uniqueProviders,
-      unconfiguredModels
-    };
-  }, [agents, costEntries, filteredAgents, heartbeatRuns, isAgentsNav]);
   const pluginKindOptions = useMemo(
     () => Array.from(new Set(plugins.map((plugin) => plugin.kind))).sort((a, b) => a.localeCompare(b)),
     [plugins]
@@ -4207,12 +4134,6 @@ export function WorkspaceClient({
                 </>
               }
             />
-            <div className={cn("ui-stats", "mt-4")}>
-              <MetricCard label="Total projects" value={projectsSummary.total} />
-              <MetricCard label="With open issues" value={projectsSummary.withOpenIssues} />
-              <MetricCard label="No open issues" value={projectsSummary.noOpenIssues} />
-              <MetricCard label="No issues" value={projectsSummary.noIssues} />
-            </div>
             <DataTable
               columns={projectColumns}
               data={filteredProjects}
@@ -4328,28 +4249,11 @@ export function WorkspaceClient({
               }
             />
             <>
-              <div className={cn("ui-stats", "mt-4")}>
-                <MetricCard
-                  label="Agents in scope"
-                  value={`${agentsSummary.inScope} / ${agentsSummary.total}`}
-                  hint="filtered agents / total workforce"
-                />
-                <MetricCard
-                  label="Run success (14d)"
-                  value={`${agentsSummary.successRate14d.toFixed(1)}%`}
-                  hint={`${agentsSummary.completed14d} completed / ${agentsSummary.failed14d} failed`}
-                />
-                <MetricCard label="Spend (30d)" value={formatUsdCost(agentsSummary.spend30d)} hint={`${agentsSummary.runs14d} runs in last 14d`} />
-                <MetricCard
-                  label="Managed / Unconfigured"
-                  value={`${agentsSummary.managedAgents} / ${agentsSummary.unconfiguredModels}`}
-                  hint={`${agentsSummary.uniqueProviders} providers in current scope`}
-                />
-              </div>
               <DataTable
                 columns={agentColumns}
                 data={filteredAgents}
                 emptyMessage="No agents match current filters."
+                showHorizontalScrollbarOnHover
                 toolbarActions={
                   <div className={styles.agentsFiltersCardContent}>
                     <Input

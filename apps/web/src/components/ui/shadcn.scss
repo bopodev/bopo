@@ -294,6 +294,22 @@ body {
   -webkit-overflow-scrolling: touch;
 }
 
+.ui-data-table-surface-hover-scrollbar {
+  scrollbar-width: none;
+}
+
+.ui-data-table-surface-hover-scrollbar::-webkit-scrollbar {
+  height: 0;
+}
+
+.ui-data-table-surface-hover-scrollbar:hover {
+  scrollbar-width: thin;
+}
+
+.ui-data-table-surface-hover-scrollbar:hover::-webkit-scrollbar {
+  height: 8px;
+}
+
 .ui-data-table-header-row {
   @apply border-border/60 bg-muted/20 hover:bg-muted/20;
 }

@@ -20,7 +20,7 @@ import { DataTableColumnHeader } from "@/components/ui/data-table-column-header"
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import styles from "./issue-workspace.module.scss";
-import { MetricCard, SectionHeading } from "./workspace/shared";
+import { SectionHeading } from "./workspace/shared";
 
 interface IssueRow {
   id: string;
@@ -164,14 +164,6 @@ export function IssueWorkspace({
     },
     [boardIssues]
   );
-  const issueSummary = useMemo(() => {
-    const total = issues.length;
-    const open = issues.filter((issue) => issue.status !== "done" && issue.status !== "canceled").length;
-    const done = issues.filter((issue) => issue.status === "done").length;
-    const unassigned = issues.filter((issue) => !issue.assigneeAgentId).length;
-    return { total, open, done, unassigned };
-  }, [issues]);
-
   useEffect(() => {
     setBoardIssues(filteredIssues);
   }, [filteredIssues]);
@@ -462,12 +454,6 @@ export function IssueWorkspace({
         </div>
         <div className={styles.issueCardContainer11}>
           {actionError ? <div className={styles.issueCardContainer12}>{actionError}</div> : null}
-          <div className="ui-stats">
-            <MetricCard label="Total issues" value={issueSummary.total} />
-            <MetricCard label="Open issues" value={issueSummary.open} />
-            <MetricCard label="Done issues" value={issueSummary.done} />
-            <MetricCard label="Unassigned issues" value={issueSummary.unassigned} />
-          </div>
           {viewMode === "list" ? (
             <DataTable
               columns={issueColumns}
