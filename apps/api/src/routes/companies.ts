@@ -2,9 +2,10 @@ import { mkdir } from "node:fs/promises";
 import type { NextFunction, Request, Response } from "express";
 import { Router } from "express";
 import { z } from "zod";
+import { CompanySchema } from "bopodev-contracts";
 import { createAgent, createCompany, deleteCompany, listCompanies, updateCompany } from "bopodev-db";
 import type { AppContext } from "../context";
-import { sendError, sendOk } from "../http";
+import { sendError, sendOk, sendOkValidated } from "../http";
 import { normalizeRuntimeConfig, resolveRuntimeModelForProvider, runtimeConfigToDb, runtimeConfigToStateBlobPatch } from "../lib/agent-config";
 import { buildDefaultCeoBootstrapPrompt } from "../lib/ceo-bootstrap-prompt";
 import { resolveOpencodeRuntimeModel } from "../lib/opencode-model";
@@ -37,14 +38,19 @@ export function createCompaniesRouter(ctx: AppContext) {
   const router = Router();
 
   router.get("/", async (req, res) => {
-    const companies = await listCompanies(ctx.db);
+    const companies = (await listCompanies(ctx.db)).map((company) => ({
+      ...company,
+      createdAt: company.createdAt instanceof Date ? company.createdAt.toISOString() : String(company.createdAt)
+    }));
     if (req.actor?.type === "board") {
-      return sendOk(res, companies);
+      return sendOkValidated(res, CompanySchema.array(), companies, "companies.list");
     }
     const visibleCompanyIds = new Set(req.actor?.companyIds ?? []);
-    return sendOk(
+    return sendOkValidated(
       res,
-      companies.filter((company) => visibleCompanyIds.has(company.id))
+      CompanySchema.array(),
+      companies.filter((company) => visibleCompanyIds.has(company.id)),
+      "companies.list.filtered"
     );
   });
 

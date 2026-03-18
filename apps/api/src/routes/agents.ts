@@ -6,7 +6,7 @@ import {
   getAdapterModels,
   runAdapterEnvironmentTest
 } from "bopodev-agent-sdk";
-import { AgentCreateRequestSchema, AgentUpdateRequestSchema } from "bopodev-contracts";
+import { AgentCreateRequestSchema, AgentSchema, AgentUpdateRequestSchema } from "bopodev-contracts";
 import {
   appendAuditEvent,
   createAgent,
@@ -18,7 +18,7 @@ import {
   updateAgent
 } from "bopodev-db";
 import type { AppContext } from "../context";
-import { sendError, sendOk } from "../http";
+import { sendError, sendOk, sendOkValidated } from "../http";
 import {
   normalizeRuntimeConfig,
   parseRuntimeConfigFromAgentRow,
@@ -129,6 +129,10 @@ function providerRequiresNamedModel(providerType: string) {
   return providerType !== "http" && providerType !== "shell";
 }
 
+const agentResponseSchema = AgentSchema.extend({
+  stateBlob: z.string().optional()
+});
+
 function ensureNamedRuntimeModel(providerType: string, runtimeModel: string | undefined) {
   if (!providerRequiresNamedModel(providerType)) {
     return true;
@@ -142,9 +146,11 @@ export function createAgentsRouter(ctx: AppContext) {
 
   router.get("/", async (req, res) => {
     const rows = await listAgents(ctx.db, req.companyId!);
-    return sendOk(
+    return sendOkValidated(
       res,
-      rows.map((row) => toAgentResponse(row as unknown as Record<string, unknown>))
+      agentResponseSchema.array(),
+      rows.map((row) => toAgentResponse(row as unknown as Record<string, unknown>)),
+      "agents.list"
     );
   });
 

@@ -1,8 +1,9 @@
 import { Router } from "express";
 import { z } from "zod";
+import { GoalSchema } from "bopodev-contracts";
 import { appendAuditEvent, createApprovalRequest, createGoal, deleteGoal, getApprovalRequest, listGoals, updateGoal } from "bopodev-db";
 import type { AppContext } from "../context";
-import { sendError, sendOk } from "../http";
+import { sendError, sendOk, sendOkValidated } from "../http";
 import { requireCompanyScope } from "../middleware/company-scope";
 import { requirePermission } from "../middleware/request-actor";
 import { createGovernanceRealtimeEvent, serializeStoredApproval } from "../realtime/governance";
@@ -33,7 +34,12 @@ export function createGoalsRouter(ctx: AppContext) {
   router.use(requireCompanyScope);
 
   router.get("/", async (req, res) => {
-    return sendOk(res, await listGoals(ctx.db, req.companyId!));
+    return sendOkValidated(
+      res,
+      GoalSchema.array(),
+      await listGoals(ctx.db, req.companyId!),
+      "goals.list"
+    );
   });
 
   router.post("/", async (req, res) => {

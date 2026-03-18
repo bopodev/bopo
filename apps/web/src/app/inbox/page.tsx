@@ -7,7 +7,11 @@ export default async function InboxPage({
   searchParams: Promise<{ companyId?: string }>;
 }) {
   const { companyId } = await searchParams;
-  const workspaceData = await loadWorkspaceData(companyId);
+  const workspaceData = await loadWorkspaceData(companyId, {
+    include: {
+      governanceInbox: true
+    }
+  });
 
   return (
     <InboxPageClient

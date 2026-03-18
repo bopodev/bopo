@@ -2,6 +2,7 @@ import { Router } from "express";
 import { mkdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
+import { ProjectSchema } from "bopodev-contracts";
 import {
   appendAuditEvent,
   createProject,
@@ -15,7 +16,7 @@ import {
   updateProjectWorkspace
 } from "bopodev-db";
 import type { AppContext } from "../context";
-import { sendError, sendOk } from "../http";
+import { sendError, sendOk, sendOkValidated } from "../http";
 import { normalizeCompanyWorkspacePath, resolveProjectWorkspacePath } from "../lib/instance-paths";
 import { requireCompanyScope } from "../middleware/company-scope";
 import { requirePermission } from "../middleware/request-actor";
@@ -122,7 +123,7 @@ export function createProjectsRouter(ctx: AppContext) {
   router.get("/", async (req, res) => {
     const projects = await listProjects(ctx.db, req.companyId!);
     const withDiagnostics = await Promise.all(projects.map((project) => enrichProjectDiagnostics(req.companyId!, project)));
-    return sendOk(res, withDiagnostics);
+    return sendOkValidated(res, ProjectSchema.array(), withDiagnostics, "projects.list");
   });
 
   router.post("/", async (req, res) => {

@@ -16,7 +16,8 @@ export default async function SettingsTemplatesPage({
       governanceInbox: false,
       auditEvents: false,
       costEntries: false,
-      projects: false
+      projects: false,
+      templates: true
     }
   });
 

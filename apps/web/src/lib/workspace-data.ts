@@ -1,5 +1,22 @@
 import { ApiError, apiGet } from "@/lib/api";
-import type { ExecutionOutcome } from "bopodev-contracts";
+import {
+  AgentSchema,
+  ApprovalRequestSchema,
+  AuditEventSchema,
+  CompanySchema,
+  CostLedgerEntrySchema,
+  GoalSchema,
+  HeartbeatRunDetailSchema,
+  IssueSchema,
+  ListHeartbeatRunMessagesResponseSchema,
+  ProjectSchema,
+  TemplateSchema,
+  type ExecutionOutcome,
+  type HeartbeatRunDetail,
+  type HeartbeatRunMessage,
+  type HeartbeatRunTranscriptEventKind,
+  GovernanceInboxResponseSchema
+} from "bopodev-contracts";
 
 const defaultCompanyId = process.env.NEXT_PUBLIC_DEFAULT_COMPANY_ID ?? "demo-company";
 
@@ -171,39 +188,8 @@ export interface WorkspaceData {
   }>;
 }
 
-export interface HeartbeatRunMessageRow {
-  id: string;
-  companyId: string;
-  runId: string;
-  sequence: number;
-  kind: "system" | "assistant" | "thinking" | "tool_call" | "tool_result" | "result" | "stderr";
-  label?: string | null;
-  text?: string | null;
-  payload?: string | null;
-  signalLevel?: "high" | "medium" | "low" | "noise";
-  groupKey?: string | null;
-  source?: "stdout" | "stderr" | "trace_fallback";
-  createdAt: string;
-}
-
-export interface HeartbeatRunDetailData {
-  run: {
-    id: string;
-    companyId: string;
-    agentId: string;
-    status: string;
-    runType: "work" | "no_assigned_work" | "budget_skip" | "overlap_skip" | "other_skip" | "failed" | "running";
-    message: string | null;
-    startedAt: string;
-    finishedAt?: string | null;
-  };
-  details: Record<string, unknown> | null;
-  transcript: {
-    hasPersistedMessages: boolean;
-    fallbackFromTrace: boolean;
-    truncated: boolean;
-  };
-}
+export type HeartbeatRunMessageRow = HeartbeatRunMessage;
+export type HeartbeatRunDetailData = HeartbeatRunDetail;
 
 type WorkspaceDataSection =
   | "issues"
@@ -223,17 +209,22 @@ export interface WorkspaceDataLoadOptions {
 
 async function loadIssues(companyId: string) {
   const result = (await apiGet("/issues", companyId)) as ApiResult<WorkspaceData["issues"]>;
-  return result.data;
+  return parseApiData("issues", IssueSchema.array(), result.data);
 }
 
-async function loadCompanies(companyId: string) {
+async function loadCompanies(companyId?: string | null) {
   const result = (await apiGet("/companies", companyId)) as ApiResult<WorkspaceData["companies"]>;
-  return result.data;
+  const companies = parseApiData("companies", CompanySchema.array(), result.data);
+  return companies.map((company) => ({
+    id: company.id,
+    name: company.name,
+    mission: company.mission ?? null
+  }));
 }
 
 async function loadAgents(companyId: string) {
   const result = (await apiGet("/agents", companyId)) as ApiResult<WorkspaceData["agents"]>;
-  return result.data;
+  return parseApiData("agents", AgentSchema.array(), result.data);
 }
 
 async function loadHeartbeatRuns(companyId: string) {
@@ -246,7 +237,7 @@ export async function loadHeartbeatRunDetail(companyId: string, runId: string) {
     `/observability/heartbeats/${encodeURIComponent(runId)}`,
     companyId
   )) as ApiResult<HeartbeatRunDetailData>;
-  return result.data;
+  return parseApiData("heartbeat run detail", HeartbeatRunDetailSchema, result.data);
 }
 
 export async function loadHeartbeatRunMessages(
@@ -254,10 +245,7 @@ export async function loadHeartbeatRunMessages(
   runId: string,
   cursor?: string,
   limit = 200,
-  options?: {
-    signalOnly?: boolean;
-    kinds?: Array<"system" | "assistant" | "thinking" | "tool_call" | "tool_result" | "result" | "stderr">;
-  }
+  options?: { signalOnly?: boolean; kinds?: HeartbeatRunTranscriptEventKind[] }
 ) {
   const params = new URLSearchParams();
   params.set("limit", String(limit));
@@ -274,22 +262,18 @@ export async function loadHeartbeatRunMessages(
   const result = (await apiGet(
     `/observability/heartbeats/${encodeURIComponent(runId)}/messages${suffix ? `?${suffix}` : ""}`,
     companyId
-  )) as ApiResult<{
-    runId: string;
-    items: HeartbeatRunMessageRow[];
-    nextCursor: string | null;
-  }>;
-  return result.data;
+  )) as ApiResult<{ runId: string; items: HeartbeatRunMessageRow[]; nextCursor: string | null }>;
+  return parseApiData("heartbeat run messages", ListHeartbeatRunMessagesResponseSchema, result.data);
 }
 
 async function loadGoals(companyId: string) {
   const result = (await apiGet("/goals", companyId)) as ApiResult<WorkspaceData["goals"]>;
-  return result.data;
+  return parseApiData("goals", GoalSchema.array(), result.data);
 }
 
 async function loadApprovals(companyId: string) {
   const result = (await apiGet("/governance/approvals", companyId)) as ApiResult<WorkspaceData["approvals"]>;
-  return result.data;
+  return parseApiData("approvals", ApprovalRequestSchema.array(), result.data);
 }
 
 async function loadGovernanceInbox(companyId: string) {
@@ -298,27 +282,46 @@ async function loadGovernanceInbox(companyId: string) {
     resolvedWindowDays: number;
     items: WorkspaceData["governanceInbox"];
   }>;
-  return result.data.items;
+  return parseApiData("governance inbox", GovernanceInboxResponseSchema, result.data).items;
 }
 
 async function loadAuditEvents(companyId: string) {
   const result = (await apiGet("/observability/logs", companyId)) as ApiResult<WorkspaceData["auditEvents"]>;
-  return result.data;
+  return parseApiData("audit events", AuditEventSchema.array(), result.data);
 }
 
 async function loadCostEntries(companyId: string) {
   const result = (await apiGet("/observability/costs", companyId)) as ApiResult<WorkspaceData["costEntries"]>;
-  return result.data;
+  return parseApiData("cost entries", CostLedgerEntrySchema.array(), result.data);
 }
 
 async function loadProjects(companyId: string) {
   const result = (await apiGet("/projects", companyId)) as ApiResult<WorkspaceData["projects"]>;
-  return result.data;
+  const projects = parseApiData("projects", ProjectSchema.array(), result.data);
+  return projects.map((project) => ({
+    ...project,
+    description: project.description ?? null,
+    plannedStartAt: project.plannedStartAt ?? null,
+    workspaces: project.workspaces.map((workspace) => ({
+      ...workspace,
+      cwd: workspace.cwd ?? null,
+      repoUrl: workspace.repoUrl ?? null,
+      repoRef: workspace.repoRef ?? null
+    })),
+    primaryWorkspace: project.primaryWorkspace
+      ? {
+          ...project.primaryWorkspace,
+          cwd: project.primaryWorkspace.cwd ?? null,
+          repoUrl: project.primaryWorkspace.repoUrl ?? null,
+          repoRef: project.primaryWorkspace.repoRef ?? null
+        }
+      : null
+  }));
 }
 
 async function loadTemplates(companyId: string) {
   const result = (await apiGet("/templates", companyId)) as ApiResult<WorkspaceData["templates"]>;
-  return result.data;
+  return parseApiData("templates", TemplateSchema.array(), result.data);
 }
 
 export async function loadWorkspaceData(
@@ -331,11 +334,11 @@ export async function loadWorkspaceData(
     heartbeatRuns: true,
     goals: true,
     approvals: true,
-    governanceInbox: true,
+    governanceInbox: false,
     auditEvents: true,
     costEntries: true,
     projects: true,
-    templates: true,
+    templates: false,
     ...options.include
   } satisfies Record<WorkspaceDataSection, boolean>;
   const emptyWorkspaceData = (): WorkspaceData => ({
@@ -355,7 +358,7 @@ export async function loadWorkspaceData(
   });
   let companies: WorkspaceData["companies"] = [];
   try {
-    companies = await loadCompanies(defaultCompanyId);
+    companies = await loadCompanies(requestedCompanyId);
   } catch (error) {
     // During local startup the API can be briefly unavailable; return an empty workspace instead of crashing SSR.
     if (error instanceof ApiError || error instanceof TypeError) {
@@ -404,4 +407,20 @@ export async function loadWorkspaceData(
     projects,
     templates
   };
+}
+
+function parseApiData<T>(
+  resourceName: string,
+  schema: { safeParse: (value: unknown) => { success: boolean; data?: T; error?: { issues?: Array<{ path?: unknown[]; message?: string }> } } },
+  data: unknown
+): T {
+  const parsed = schema.safeParse(data);
+  if (parsed.success) {
+    return parsed.data as T;
+  }
+  throw new Error(
+    `API contract mismatch for '${resourceName}': ${(parsed.error?.issues ?? [])
+      .map((issue) => `${(issue.path ?? []).join(".") || "<root>"} ${issue.message ?? "Invalid value"}`)
+      .join("; ")}`
+  );
 }

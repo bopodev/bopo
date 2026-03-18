@@ -7,21 +7,25 @@ export default async function OfficeSpacePage({
   searchParams: Promise<{ companyId?: string }>;
 }) {
   const { companyId } = await searchParams;
-  const workspaceData = await loadWorkspaceData(companyId);
+  const workspaceData = await loadWorkspaceData(companyId, {
+    include: {
+      issues: false,
+      agents: false,
+      heartbeatRuns: false,
+      goals: false,
+      approvals: false,
+      governanceInbox: false,
+      auditEvents: false,
+      costEntries: false,
+      projects: false,
+      templates: false
+    }
+  });
 
   return (
     <OfficeSpacePageClient
       companyId={workspaceData.companyId}
-      activeCompany={workspaceData.activeCompany}
       companies={workspaceData.companies}
-      issues={workspaceData.issues}
-      agents={workspaceData.agents}
-      heartbeatRuns={workspaceData.heartbeatRuns}
-      goals={workspaceData.goals}
-      approvals={workspaceData.approvals}
-      auditEvents={workspaceData.auditEvents}
-      costEntries={workspaceData.costEntries}
-      projects={workspaceData.projects}
     />
   );
 }

@@ -1,6 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { resolveAdapter } from "bopodev-agent-sdk";
 import type { AgentState, HeartbeatContext } from "bopodev-agent-sdk";
@@ -1338,20 +1338,11 @@ export async function runHeartbeatSweep(
   options?: { requestId?: string; realtimeHub?: RealtimeHub }
 ) {
   const companyAgents = await db.select().from(agents).where(eq(agents.companyId, companyId));
-  const recentRuns = await db
-    .select({ agentId: heartbeatRuns.agentId, startedAt: heartbeatRuns.startedAt })
-    .from(heartbeatRuns)
-    .where(eq(heartbeatRuns.companyId, companyId))
-    .orderBy(desc(heartbeatRuns.startedAt));
-  const latestRunByAgent = new Map<string, Date>();
-  for (const run of recentRuns) {
-    if (!latestRunByAgent.has(run.agentId)) {
-      latestRunByAgent.set(run.agentId, run.startedAt);
-    }
-  }
+  const latestRunByAgent = await listLatestRunByAgent(db, companyId);
 
   const now = new Date();
   const runs: string[] = [];
+  const dueAgents: Array<{ id: string }> = [];
   let skippedNotDue = 0;
   let skippedStatus = 0;
   let failedStarts = 0;
@@ -1365,6 +1356,10 @@ export async function runHeartbeatSweep(
       skippedNotDue += 1;
       continue;
     }
+    dueAgents.push({ id: agent.id });
+  }
+  const sweepConcurrency = resolveHeartbeatSweepConcurrency(dueAgents.length);
+  await runWithConcurrency(dueAgents, sweepConcurrency, async (agent) => {
     try {
       const runId = await runHeartbeatForAgent(db, companyId, agent.id, {
         trigger: "scheduler",
@@ -1377,7 +1372,7 @@ export async function runHeartbeatSweep(
     } catch {
       failedStarts += 1;
     }
-  }
+  });
   await appendAuditEvent(db, {
     companyId,
     actorType: "system",
@@ -1388,14 +1383,49 @@ export async function runHeartbeatSweep(
     payload: {
       runIds: runs,
       startedCount: runs.length,
+      dueCount: dueAgents.length,
       failedStarts,
       skippedStatus,
       skippedNotDue,
+      concurrency: sweepConcurrency,
       elapsedMs: Date.now() - sweepStartedAt,
       requestId: options?.requestId ?? null
     }
   });
   return runs;
+}
+
+async function listLatestRunByAgent(db: BopoDb, companyId: string) {
+  const result = await db.execute(sql`
+    SELECT agent_id, MAX(started_at) AS latest_started_at
+    FROM heartbeat_runs
+    WHERE company_id = ${companyId}
+    GROUP BY agent_id
+  `);
+  const latestRunByAgent = new Map<string, Date>();
+  for (const row of result.rows ?? []) {
+    const agentId = typeof row.agent_id === "string" ? row.agent_id : null;
+    if (!agentId) {
+      continue;
+    }
+    const startedAt = coerceDate(row.latest_started_at);
+    if (!startedAt) {
+      continue;
+    }
+    latestRunByAgent.set(agentId, startedAt);
+  }
+  return latestRunByAgent;
+}
+
+function coerceDate(value: unknown) {
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+  if (typeof value === "string" || typeof value === "number") {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  return null;
 }
 
 async function buildHeartbeatContext(
@@ -1956,6 +1986,39 @@ function resolveStaleRunThresholdMs() {
     return 10 * 60 * 1000;
   }
   return parsed;
+}
+
+function resolveHeartbeatSweepConcurrency(dueAgentsCount: number) {
+  const configured = Number(process.env.BOPO_HEARTBEAT_SWEEP_CONCURRENCY ?? "4");
+  const fallback = 4;
+  const normalized = Number.isFinite(configured) ? Math.floor(configured) : fallback;
+  if (normalized < 1) {
+    return 1;
+  }
+  // Prevent scheduler bursts from starving the API event loop.
+  const bounded = Math.min(normalized, 16);
+  return Math.min(bounded, Math.max(1, dueAgentsCount));
+}
+
+async function runWithConcurrency<T>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<void>
+) {
+  if (items.length === 0) {
+    return;
+  }
+  const workerCount = Math.max(1, Math.min(Math.floor(concurrency), items.length));
+  let cursor = 0;
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (cursor < items.length) {
+        const index = cursor;
+        cursor += 1;
+        await worker(items[index] as T, index);
+      }
+    })
+  );
 }
 
 function resolveEffectiveStaleRunThresholdMs(input: {

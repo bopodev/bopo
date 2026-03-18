@@ -1,7 +1,16 @@
 import type {
   HeartbeatRunRealtimeEvent,
+  HeartbeatRunTranscriptEventKind,
+  HeartbeatRunTranscriptSignalLevel,
+  HeartbeatRunTranscriptSource,
   RealtimeEventEnvelope,
   RealtimeMessage
+} from "bopodev-contracts";
+import {
+  HeartbeatRunSchema,
+  HeartbeatRunTranscriptEventKindSchema,
+  HeartbeatRunTranscriptSignalLevelSchema,
+  HeartbeatRunTranscriptSourceSchema
 } from "bopodev-contracts";
 import { listHeartbeatRunMessagesForRuns, listHeartbeatRuns, type BopoDb } from "bopodev-db";
 
@@ -33,20 +42,13 @@ export async function loadHeartbeatRunsRealtimeSnapshot(
         id: message.id,
         runId: message.runId,
         sequence: message.sequence,
-        kind: message.kind as
-          | "system"
-          | "assistant"
-          | "thinking"
-          | "tool_call"
-          | "tool_result"
-          | "result"
-          | "stderr",
+        kind: parseTranscriptKind(message.kind),
         label: message.label,
         text: message.text,
         payload: message.payloadJson,
-        signalLevel: (message.signalLevel as "high" | "medium" | "low" | "noise" | null) ?? undefined,
+        signalLevel: parseTranscriptSignalLevel(message.signalLevel),
         groupKey: message.groupKey,
-        source: (message.source as "stdout" | "stderr" | "trace_fallback" | null) ?? undefined,
+        source: parseTranscriptSource(message.source),
         createdAt: message.createdAt.toISOString()
       })),
       nextCursor: result.nextCursor
@@ -57,7 +59,7 @@ export async function loadHeartbeatRunsRealtimeSnapshot(
     type: "runs.snapshot",
     runs: runs.map((run) => ({
       runId: run.id,
-      status: run.status as "started" | "completed" | "failed" | "skipped",
+      status: parseRunStatus(run.status),
       message: run.message ?? null,
       startedAt: run.startedAt.toISOString(),
       finishedAt: run.finishedAt?.toISOString() ?? null
@@ -75,4 +77,24 @@ function createRealtimeEvent(
     companyId,
     ...envelope
   };
+}
+
+function parseRunStatus(value: string) {
+  const parsed = HeartbeatRunSchema.shape.status.safeParse(value);
+  return parsed.success ? parsed.data : "failed";
+}
+
+function parseTranscriptKind(value: string): HeartbeatRunTranscriptEventKind {
+  const parsed = HeartbeatRunTranscriptEventKindSchema.safeParse(value);
+  return parsed.success ? parsed.data : "system";
+}
+
+function parseTranscriptSignalLevel(value: string | null): HeartbeatRunTranscriptSignalLevel | undefined {
+  const parsed = HeartbeatRunTranscriptSignalLevelSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
+}
+
+function parseTranscriptSource(value: string | null): HeartbeatRunTranscriptSource | undefined {
+  const parsed = HeartbeatRunTranscriptSourceSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
 }

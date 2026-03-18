@@ -77,7 +77,7 @@ async function parseApiResponse<T>(
   return payload;
 }
 
-export async function apiGet<T>(path: string, companyId: string): Promise<ApiSuccess<T>> {
+export async function apiGet<T>(path: string, companyId?: string | null): Promise<ApiSuccess<T>> {
   return requestWithRetry<T>("GET", path, companyId);
 }
 
@@ -102,17 +102,21 @@ export function getRealtimeUrl(companyId: string, channels: RealtimeChannel[]) {
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   url.searchParams.set("companyId", companyId);
   url.searchParams.set("channels", channels.join(","));
-  const token = readActorToken();
-  if (token) {
-    url.searchParams.set("authToken", token);
-  }
   return url.toString();
+}
+
+export function getRealtimeProtocols() {
+  const token = readActorToken();
+  if (!token) {
+    return ["bopo.v1"];
+  }
+  return ["bopo.v1", `bopo-token.${encodeURIComponent(token)}`];
 }
 
 async function requestWithRetry<T>(
   method: "GET" | "POST" | "PUT" | "DELETE",
   path: string,
-  companyId: string,
+  companyId?: string | null,
   body?: Record<string, unknown> | FormData
 ) {
   const traceId = createTraceId();
@@ -126,7 +130,7 @@ async function requestWithRetry<T>(
         method,
         headers: {
           ...(body && !(body instanceof FormData) ? { "content-type": "application/json" } : {}),
-          "x-company-id": companyId,
+          ...(companyId ? { "x-company-id": companyId } : {}),
           "x-client-trace-id": traceId,
           ...(readActorToken() ? { authorization: `Bearer ${readActorToken()}` } : {})
         },

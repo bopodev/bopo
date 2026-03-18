@@ -4,6 +4,7 @@ import { basename, extname, join, resolve } from "node:path";
 import { and, eq } from "drizzle-orm";
 import multer from "multer";
 import { z } from "zod";
+import { IssueSchema } from "bopodev-contracts";
 import {
   addIssueAttachment,
   addIssueComment,
@@ -27,7 +28,7 @@ import {
 } from "bopodev-db";
 import { nanoid } from "nanoid";
 import type { AppContext } from "../context";
-import { sendError, sendOk } from "../http";
+import { sendError, sendOk, sendOkValidated } from "../http";
 import { isInsidePath, normalizeCompanyWorkspacePath, resolveProjectWorkspacePath } from "../lib/instance-paths";
 import { requireCompanyScope } from "../middleware/company-scope";
 import { requirePermission } from "../middleware/request-actor";
@@ -153,9 +154,11 @@ export function createIssuesRouter(ctx: AppContext) {
   router.get("/", async (req, res) => {
     const projectId = req.query.projectId?.toString();
     const rows = await listIssues(ctx.db, req.companyId!, projectId);
-    return sendOk(
+    return sendOkValidated(
       res,
-      rows.map((row) => toIssueResponse(row as unknown as Record<string, unknown>))
+      IssueSchema.array(),
+      rows.map((row) => toIssueResponse(row as unknown as Record<string, unknown>)),
+      "issues.list"
     );
   });
 

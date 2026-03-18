@@ -1,4 +1,10 @@
-import type { ApprovalRequest, RealtimeEventEnvelope, RealtimeMessage } from "bopodev-contracts";
+import {
+  ApprovalActionSchema,
+  ApprovalRequestSchema,
+  type ApprovalRequest,
+  type RealtimeEventEnvelope,
+  type RealtimeMessage
+} from "bopodev-contracts";
 import { listApprovalRequests, type BopoDb } from "bopodev-db";
 
 export async function loadGovernanceRealtimeSnapshot(db: BopoDb, companyId: string): Promise<Extract<RealtimeMessage, { kind: "event" }>> {
@@ -33,13 +39,15 @@ export function serializeStoredApproval(approval: {
   createdAt: Date;
   resolvedAt: Date | null;
 }): ApprovalRequest {
+  const actionParsed = ApprovalActionSchema.safeParse(approval.action);
+  const statusParsed = ApprovalRequestSchema.shape.status.safeParse(approval.status);
   return {
     id: approval.id,
     companyId: approval.companyId,
     requestedByAgentId: approval.requestedByAgentId,
-    action: approval.action as ApprovalRequest["action"],
+    action: actionParsed.success ? actionParsed.data : "override_budget",
     payload: parsePayload(approval.payloadJson),
-    status: approval.status as ApprovalRequest["status"],
+    status: statusParsed.success ? statusParsed.data : "pending",
     createdAt: approval.createdAt.toISOString(),
     resolvedAt: approval.resolvedAt?.toISOString() ?? null
   };

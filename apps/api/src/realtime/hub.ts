@@ -140,7 +140,7 @@ function canSubscribeToCompany(
 ) {
   const deploymentMode = resolveDeploymentMode();
   const tokenSecret = process.env.BOPO_AUTH_TOKEN_SECRET?.trim() || "";
-  const tokenIdentity = tokenSecret ? verifyActorToken(readRealtimeTokenFromUrl(requestUrl), tokenSecret) : null;
+  const tokenIdentity = tokenSecret ? verifyActorToken(readRealtimeToken(requestUrl, headers), tokenSecret) : null;
   if (tokenIdentity) {
     if (tokenIdentity.type === "board") {
       return true;
@@ -169,13 +169,45 @@ function canSubscribeToCompany(
   return actorCompanies.includes(companyId);
 }
 
-function readRealtimeTokenFromUrl(requestUrl: string | undefined) {
+function readRealtimeToken(requestUrl: string | undefined, headers: Record<string, string | string[] | undefined>) {
+  const fromProtocol = readRealtimeTokenFromSubprotocolHeader(readHeader(headers, "sec-websocket-protocol"));
+  if (fromProtocol) {
+    return fromProtocol;
+  }
   if (!requestUrl) {
     return null;
   }
   const url = new URL(requestUrl, "http://localhost");
   const token = url.searchParams.get("authToken")?.trim();
   return token && token.length > 0 ? token : null;
+}
+
+function readRealtimeTokenFromSubprotocolHeader(value: string | undefined) {
+  if (!value) {
+    return null;
+  }
+  const protocolEntries = value
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+  for (const protocol of protocolEntries) {
+    if (!protocol.startsWith("bopo-token.")) {
+      continue;
+    }
+    const encodedToken = protocol.slice("bopo-token.".length);
+    if (!encodedToken) {
+      continue;
+    }
+    try {
+      const decoded = decodeURIComponent(encodedToken).trim();
+      if (decoded) {
+        return decoded;
+      }
+    } catch {
+      continue;
+    }
+  }
+  return null;
 }
 
 function readHeader(headers: Record<string, string | string[] | undefined>, name: string) {

@@ -7,7 +7,17 @@ export default async function TraceLogsPage({
   searchParams: Promise<{ companyId?: string }>;
 }) {
   const { companyId } = await searchParams;
-  const workspaceData = await loadWorkspaceData(companyId);
+  const workspaceData = await loadWorkspaceData(companyId, {
+    include: {
+      issues: false,
+      heartbeatRuns: false,
+      goals: false,
+      governanceInbox: false,
+      costEntries: false,
+      projects: false,
+      templates: false
+    }
+  });
 
   return (
     <TraceLogsPageClient
