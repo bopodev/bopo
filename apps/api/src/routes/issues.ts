@@ -52,6 +52,8 @@ const createIssueSchema = z.object({
         .object({
           intentType: z.literal("agent_hiring_request"),
           requestedRole: z.string().nullable().optional(),
+          requestedRoleKey: z.string().nullable().optional(),
+          requestedTitle: z.string().nullable().optional(),
           requestedName: z.string().nullable().optional(),
           requestedManagerAgentId: z.string().nullable().optional(),
           requestedProviderType: z.string().nullable().optional(),

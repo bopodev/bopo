@@ -101,7 +101,7 @@ export async function ensureOnboardingSeed(input: {
     const resolvedCompanyName = companyRow.name;
     await ensureCompanyBuiltinTemplateDefaults(db, companyId);
     const agents = await listAgents(db, companyId);
-    const existingCeo = agents.find((agent) => agent.role === "CEO" || agent.name === "CEO");
+    const existingCeo = agents.find((agent) => agent.roleKey === "ceo" || agent.role === "CEO" || agent.name === "CEO");
     let ceoCreated = false;
     let ceoMigrated = false;
     let ceoProviderType: AgentProvider = parseAgentProvider(existingCeo?.providerType) ?? agentProvider;
@@ -130,6 +130,8 @@ export async function ensureOnboardingSeed(input: {
         const ceo = await createAgent(db, {
           companyId,
           role: "CEO",
+          roleKey: "ceo",
+          title: "CEO",
           name: "CEO",
           providerType: agentProvider,
           heartbeatCron: "*/5 * * * *",

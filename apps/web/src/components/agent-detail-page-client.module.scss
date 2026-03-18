@@ -156,6 +156,10 @@
   @apply w-full;
 }
 
+.agentSidebarStaticValue {
+  @apply flex min-h-9 w-full items-center rounded-md border border-input bg-background px-3 py-2 text-base text-muted-foreground;
+}
+
 .agentSidebarErrorText {
   @apply text-base text-destructive;
 }

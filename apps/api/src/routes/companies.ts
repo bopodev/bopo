@@ -97,6 +97,8 @@ export function createCompaniesRouter(ctx: AppContext) {
     await createAgent(ctx.db, {
       companyId: company.id,
       role: "CEO",
+      roleKey: "ceo",
+      title: "CEO",
       name: "CEO",
       providerType,
       heartbeatCron: "*/5 * * * *",

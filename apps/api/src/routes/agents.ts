@@ -6,7 +6,13 @@ import {
   getAdapterModels,
   runAdapterEnvironmentTest
 } from "bopodev-agent-sdk";
-import { AgentCreateRequestSchema, AgentSchema, AgentUpdateRequestSchema } from "bopodev-contracts";
+import {
+  AGENT_ROLE_LABELS,
+  AgentCreateRequestSchema,
+  AgentRoleKeySchema,
+  AgentSchema,
+  AgentUpdateRequestSchema
+} from "bopodev-contracts";
 import {
   appendAuditEvent,
   createAgent,
@@ -84,6 +90,8 @@ const runtimePreflightSchema = z.object({
 const UPDATE_AGENT_ALLOWED_KEYS = new Set([
   "managerAgentId",
   "role",
+  "roleKey",
+  "title",
   "name",
   "providerType",
   "status",
@@ -161,6 +169,7 @@ export function createAgentsRouter(ctx: AppContext) {
         id: row.id,
         name: row.name,
         role: row.role,
+        roleKey: row.roleKey,
         status: row.status,
         canHireAgents: row.canHireAgents
       }))
@@ -176,8 +185,7 @@ export function createAgentsRouter(ctx: AppContext) {
     return sendOk(
       res,
       rows.map((row) => {
-        const normalizedRole = row.role.trim().toLowerCase();
-        const isLeadership = normalizedRole === "ceo" || Boolean(row.canHireAgents);
+        const isLeadership = row.roleKey === "ceo" || Boolean(row.canHireAgents);
         const issues: string[] = [];
         const hasBootstrapPrompt = hasText(row.bootstrapPrompt);
         if (isLeadership && !hasBootstrapPrompt) {
@@ -190,6 +198,7 @@ export function createAgentsRouter(ctx: AppContext) {
           agentId: row.id,
           name: row.name,
           role: row.role,
+          roleKey: row.roleKey,
           providerType: row.providerType,
           canHireAgents: Boolean(row.canHireAgents),
           isLeadership,
@@ -372,7 +381,8 @@ export function createAgentsRouter(ctx: AppContext) {
     const shouldRequestApproval = (parsed.data.requestApproval || req.actor?.type === "agent") && isApprovalRequired("hire_agent");
     if (shouldRequestApproval) {
       const duplicate = await findDuplicateHireRequest(ctx.db, req.companyId!, {
-        role: parsed.data.role,
+        role: parsed.data.role ?? "",
+        roleKey: parsed.data.roleKey ?? null,
         managerAgentId: parsed.data.managerAgentId ?? null
       });
       if (duplicate) {
@@ -410,7 +420,9 @@ export function createAgentsRouter(ctx: AppContext) {
     const agent = await createAgent(ctx.db, {
       companyId: req.companyId!,
       managerAgentId: parsed.data.managerAgentId,
-      role: parsed.data.role,
+      role: resolveAgentRoleText(parsed.data.role, parsed.data.roleKey, parsed.data.title),
+      roleKey: normalizeRoleKey(parsed.data.roleKey),
+      title: normalizeTitle(parsed.data.title),
       name: parsed.data.name,
       providerType: parsed.data.providerType,
       heartbeatCron: parsed.data.heartbeatCron,
@@ -549,7 +561,16 @@ export function createAgentsRouter(ctx: AppContext) {
         companyId: req.companyId!,
         id: req.params.agentId,
         managerAgentId: parsed.data.managerAgentId,
-        role: parsed.data.role,
+        role:
+          parsed.data.role !== undefined || parsed.data.roleKey !== undefined || parsed.data.title !== undefined
+            ? resolveAgentRoleText(
+                parsed.data.role ?? existingAgent.role,
+                parsed.data.roleKey ?? existingAgent.roleKey,
+                parsed.data.title ?? existingAgent.title
+              )
+            : undefined,
+        roleKey: parsed.data.roleKey !== undefined ? normalizeRoleKey(parsed.data.roleKey) : undefined,
+        title: parsed.data.title !== undefined ? normalizeTitle(parsed.data.title) : undefined,
         name: parsed.data.name,
         providerType: parsed.data.providerType,
         status: parsed.data.status,
@@ -721,14 +742,15 @@ function enforceRuntimeCwdPolicy(companyId: string, runtime: ReturnType<typeof n
 async function findDuplicateHireRequest(
   db: AppContext["db"],
   companyId: string,
-  input: { role: string; managerAgentId: string | null }
+  input: { role: string; roleKey: string | null; managerAgentId: string | null }
 ) {
   const role = input.role.trim();
+  const roleKey = normalizeRoleKey(input.roleKey);
   const managerAgentId = input.managerAgentId ?? null;
   const agents = await listAgents(db, companyId);
   const existingAgent = agents.find(
     (agent) =>
-      agent.role === role &&
+      ((roleKey && agent.roleKey === roleKey) || (!roleKey && role.length > 0 && agent.role === role)) &&
       (agent.managerAgentId ?? null) === managerAgentId &&
       agent.status !== "terminated"
   );
@@ -738,6 +760,10 @@ async function findDuplicateHireRequest(
       return false;
     }
     const payload = parseApprovalPayload(approval.payloadJson);
+    const payloadRoleKey = normalizeRoleKey(payload.roleKey);
+    if (roleKey && payloadRoleKey) {
+      return payloadRoleKey === roleKey && (payload.managerAgentId ?? null) === managerAgentId;
+    }
     return payload.role === role && (payload.managerAgentId ?? null) === managerAgentId;
   });
   if (!existingAgent && !pendingApproval) {
@@ -749,11 +775,12 @@ async function findDuplicateHireRequest(
   };
 }
 
-function parseApprovalPayload(payloadJson: string): { role?: string; managerAgentId?: string | null } {
+function parseApprovalPayload(payloadJson: string): { role?: string; roleKey?: string | null; managerAgentId?: string | null } {
   try {
     const parsed = JSON.parse(payloadJson) as Record<string, unknown>;
     return {
       role: typeof parsed.role === "string" ? parsed.role : undefined,
+      roleKey: typeof parsed.roleKey === "string" ? parsed.roleKey : null,
       managerAgentId: typeof parsed.managerAgentId === "string" ? parsed.managerAgentId : null
     };
   } catch {
@@ -784,6 +811,40 @@ function normalizeSourceIssueIds(sourceIssueId: string | undefined, sourceIssueI
 
 function providerSupportsSkillInjection(providerType: string) {
   return providerType === "codex" || providerType === "cursor" || providerType === "opencode" || providerType === "claude_code";
+}
+
+function normalizeRoleKey(input: string | null | undefined) {
+  const normalized = input?.trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+  const parsed = AgentRoleKeySchema.safeParse(normalized);
+  return parsed.success ? parsed.data : null;
+}
+
+function normalizeTitle(input: string | null | undefined) {
+  const normalized = input?.trim();
+  return normalized ? normalized : null;
+}
+
+function resolveAgentRoleText(
+  legacyRole: string | undefined,
+  roleKeyInput: string | null | undefined,
+  titleInput: string | null | undefined
+) {
+  const normalizedLegacy = legacyRole?.trim();
+  if (normalizedLegacy) {
+    return normalizedLegacy;
+  }
+  const normalizedTitle = normalizeTitle(titleInput);
+  if (normalizedTitle) {
+    return normalizedTitle;
+  }
+  const roleKey = normalizeRoleKey(roleKeyInput);
+  if (roleKey) {
+    return AGENT_ROLE_LABELS[roleKey];
+  }
+  return AGENT_ROLE_LABELS.general;
 }
 
 function resolveAuditActor(actor: { type: "board" | "member" | "agent"; id: string } | undefined) {

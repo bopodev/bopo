@@ -1,4 +1,4 @@
-import type { TemplateApplyResponse, TemplateManifest } from "bopodev-contracts";
+import { AGENT_ROLE_LABELS, AgentRoleKeySchema, type TemplateApplyResponse, type TemplateManifest } from "bopodev-contracts";
 import type { BopoDb } from "bopodev-db";
 import {
   createAgent,
@@ -59,7 +59,9 @@ export async function applyTemplateManifest(
     const createdAgent = await createAgent(db, {
       companyId: input.companyId,
       managerAgentId: managerId,
-      role: agent.role,
+      role: resolveAgentRoleText(agent.role, agent.roleKey, agent.title),
+      roleKey: normalizeRoleKey(agent.roleKey),
+      title: normalizeTitle(agent.title),
       name: agent.name,
       providerType: agent.providerType,
       heartbeatCron: agent.heartbeatCron,
@@ -135,4 +137,37 @@ export async function applyTemplateManifest(
     summary: preview.summary,
     warnings: preview.warnings
   };
+}
+
+function normalizeRoleKey(input: string | null | undefined) {
+  const normalized = input?.trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+  return AgentRoleKeySchema.safeParse(normalized).success ? normalized : null;
+}
+
+function normalizeTitle(input: string | null | undefined) {
+  const normalized = input?.trim();
+  return normalized ? normalized : null;
+}
+
+function resolveAgentRoleText(
+  legacyRole: string | undefined,
+  roleKeyInput: string | undefined,
+  titleInput: string | null | undefined
+) {
+  const normalizedLegacy = legacyRole?.trim();
+  if (normalizedLegacy) {
+    return normalizedLegacy;
+  }
+  const normalizedTitle = normalizeTitle(titleInput);
+  if (normalizedTitle) {
+    return normalizedTitle;
+  }
+  const roleKey = normalizeRoleKey(roleKeyInput);
+  if (roleKey) {
+    return AGENT_ROLE_LABELS[roleKey];
+  }
+  return AGENT_ROLE_LABELS.general;
 }

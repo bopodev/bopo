@@ -2,6 +2,7 @@ type AgentLike = {
   id: string;
   name: string;
   role: string;
+  roleKey?: string | null;
   status: string;
   canHireAgents?: boolean | null;
 };
@@ -12,6 +13,7 @@ export type HiringDelegateResolution =
         agentId: string;
         name: string;
         role: string;
+        roleKey?: string | null;
       };
       reason: "ceo_with_hiring_capability" | "first_hiring_capable_agent";
     }
@@ -32,18 +34,16 @@ export function resolveHiringDelegate(agents: AgentLike[]): HiringDelegateResolu
   }
   const normalized = eligible.map((agent) => ({
     ...agent,
-    normalizedRole: agent.role.trim().toLowerCase(),
     normalizedName: agent.name.trim().toLowerCase()
   }));
-  const ceo =
-    normalized.find((agent) => agent.normalizedRole === "ceo") ??
-    normalized.find((agent) => agent.normalizedName === "ceo");
+  const ceo = normalized.find((agent) => agent.roleKey === "ceo") ?? normalized.find((agent) => agent.normalizedName === "ceo");
   if (ceo) {
     return {
       delegate: {
         agentId: ceo.id,
         name: ceo.name,
-        role: ceo.role
+        role: ceo.role,
+        roleKey: ceo.roleKey ?? null
       },
       reason: "ceo_with_hiring_capability"
     };
@@ -53,7 +53,8 @@ export function resolveHiringDelegate(agents: AgentLike[]): HiringDelegateResolu
     delegate: {
       agentId: fallback.id,
       name: fallback.name,
-      role: fallback.role
+      role: fallback.role,
+      roleKey: fallback.roleKey ?? null
     },
     reason: "first_hiring_capable_agent"
   };

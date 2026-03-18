@@ -36,6 +36,7 @@ import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
+import { AGENT_ROLE_LABELS, AGENT_ROLE_KEYS, type AgentRoleKey } from "bopodev-contracts";
 import styles from "./workspace-client.module.scss";
 import {
   Select,
@@ -157,6 +158,8 @@ interface AgentRow {
   name: string;
   avatarSeed?: string | null;
   role: string;
+  roleKey?: AgentRoleKey | null;
+  title?: string | null;
   managerAgentId: string | null;
   status: string;
   providerType: string;
@@ -294,7 +297,7 @@ function describeApprovalPayload(payload: Record<string, unknown> | undefined) {
     return "No payload";
   }
   const name = typeof payload.name === "string" ? payload.name : null;
-  const role = typeof payload.role === "string" ? payload.role : null;
+  const role = resolvePayloadRoleLabel(payload);
   const projectId = typeof payload.projectId === "string" ? payload.projectId : null;
   const parentGoalId = typeof payload.parentGoalId === "string" ? payload.parentGoalId : null;
   const title = typeof payload.title === "string" ? payload.title : null;
@@ -302,6 +305,38 @@ function describeApprovalPayload(payload: Record<string, unknown> | undefined) {
     (value): value is string => Boolean(value)
   );
   return fragments.length > 0 ? fragments.join(" · ") : "Payload ready";
+}
+
+function normalizeRoleKey(value: string | null | undefined): AgentRoleKey | null {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+  return AGENT_ROLE_KEYS.includes(normalized as AgentRoleKey) ? (normalized as AgentRoleKey) : null;
+}
+
+function getAgentDisplayRole(agent: Pick<AgentRow, "role" | "roleKey" | "title">) {
+  const title = typeof agent.title === "string" ? agent.title.trim() : "";
+  if (title) {
+    return title;
+  }
+  const roleKey = normalizeRoleKey(agent.roleKey);
+  if (roleKey) {
+    return AGENT_ROLE_LABELS[roleKey];
+  }
+  return agent.role;
+}
+
+function resolvePayloadRoleLabel(payload: Record<string, unknown>) {
+  const title = typeof payload.title === "string" ? payload.title.trim() : "";
+  if (title) {
+    return title;
+  }
+  const roleKey = normalizeRoleKey(typeof payload.roleKey === "string" ? payload.roleKey : null);
+  if (roleKey) {
+    return AGENT_ROLE_LABELS[roleKey];
+  }
+  return typeof payload.role === "string" ? payload.role : null;
 }
 
 function formatApprovalPayloadDetails(payload: Record<string, unknown> | undefined) {
@@ -346,6 +381,9 @@ interface ProjectRow {
   description: string | null;
   status: "planned" | "active" | "paused" | "blocked" | "completed" | "archived";
   plannedStartAt: string | null;
+  monthlyBudgetUsd?: number;
+  usedBudgetUsd?: number;
+  budgetWindowStartAt?: string | null;
   executionWorkspacePolicy?: Record<string, unknown> | null;
   workspaces: Array<{
     id: string;
@@ -661,17 +699,24 @@ export function WorkspaceClient({
     outputUsdPer1M: string;
   } | null>(null);
   const ceoAgent = useMemo(
-    () => agents.find((entry) => entry.role === "CEO" || entry.name === "CEO") ?? null,
+    () => agents.find((entry) => entry.roleKey === "ceo" || entry.name === "CEO") ?? null,
     [agents]
   );
-  const [hiringDelegate, setHiringDelegate] = useState<{ agentId: string; name: string; role: string } | null>(null);
+  const [hiringDelegate, setHiringDelegate] = useState<{
+    agentId: string;
+    name: string;
+    role: string;
+    roleKey?: AgentRoleKey | null;
+  } | null>(null);
   useEffect(() => {
     if (!companyId) {
       setHiringDelegate(null);
       return;
     }
     let cancelled = false;
-    void apiGet<{ delegate: { agentId: string; name: string; role: string } | null }>("/agents/hiring-delegate", companyId)
+    void apiGet<{
+      delegate: { agentId: string; name: string; role: string; roleKey?: AgentRoleKey | null } | null;
+    }>("/agents/hiring-delegate", companyId)
       .then((result) => {
         if (cancelled) {
           return;
@@ -1644,7 +1689,7 @@ export function WorkspaceClient({
       }
       return (
         agent.name.toLowerCase().includes(normalizedQuery) ||
-        agent.role.toLowerCase().includes(normalizedQuery) ||
+        getAgentDisplayRole(agent).toLowerCase().includes(normalizedQuery) ||
         agent.status.toLowerCase().includes(normalizedQuery) ||
         agent.providerType.toLowerCase().includes(normalizedQuery)
       );
@@ -2393,7 +2438,7 @@ export function WorkspaceClient({
         return {
           id: agent.id,
           name: agent.name,
-          role: agent.role,
+          role: getAgentDisplayRole(agent),
           status: agent.status,
           openAssigned: assignedOpenIssues.length,
           blockedAssigned: blockedAssignedIssues,
@@ -2474,9 +2519,18 @@ export function WorkspaceClient({
         cell: ({ row }) => <div className={styles.formatDurationContainer1}>{formatDate(row.original.plannedStartAt)}</div>
       },
       {
-        id: "goals",
-        header: "Goals",
-        cell: ({ row }) => <div className={styles.formatDurationContainer1}>{projectGoalCountById.get(row.original.id) ?? 0}</div>
+        id: "budget",
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Budget (used/month)" />,
+        accessorFn: (row) => {
+          const monthlyBudget = row.monthlyBudgetUsd ?? 0;
+          const usedBudget = row.usedBudgetUsd ?? 0;
+          return monthlyBudget > 0 ? usedBudget / monthlyBudget : usedBudget;
+        },
+        cell: ({ row }) => (
+          <div className={styles.formatDurationContainer1}>
+            {`${formatUsdCost(row.original.usedBudgetUsd ?? 0)} / ${formatUsdCost(row.original.monthlyBudgetUsd ?? 0)}`}
+          </div>
+        )
       },
       {
         id: "actions",
@@ -2509,7 +2563,7 @@ export function WorkspaceClient({
         }
       }
     ],
-    [companyId, goals, isActionPending, projectGoalCountById]
+    [companyId, goals, isActionPending]
   );
 
   const goalColumns = useMemo<ColumnDef<GoalRow>[]>(
@@ -2603,7 +2657,15 @@ export function WorkspaceClient({
       },
       {
         accessorKey: "role",
-        header: ({ column }) => <DataTableColumnHeader column={column} title="Role" />
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Role" />,
+        accessorFn: (row) => getAgentDisplayRole(row),
+        cell: ({ row }) => <span>{getAgentDisplayRole(row.original)}</span>
+      },
+      {
+        id: "monthlyBudgetUsd",
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Budget" />,
+        accessorFn: (row) => row.monthlyBudgetUsd ?? 0,
+        cell: ({ row }) => <div className={styles.formatDurationContainer1}>{formatUsdCost(row.original.monthlyBudgetUsd ?? 0)}</div>
       },
       {
         id: "reportTo",
@@ -2662,6 +2724,8 @@ export function WorkspaceClient({
                   id: agent.id,
                   name: agent.name,
                   role: agent.role,
+                    roleKey: agent.roleKey ?? null,
+                    title: agent.title ?? null,
                   managerAgentId: agent.managerAgentId,
                   providerType: agent.providerType as
                     | "claude_code"
@@ -3818,7 +3882,7 @@ export function WorkspaceClient({
                     <Input
                       value={agentsQuery}
                       onChange={(event) => setAgentsQuery(event.target.value)}
-                      placeholder="Search name, role, status, or provider..."
+                      placeholder="Search name, role/title, status, or provider..."
                       className={styles.agentsFiltersInput}
                     />
                     <Select value={agentsStatusFilter} onValueChange={setAgentsStatusFilter}>

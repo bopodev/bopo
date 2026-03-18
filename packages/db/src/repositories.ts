@@ -992,6 +992,8 @@ export async function createAgent(
     companyId: string;
     managerAgentId?: string | null;
     role: string;
+    roleKey?: string | null;
+    title?: string | null;
     name: string;
     providerType:
       | "claude_code"
@@ -1030,6 +1032,8 @@ export async function createAgent(
     companyId: input.companyId,
     managerAgentId: input.managerAgentId ?? null,
     role: input.role,
+    roleKey: input.roleKey ?? null,
+    title: input.title ?? null,
     name: input.name,
     providerType: input.providerType,
     heartbeatCron: input.heartbeatCron,
@@ -1063,6 +1067,8 @@ export async function updateAgent(
     id: string;
     managerAgentId?: string | null;
     role?: string;
+    roleKey?: string | null;
+    title?: string | null;
     name?: string;
     providerType?:
       | "claude_code"
@@ -1100,6 +1106,8 @@ export async function updateAgent(
       compactUpdate({
         managerAgentId: input.managerAgentId,
         role: input.role,
+        roleKey: input.roleKey,
+        title: input.title,
         name: input.name,
         providerType: input.providerType,
         status: input.status,

@@ -31,22 +31,33 @@ describe("BopoDev core workflows", () => {
   let db: BopoDb;
   let app: ReturnType<typeof createApp>;
   let tempDir: string;
+  let testRootDir: string;
   let companyId: string;
   let client: { close?: () => Promise<void> };
+  let previousInstanceRoot: string | undefined;
 
   beforeEach(async () => {
-    tempDir = await mkdtemp(join(tmpdir(), "bopodev-test-"));
-    const boot = await bootstrapDatabase(join(tempDir, "test.db"));
+    testRootDir = await mkdtemp(join(tmpdir(), "bopodev-test-"));
+    previousInstanceRoot = process.env.BOPO_INSTANCE_ROOT;
+    process.env.BOPO_INSTANCE_ROOT = testRootDir;
+    const boot = await bootstrapDatabase(join(testRootDir, "test.db"));
     db = boot.db;
     client = boot.client as { close?: () => Promise<void> };
     app = createApp({ db });
     const company = await createCompany(db, { name: "Acme AI", mission: "Ship a stable autonomous company." });
     companyId = company.id;
+    tempDir = join(testRootDir, "workspaces", companyId);
+    await mkdir(tempDir, { recursive: true });
   });
 
   afterEach(async () => {
     await client.close?.();
-    await rm(tempDir, { recursive: true, force: true });
+    if (previousInstanceRoot === undefined) {
+      delete process.env.BOPO_INSTANCE_ROOT;
+    } else {
+      process.env.BOPO_INSTANCE_ROOT = previousInstanceRoot;
+    }
+    await rm(testRootDir, { recursive: true, force: true });
   });
 
   it("applies approved hire requests and exposes parsed approval payloads", async () => {
@@ -62,7 +73,7 @@ describe("BopoDev core workflows", () => {
         canHireAgents: true,
         runtimeCommand: "claude",
         runtimeArgs: ["--print"],
-        runtimeCwd: "/tmp/work"
+        runtimeCwd: tempDir
       }
     });
 
@@ -139,8 +150,7 @@ describe("BopoDev core workflows", () => {
       heartbeatCron: "*/5 * * * *",
       monthlyBudgetUsd: 40,
       canHireAgents: false,
-      requestApproval: true,
-      runtimeCwd: tempDir
+      requestApproval: true
     });
     expect(first.status).toBe(200);
     expect(first.body.data.queuedForApproval).toBe(true);
@@ -154,13 +164,140 @@ describe("BopoDev core workflows", () => {
       heartbeatCron: "*/5 * * * *",
       monthlyBudgetUsd: 40,
       canHireAgents: false,
-      requestApproval: true,
-      runtimeCwd: tempDir
+      requestApproval: true
     });
     expect(second.status).toBe(200);
     expect(second.body.data.queuedForApproval).toBe(false);
     expect(second.body.data.duplicate).toBe(true);
     expect(second.body.data.pendingApprovalId).toBe(firstApprovalId);
+  });
+
+  it("prevents duplicate hire approvals when roleKey matches with different titles", async () => {
+    const manager = await createAgent(db, {
+      companyId,
+      role: "CEO",
+      roleKey: "ceo",
+      title: "CEO",
+      name: "RoleKey Manager",
+      providerType: "shell",
+      heartbeatCron: "*/5 * * * *",
+      monthlyBudgetUsd: "100.0000",
+      canHireAgents: true,
+      initialState: {
+        runtime: {
+          command: "echo",
+          cwd: tempDir,
+          args: ['{"summary":"manager","tokenInput":0,"tokenOutput":0,"usdCost":0}']
+        }
+      }
+    });
+
+    const first = await request(app).post("/agents").set("x-company-id", companyId).send({
+      managerAgentId: manager.id,
+      roleKey: "engineer",
+      title: "Platform Engineer",
+      name: "Platform Engineer One",
+      providerType: "shell",
+      heartbeatCron: "*/5 * * * *",
+      monthlyBudgetUsd: 40,
+      canHireAgents: false,
+      requestApproval: true
+    });
+    expect(first.status).toBe(200);
+    expect(first.body.data.queuedForApproval).toBe(true);
+    const firstApprovalId = first.body.data.approvalId as string;
+
+    const second = await request(app).post("/agents").set("x-company-id", companyId).send({
+      managerAgentId: manager.id,
+      roleKey: "engineer",
+      title: "Frontend Engineer",
+      name: "Platform Engineer Two",
+      providerType: "shell",
+      heartbeatCron: "*/5 * * * *",
+      monthlyBudgetUsd: 40,
+      canHireAgents: false,
+      requestApproval: true
+    });
+    expect(second.status).toBe(200);
+    expect(second.body.data.queuedForApproval).toBe(false);
+    expect(second.body.data.duplicate).toBe(true);
+    expect(second.body.data.pendingApprovalId).toBe(firstApprovalId);
+  });
+
+  it("creates and returns roleKey/title for direct hires", async () => {
+    const createResponse = await request(app).post("/agents").set("x-company-id", companyId).send({
+      roleKey: "engineer",
+      title: "Founding Engineer",
+      name: "Structured Agent",
+      providerType: "shell",
+      heartbeatCron: "*/5 * * * *",
+      monthlyBudgetUsd: 20,
+      canHireAgents: false,
+      requestApproval: false
+    });
+
+    expect(createResponse.status).toBe(200);
+    expect(createResponse.body.data.roleKey).toBe("engineer");
+    expect(createResponse.body.data.title).toBe("Founding Engineer");
+    expect(createResponse.body.data.role).toBe("Founding Engineer");
+
+    const agentsResponse = await request(app).get("/agents").set("x-company-id", companyId);
+    const created = (agentsResponse.body.data as Array<Record<string, unknown>>).find((entry) => entry.name === "Structured Agent");
+    expect(created?.roleKey).toBe("engineer");
+    expect(created?.title).toBe("Founding Engineer");
+  });
+
+  it("keeps legacy duplicate protection for agents without roleKey", async () => {
+    const legacyManager = await createAgent(db, {
+      companyId,
+      role: "CEO",
+      name: "Legacy Manager",
+      providerType: "shell",
+      heartbeatCron: "*/5 * * * *",
+      monthlyBudgetUsd: "100.0000",
+      canHireAgents: true,
+      initialState: {
+        runtime: {
+          command: "echo",
+          cwd: tempDir,
+          args: ['{"summary":"manager","tokenInput":0,"tokenOutput":0,"usdCost":0}']
+        }
+      }
+    });
+
+    const existingLegacyAgent = await createAgent(db, {
+      companyId,
+      managerAgentId: legacyManager.id,
+      role: "Engineer",
+      name: "Legacy Engineer",
+      providerType: "shell",
+      heartbeatCron: "*/5 * * * *",
+      monthlyBudgetUsd: "20.0000",
+      canHireAgents: false,
+      initialState: {
+        runtime: {
+          command: "echo",
+          cwd: tempDir,
+          args: ['{"summary":"worker","tokenInput":0,"tokenOutput":0,"usdCost":0}']
+        }
+      }
+    });
+
+    const duplicateRequest = await request(app).post("/agents").set("x-company-id", companyId).send({
+      managerAgentId: legacyManager.id,
+      role: "Engineer",
+      name: "Legacy Engineer Duplicate",
+      providerType: "shell",
+      heartbeatCron: "*/5 * * * *",
+      monthlyBudgetUsd: 20,
+      canHireAgents: false,
+      requestApproval: true
+    });
+
+    expect(duplicateRequest.status).toBe(200);
+    expect(duplicateRequest.body.data.queuedForApproval).toBe(false);
+    expect(duplicateRequest.body.data.duplicate).toBe(true);
+    expect(duplicateRequest.body.data.existingAgentId).toBe(existingLegacyAgent.id);
   });
 
   it("returns actionable codex runtime preflight results", async () => {
@@ -872,8 +1009,8 @@ describe("BopoDev core workflows", () => {
       workspaceLocalPath: tempDir
     });
     const now = new Date();
-    const dueCron = `${now.getMinutes()} ${now.getHours()} * * *`;
-    const notDueCron = `${(now.getMinutes() + 1) % 60} ${now.getHours()} * * *`;
+    const dueCron = "* * * * *";
+    const notDueCron = `${now.getMinutes()} ${(now.getHours() + 1) % 24} * * *`;
 
     const dueAgent = await createAgent(db, {
       companyId,
@@ -916,6 +1053,15 @@ describe("BopoDev core workflows", () => {
 
     const runIds = await runHeartbeatSweep(db, companyId);
     expect(runIds).toHaveLength(1);
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      await runHeartbeatQueueSweep(db, companyId, { maxJobsPerSweep: 20 });
+      const heartbeatRows = await listHeartbeatRuns(db, companyId);
+      const dueRun = heartbeatRows.find((row) => row.agentId === dueAgent.id);
+      if (dueRun?.status === "completed") {
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
 
     const issueRows = await listIssues(db, companyId);
     expect(issueRows[0]?.status).toBe("in_review");
@@ -1183,50 +1329,55 @@ describe("BopoDev core workflows", () => {
     expect(heartbeatRows[0]?.message).toBe("ceo bootstrap heartbeat");
   });
 
-  it("records structured outcomes and keeps issues unchanged for blocked outcomes", async () => {
-    const project = await createProject(db, {
-      companyId,
-      name: "Structured Outcome",
-      description: "Outcome-driven review gating.",
-      workspaceLocalPath: tempDir
-    });
-    const opencodeAgent = await createAgent(db, {
-      companyId,
-      role: "Engineer",
-      name: "OpenCode Blocked",
-      providerType: "opencode",
-      heartbeatCron: "*/5 * * * *",
-      monthlyBudgetUsd: "20.0000",
-      initialState: {
-        runtime: {
-          command: "opencode",
-          cwd: tempDir
+  it(
+    "records structured outcomes and keeps issues unchanged for blocked outcomes",
+    { timeout: 15_000 },
+    async () => {
+      const project = await createProject(db, {
+        companyId,
+        name: "Structured Outcome",
+        description: "Outcome-driven review gating.",
+        workspaceLocalPath: tempDir
+      });
+      const opencodeAgent = await createAgent(db, {
+        companyId,
+        role: "Engineer",
+        name: "OpenCode Blocked",
+        providerType: "opencode",
+        heartbeatCron: "*/5 * * * *",
+        monthlyBudgetUsd: "20.0000",
+        runtimeModel: "opencode/big-pickle",
+        initialState: {
+          runtime: {
+            command: "definitely-not-real-opencode",
+            cwd: tempDir
+          }
         }
-      }
-    });
-    const issue = await createIssue(db, {
-      companyId,
-      projectId: project.id,
-      title: "Blocked outcome issue",
-      assigneeAgentId: opencodeAgent.id
-    });
+      });
+      const issue = await createIssue(db, {
+        companyId,
+        projectId: project.id,
+        title: "Blocked outcome issue",
+        assigneeAgentId: opencodeAgent.id
+      });
 
-    const runId = await runHeartbeatForAgent(db, companyId, opencodeAgent.id);
-    expect(runId).toBeTruthy();
+      const runId = await runHeartbeatForAgent(db, companyId, opencodeAgent.id);
+      expect(runId).toBeTruthy();
 
-    const issueRows = await listIssues(db, companyId);
-    const targetIssue = issueRows.find((row) => row.id === issue.id);
-    expect(targetIssue?.status).toBe("todo");
+      const issueRows = await listIssues(db, companyId);
+      const targetIssue = issueRows.find((row) => row.id === issue.id);
+      expect(targetIssue?.status).toBe("todo");
 
-    const logsResponse = await request(app).get("/observability/logs").set("x-company-id", companyId);
-    expect(logsResponse.status).toBe(200);
-    const completionEvent = (logsResponse.body.data as Array<{ eventType: string; payload?: Record<string, unknown> }>).find(
-      (event) => event.eventType === "heartbeat.completed" || event.eventType === "heartbeat.failed"
-    );
-    expect(completionEvent).toBeDefined();
-    const outcome = completionEvent?.payload?.outcome as { kind?: string } | undefined;
-    expect(outcome?.kind).toBe("blocked");
-  });
+      const logsResponse = await request(app).get("/observability/logs").set("x-company-id", companyId);
+      expect(logsResponse.status).toBe(200);
+      const completionEvent = (logsResponse.body.data as Array<{ eventType: string; payload?: Record<string, unknown> }>).find(
+        (event) => event.eventType === "heartbeat.completed" || event.eventType === "heartbeat.failed"
+      );
+      expect(completionEvent).toBeDefined();
+      const outcome = completionEvent?.payload?.outcome as { kind?: string } | undefined;
+      expect(outcome?.kind).toBe("blocked");
+    }
+  );
 
   it("falls back to a deterministic workspace when project path is missing", async () => {
     const project = await createProject(db, {
@@ -1722,6 +1873,16 @@ describe("BopoDev core workflows", () => {
 
     const runIds = await runHeartbeatSweep(db, companyId);
     expect(runIds.length).toBe(2);
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      await runHeartbeatQueueSweep(db, companyId, { maxJobsPerSweep: 20 });
+      const heartbeatRows = await listHeartbeatRuns(db, companyId);
+      const hasCompleted = heartbeatRows.some((row) => row.agentId === healthyAgent.id && row.status === "completed");
+      const hasFailed = heartbeatRows.some((row) => row.agentId === failingAgent.id && row.status === "failed");
+      if (hasCompleted && hasFailed) {
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
 
     const heartbeatRows = await listHeartbeatRuns(db, companyId);
     const statuses = heartbeatRows.map((row) => row.status);

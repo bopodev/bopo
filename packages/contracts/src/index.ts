@@ -161,6 +161,34 @@ export const IssueCommentSchema = z.object({
 export type IssueComment = z.infer<typeof IssueCommentSchema>;
 
 export const GoalLevelSchema = z.enum(["company", "project", "agent"]);
+export const AgentRoleKeySchema = z.enum([
+  "ceo",
+  "cto",
+  "cmo",
+  "cfo",
+  "engineer",
+  "designer",
+  "pm",
+  "qa",
+  "devops",
+  "researcher",
+  "general"
+]);
+export type AgentRoleKey = z.infer<typeof AgentRoleKeySchema>;
+export const AGENT_ROLE_KEYS = AgentRoleKeySchema.options;
+export const AGENT_ROLE_LABELS: Record<AgentRoleKey, string> = {
+  ceo: "CEO",
+  cto: "CTO",
+  cmo: "CMO",
+  cfo: "CFO",
+  engineer: "Engineer",
+  designer: "Designer",
+  pm: "PM",
+  qa: "QA",
+  devops: "DevOps",
+  researcher: "Researcher",
+  general: "General"
+};
 
 export const GoalSchema = z.object({
   id: EntityIdSchema,
@@ -207,6 +235,8 @@ export const TemplateManifestGoalSchema = z.object({
 export const TemplateManifestAgentSchema = z.object({
   key: z.string().min(1),
   role: z.string().min(1),
+  roleKey: AgentRoleKeySchema.optional(),
+  title: z.string().nullable().optional(),
   name: z.string().min(1),
   providerType: z.lazy(() => ProviderTypeSchema).default("shell"),
   heartbeatCron: z.string().default("*/5 * * * *"),
@@ -584,7 +614,9 @@ export type PluginInvocationResult = z.infer<typeof PluginInvocationResultSchema
 
 export const AgentCreateRequestSchema = z.object({
   managerAgentId: z.string().optional(),
-  role: z.string().min(1),
+  role: z.string().min(1).optional(),
+  roleKey: AgentRoleKeySchema.optional(),
+  title: z.string().nullable().optional(),
   name: z.string().min(1),
   providerType: ProviderTypeSchema,
   heartbeatCron: z.string().min(1),
@@ -596,6 +628,8 @@ export const AgentCreateRequestSchema = z.object({
     .object({
       intentType: z.literal("agent_hiring_request"),
       requestedRole: z.string().nullable().optional(),
+      requestedRoleKey: AgentRoleKeySchema.nullable().optional(),
+      requestedTitle: z.string().nullable().optional(),
       requestedName: z.string().nullable().optional(),
       requestedManagerAgentId: z.string().nullable().optional(),
       requestedProviderType: ProviderTypeSchema.nullable().optional(),
@@ -611,6 +645,8 @@ export const AgentUpdateRequestSchema = z
   .object({
     managerAgentId: z.string().nullable().optional(),
     role: z.string().min(1).optional(),
+    roleKey: AgentRoleKeySchema.nullable().optional(),
+    title: z.string().nullable().optional(),
     name: z.string().min(1).optional(),
     providerType: ProviderTypeSchema.optional(),
     status: AgentStatusSchema.optional(),
@@ -627,6 +663,8 @@ export const AgentSchema = z.object({
   companyId: EntityIdSchema,
   managerAgentId: EntityIdSchema.nullable(),
   role: z.string().min(1),
+  roleKey: AgentRoleKeySchema.nullable().optional(),
+  title: z.string().nullable().optional(),
   name: z.string().min(1),
   providerType: ProviderTypeSchema,
   status: AgentStatusSchema,

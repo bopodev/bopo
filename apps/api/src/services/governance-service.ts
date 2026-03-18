@@ -1,7 +1,13 @@
 import { and, eq } from "drizzle-orm";
 import { mkdir } from "node:fs/promises";
 import { z } from "zod";
-import { AgentCreateRequestSchema, TemplateManifestDefault, TemplateManifestSchema } from "bopodev-contracts";
+import {
+  AGENT_ROLE_LABELS,
+  AgentCreateRequestSchema,
+  AgentRoleKeySchema,
+  TemplateManifestDefault,
+  TemplateManifestSchema
+} from "bopodev-contracts";
 import type { BopoDb } from "bopodev-db";
 import {
   approvalRequests,
@@ -283,7 +289,8 @@ async function applyApprovalAction(db: BopoDb, companyId: string, action: string
     const existingAgents = await listAgents(db, companyId);
     const duplicate = existingAgents.find(
       (agent) =>
-        agent.role === parsed.data.role &&
+        ((parsed.data.roleKey && agent.roleKey === parsed.data.roleKey) ||
+          (!parsed.data.roleKey && parsed.data.role && agent.role === parsed.data.role)) &&
         (agent.managerAgentId ?? null) === (parsed.data.managerAgentId ?? null) &&
         agent.status !== "terminated"
     );
@@ -299,7 +306,9 @@ async function applyApprovalAction(db: BopoDb, companyId: string, action: string
     const agent = await createAgent(db, {
       companyId,
       managerAgentId: parsed.data.managerAgentId,
-      role: parsed.data.role,
+      role: resolveAgentRoleText(parsed.data.role, parsed.data.roleKey, parsed.data.title),
+      roleKey: normalizeRoleKey(parsed.data.roleKey),
+      title: normalizeTitle(parsed.data.title),
       name: parsed.data.name,
       providerType: parsed.data.providerType,
       heartbeatCron: parsed.data.heartbeatCron,
@@ -309,7 +318,13 @@ async function applyApprovalAction(db: BopoDb, companyId: string, action: string
       initialState: runtimeConfigToStateBlobPatch(runtimeConfig)
     });
     const startupProjectId = await ensureAgentStartupProject(db, companyId);
-    await ensureAgentStartupIssue(db, companyId, startupProjectId, agent.id, agent.role);
+    await ensureAgentStartupIssue(
+      db,
+      companyId,
+      startupProjectId,
+      agent.id,
+      resolveAgentDisplayTitle(agent.title, agent.roleKey, agent.role)
+    );
 
     return {
       applied: true,
@@ -680,9 +695,9 @@ async function ensureAgentStartupIssue(
   companyId: string,
   projectId: string,
   agentId: string,
-  role: string
+  roleTitle: string
 ) {
-  const title = `Set up ${role} operating files`;
+  const title = `Set up ${roleTitle} operating files`;
   const body = buildAgentStartupTaskBody(companyId, agentId);
   const existingIssues = await listIssues(db, companyId);
   const existing = existingIssues.find(
@@ -707,6 +722,51 @@ async function ensureAgentStartupIssue(
     tags: ["agent-startup"]
   });
   return created.id;
+}
+
+function normalizeRoleKey(input: string | null | undefined) {
+  const normalized = input?.trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+  return AgentRoleKeySchema.safeParse(normalized).success ? normalized : null;
+}
+
+function normalizeTitle(input: string | null | undefined) {
+  const normalized = input?.trim();
+  return normalized ? normalized : null;
+}
+
+function resolveAgentRoleText(
+  legacyRole: string | undefined,
+  roleKeyInput: string | undefined,
+  titleInput: string | null | undefined
+) {
+  const normalizedLegacy = legacyRole?.trim();
+  if (normalizedLegacy) {
+    return normalizedLegacy;
+  }
+  const normalizedTitle = normalizeTitle(titleInput);
+  if (normalizedTitle) {
+    return normalizedTitle;
+  }
+  const roleKey = normalizeRoleKey(roleKeyInput);
+  if (roleKey) {
+    return AGENT_ROLE_LABELS[roleKey];
+  }
+  return AGENT_ROLE_LABELS.general;
+}
+
+function resolveAgentDisplayTitle(title: string | null | undefined, roleKeyInput: string | null | undefined, role: string) {
+  const normalizedTitle = normalizeTitle(title);
+  if (normalizedTitle) {
+    return normalizedTitle;
+  }
+  const roleKey = normalizeRoleKey(roleKeyInput);
+  if (roleKey) {
+    return AGENT_ROLE_LABELS[roleKey];
+  }
+  return role;
 }
 
 function buildAgentStartupTaskBody(companyId: string, agentId: string) {

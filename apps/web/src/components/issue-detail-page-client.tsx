@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import type { IssueStatus } from "bopodev-contracts";
+import { AGENT_ROLE_LABELS, AGENT_ROLE_KEYS, type AgentRoleKey } from "bopodev-contracts";
 import { ChevronDownIcon } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -57,6 +58,8 @@ interface AgentRow {
   id: string;
   name: string;
   role: string;
+  roleKey?: AgentRoleKey | null;
+  title?: string | null;
   avatarSeed?: string | null;
   managerAgentId?: string | null;
   status?: string;
@@ -232,6 +235,26 @@ function formatCommentAuthorBadgeLabel(
   return "A";
 }
 
+function normalizeRoleKey(value: string | null | undefined): AgentRoleKey | null {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+  return AGENT_ROLE_KEYS.includes(normalized as AgentRoleKey) ? (normalized as AgentRoleKey) : null;
+}
+
+function getAgentDisplayRole(agent: Pick<AgentRow, "role" | "roleKey" | "title">) {
+  const title = typeof agent.title === "string" ? agent.title.trim() : "";
+  if (title) {
+    return title;
+  }
+  const roleKey = normalizeRoleKey(agent.roleKey);
+  if (roleKey) {
+    return AGENT_ROLE_LABELS[roleKey];
+  }
+  return agent.role;
+}
+
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -395,7 +418,7 @@ export function IssueDetailPageClient({
         .filter((agent) => agent.status !== "terminated")
         .map((agent) => ({
           key: makeRecipientKey("agent", agent.id),
-          label: `${agent.name} (${agent.role})`
+          label: `${agent.name} (${getAgentDisplayRole(agent)})`
         })),
     [agents]
   );

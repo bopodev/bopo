@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { AGENT_ROLE_KEYS, AGENT_ROLE_LABELS, type AgentRoleKey } from "bopodev-contracts";
 import { ApiError, apiGet, apiPost, apiPut } from "@/lib/api";
 import { formatArgsInput, formatEnvInput, parseArgsInput, parseEnvInput } from "@/lib/agent-config-form";
 import { agentDefaultsStorageKey, readAgentRuntimeDefaults } from "@/lib/agent-defaults";
@@ -92,6 +93,20 @@ const defaultVisibleProviders: ProviderOption[] = [
   { providerType: "gemini_cli", label: "Gemini CLI" }
 ];
 
+function normalizeRoleKey(roleKey: AgentRoleKey | null | undefined, legacyRole: string | null | undefined): AgentRoleKey {
+  if (roleKey && AGENT_ROLE_KEYS.includes(roleKey)) {
+    return roleKey;
+  }
+  const normalizedLegacy = legacyRole?.trim().toLowerCase();
+  if (!normalizedLegacy) {
+    return "general";
+  }
+  const match = AGENT_ROLE_KEYS.find(
+    (key) => key === normalizedLegacy || AGENT_ROLE_LABELS[key].toLowerCase() === normalizedLegacy
+  );
+  return match ?? "general";
+}
+
 export function CreateAgentModal({
   companyId,
   agent,
@@ -110,6 +125,8 @@ export function CreateAgentModal({
     id: string;
     name: string;
     role: string;
+    roleKey?: AgentRoleKey | null;
+    title?: string | null;
     managerAgentId?: string | null;
     providerType: ProviderType;
     heartbeatCron?: string;
@@ -143,7 +160,8 @@ export function CreateAgentModal({
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(agent?.name ?? "");
-  const [role, setRole] = useState(agent?.role ?? "");
+  const [roleKey, setRoleKey] = useState<AgentRoleKey>(normalizeRoleKey(agent?.roleKey, agent?.role));
+  const [title, setTitle] = useState(agent?.title ?? "");
   const [managerAgentId, setManagerAgentId] = useState<string | null>(agent?.managerAgentId ?? null);
   const [budget, setBudget] = useState(agent?.monthlyBudgetUsd?.toString() ?? "30");
   const [providerType, setProviderType] = useState<ProviderType>(agent?.providerType ?? "claude_code");
@@ -382,7 +400,8 @@ export function CreateAgentModal({
         return { sandboxMode: runtime.sandboxMode, allowWebSearch: runtime.allowWebSearch } as const;
       })();
       setName(agent.name);
-      setRole(agent.role);
+      setRoleKey(normalizeRoleKey(agent.roleKey, agent.role));
+      setTitle(agent.title ?? "");
       setManagerAgentId(agent.managerAgentId ?? null);
       setProviderType(agent.providerType);
       setHeartbeatIntervalSec(String(heartbeatCronToIntervalSec(agent.heartbeatCron, 300)));
@@ -418,7 +437,8 @@ export function CreateAgentModal({
           }
         : defaults;
     setName("");
-    setRole("");
+    setRoleKey("general");
+    setTitle("");
     setManagerAgentId(null);
     setProviderType(effectiveDefaults.providerType);
     setHeartbeatIntervalSec(effectiveDefaults.heartbeatIntervalSec);
@@ -519,14 +539,16 @@ export function CreateAgentModal({
         }
         const requestNotes = delegateRequest.trim();
         const managerName = managerOptions.find((entry) => entry.id === managerAgentId)?.name ?? "No manager";
-        const requestedRole = role.trim();
+        const requestedRoleLabel = AGENT_ROLE_LABELS[roleKey];
+        const requestedTitle = title.trim();
+        const requestedRole = requestedTitle || requestedRoleLabel;
         const requestedName = name.trim();
         const requestedModel = runtimeModel.trim();
         const issueBody = [
           "Please create a new agent with the following profile:",
           "",
           `- Name: ${requestedName || "(decide best fit)"}`,
-          `- Role: ${requestedRole || "(not specified)"}`,
+          `- Role: ${requestedRole}`,
           `- Reports to: ${managerName}`,
           `- Preferred provider: ${providerType}`,
           `- Preferred model: ${requestedModel || "(delegate chooses best model)"}`,
@@ -536,12 +558,14 @@ export function CreateAgentModal({
         ].join("\n");
         await apiPost("/issues", companyId, {
           projectId: delegateProjectId,
-          title: requestedRole ? `Create a new ${requestedRole} agent` : "Create a new agent",
+          title: `Create a new ${requestedRole} agent`,
           body: issueBody,
           metadata: {
             delegatedHiringIntent: {
               intentType: "agent_hiring_request",
               requestedRole: requestedRole || null,
+              requestedRoleKey: roleKey,
+              requestedTitle: requestedTitle || null,
               requestedName: requestedName || null,
               requestedManagerAgentId: managerAgentId ?? null,
               requestedProviderType: providerType,
@@ -622,7 +646,9 @@ export function CreateAgentModal({
       if (isEditing && agent) {
         await apiPut(`/agents/${agent.id}`, companyId, {
           name,
-          role,
+          role: title.trim() || AGENT_ROLE_LABELS[roleKey],
+          roleKey,
+          title: title.trim() || null,
           managerAgentId: managerAgentId ?? null,
           providerType,
           heartbeatCron: heartbeatIntervalSecToCron(heartbeatIntervalSeconds),
@@ -633,7 +659,9 @@ export function CreateAgentModal({
       } else {
         await apiPost("/agents", companyId, {
           name,
-          role,
+          role: title.trim() || AGENT_ROLE_LABELS[roleKey],
+          roleKey,
+          title: title.trim() || null,
           managerAgentId: managerAgentId ?? undefined,
           providerType,
           heartbeatCron: heartbeatIntervalSecToCron(heartbeatIntervalSeconds),
@@ -724,8 +752,28 @@ export function CreateAgentModal({
                     <Input id="agent-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Ada" />
                   </Field>
                   <Field>
-                    <FieldLabel htmlFor="agent-role">Requested title</FieldLabel>
-                    <Input id="agent-role" value={role} onChange={(e) => setRole(e.target.value)} placeholder="CTO, SEO, Engineer" />
+                    <FieldLabel>Requested role</FieldLabel>
+                    <Select value={roleKey} onValueChange={(value) => setRoleKey(value as AgentRoleKey)}>
+                      <SelectTrigger className={styles.createAgentModalSelectTrigger}>
+                        <SelectValue placeholder="Select a role" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {AGENT_ROLE_KEYS.map((value) => (
+                          <SelectItem key={value} value={value}>
+                            {AGENT_ROLE_LABELS[value]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="agent-title">Requested title (optional)</FieldLabel>
+                    <Input
+                      id="agent-title"
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                      placeholder={`${AGENT_ROLE_LABELS[roleKey]} (default)`}
+                    />
                   </Field>
                   <Field>
                     <FieldLabel>Reports to</FieldLabel>
@@ -764,8 +812,28 @@ export function CreateAgentModal({
                   <Input id="agent-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Ada" required />
                 </Field>
                 <Field>
-                  <FieldLabel htmlFor="agent-role">Title</FieldLabel>
-                  <Input id="agent-role" value={role} onChange={(e) => setRole(e.target.value)} placeholder="CTO, SEO, Engineer" />
+                  <FieldLabel>Role</FieldLabel>
+                  <Select value={roleKey} onValueChange={(value) => setRoleKey(value as AgentRoleKey)}>
+                    <SelectTrigger className={styles.createAgentModalSelectTrigger}>
+                      <SelectValue placeholder="Select a role" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {AGENT_ROLE_KEYS.map((value) => (
+                        <SelectItem key={value} value={value}>
+                          {AGENT_ROLE_LABELS[value]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="agent-title">Title (optional)</FieldLabel>
+                  <Input
+                    id="agent-title"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder={`${AGENT_ROLE_LABELS[roleKey]} (default)`}
+                  />
                 </Field>
                 <Field>
                   <FieldLabel>Reports to</FieldLabel>

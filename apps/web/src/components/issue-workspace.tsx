@@ -258,11 +258,6 @@ export function IssueWorkspace({
         )
       },
       {
-        accessorKey: "updatedAt",
-        header: ({ column }) => <DataTableColumnHeader column={column} title="Updated" />,
-        cell: ({ row }) => <div className={styles.savedViewContainer5}>{formatDateTime(row.original.updatedAt)}</div>
-      },
-      {
         id: "actions",
         header: () => <div className={styles.tableHeaderAlignRight}>Actions</div>,
         enableSorting: false,

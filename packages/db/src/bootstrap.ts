@@ -94,6 +94,8 @@ export async function bootstrapDatabase(dbPath?: string) {
       company_id TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
       manager_agent_id TEXT,
       role TEXT NOT NULL,
+      role_key TEXT,
+      title TEXT,
       name TEXT NOT NULL,
       provider_type TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'idle',
@@ -121,6 +123,14 @@ export async function bootstrapDatabase(dbPath?: string) {
   await db.execute(sql`
     ALTER TABLE agents
     ADD COLUMN IF NOT EXISTS avatar_seed TEXT NOT NULL DEFAULT '';
+  `);
+  await db.execute(sql`
+    ALTER TABLE agents
+    ADD COLUMN IF NOT EXISTS role_key TEXT;
+  `);
+  await db.execute(sql`
+    ALTER TABLE agents
+    ADD COLUMN IF NOT EXISTS title TEXT;
   `);
   await db.execute(sql`
     ALTER TABLE agents

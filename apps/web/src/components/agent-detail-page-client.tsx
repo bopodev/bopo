@@ -904,6 +904,11 @@ export function AgentDetailPageClient({
       <Card>
         <CardContent className={styles.agentSidebarControlsCardContent}>
           <Field>
+            <FieldLabel>Provider</FieldLabel>
+            <div className={styles.agentSidebarStaticValue}>{getProviderLabel(agent.providerType)}</div>
+          </Field>
+
+          <Field>
             <FieldLabel>Model</FieldLabel>
             <Select
               value={selectedModelId}

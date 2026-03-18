@@ -68,6 +68,8 @@ export const agents = pgTable("agents", {
     .references(() => companies.id, { onDelete: "cascade" }),
   managerAgentId: text("manager_agent_id"),
   role: text("role").notNull(),
+  roleKey: text("role_key"),
+  title: text("title"),
   name: text("name").notNull(),
   providerType: text("provider_type").notNull(),
   status: text("status").notNull().default("idle"),

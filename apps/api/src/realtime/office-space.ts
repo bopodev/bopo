@@ -1,5 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import type { OfficeOccupant, RealtimeEventEnvelope, RealtimeMessage } from "bopodev-contracts";
+import { AGENT_ROLE_LABELS, AgentRoleKeySchema } from "bopodev-contracts";
 import {
   agents,
   approvalRequests,
@@ -376,7 +377,7 @@ function deriveHireCandidateOccupant(approval: {
 
   const payload = parsePayload(approval.payloadJson);
   const name = typeof payload.name === "string" ? payload.name : "Pending hire";
-  const role = typeof payload.role === "string" ? payload.role : null;
+  const role = resolvePayloadRoleLabel(payload);
   const providerType =
     typeof payload.providerType === "string" ? normalizeProviderType(payload.providerType) : null;
 
@@ -445,6 +446,20 @@ function formatActionLabel(action: string) {
     .split("_")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+function resolvePayloadRoleLabel(payload: Record<string, unknown>) {
+  const title = typeof payload.title === "string" ? payload.title.trim() : "";
+  if (title) {
+    return title;
+  }
+  const roleKeyValue = typeof payload.roleKey === "string" ? payload.roleKey.trim().toLowerCase() : "";
+  const parsedRoleKey = roleKeyValue ? AgentRoleKeySchema.safeParse(roleKeyValue) : null;
+  if (parsedRoleKey?.success) {
+    return AGENT_ROLE_LABELS[parsedRoleKey.data];
+  }
+  const role = typeof payload.role === "string" ? payload.role.trim() : "";
+  return role || null;
 }
 
 function parsePayload(payloadJson: string): Record<string, unknown> {

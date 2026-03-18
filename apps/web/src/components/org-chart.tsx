@@ -1,4 +1,5 @@
 import { type ReactNode, useCallback, useMemo, useRef, useState } from "react";
+import { AGENT_ROLE_LABELS, AGENT_ROLE_KEYS, type AgentRoleKey } from "bopodev-contracts";
 import { AgentAvatar } from "@/components/agent-avatar";
 import { agentAvatarSeed } from "@/lib/agent-avatar";
 import { Button } from "@/components/ui/button";
@@ -13,6 +14,8 @@ interface AgentNode {
   name: string;
   avatarSeed?: string | null;
   role: string;
+  roleKey?: AgentRoleKey | null;
+  title?: string | null;
   managerAgentId: string | null;
   status: string;
   providerType: string;
@@ -111,8 +114,24 @@ function buildOrgForest(agents: AgentNode[]): OrgForestBuildResult {
   };
 }
 
-function formatRole(role: string) {
-  return role.replaceAll("_", " ");
+function normalizeRoleKey(value: string | null | undefined): AgentRoleKey | null {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+  return AGENT_ROLE_KEYS.includes(normalized as AgentRoleKey) ? (normalized as AgentRoleKey) : null;
+}
+
+function formatRole(agent: Pick<AgentNode, "role" | "roleKey" | "title">) {
+  const title = typeof agent.title === "string" ? agent.title.trim() : "";
+  if (title) {
+    return title;
+  }
+  const roleKey = normalizeRoleKey(agent.roleKey);
+  if (roleKey) {
+    return AGENT_ROLE_LABELS[roleKey];
+  }
+  return agent.role.replaceAll("_", " ");
 }
 
 export function OrgChart({
@@ -147,7 +166,7 @@ export function OrgChart({
           />
           <div className={styles.orgCardText}>
             <div className={styles.orgCardName}>{agent.name}</div>
-            <div className={styles.orgCardMeta}>{formatRole(agent.role)}</div>
+            <div className={styles.orgCardMeta}>{formatRole(agent)}</div>
           </div>
         </div>
       </div>
@@ -200,7 +219,7 @@ export function OrgChart({
         <AccordionContent>
           <div className="space-y-2">
             <div className="flex flex-wrap gap-2">
-              <Badge variant="outline">{formatRole(node.agent.role)}</Badge>
+              <Badge variant="outline">{formatRole(node.agent)}</Badge>
               <Badge variant="outline">{node.agent.providerType}</Badge>
               <Badge variant="outline">{node.agent.status}</Badge>
             </div>
