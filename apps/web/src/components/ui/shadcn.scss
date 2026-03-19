@@ -94,7 +94,7 @@ body {
 }
 
 .ui-badge--outline {
-  @apply border-border text-foreground [a&]:hover:bg-accent [a&]:hover:text-accent-foreground;
+  @apply border-border text-sidebar-foreground [a&]:hover:bg-accent [a&]:hover:text-accent-foreground;
 }
 
 .ui-badge--ghost {

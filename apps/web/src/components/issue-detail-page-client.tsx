@@ -989,7 +989,7 @@ export function IssueDetailPageClient({
                 <div className="ui-issue-form-actions">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button type="button" variant="outline" size="sm" disabled={isSubmittingComment}>
+                      <Button type="button" variant="outline" disabled={isSubmittingComment}>
                         {selectedRecipientLabel} <ChevronDownIcon className={styles.commentRecipientChevron} />
                       </Button>
                     </DropdownMenuTrigger>
