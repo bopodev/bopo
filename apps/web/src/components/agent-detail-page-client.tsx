@@ -1104,6 +1104,7 @@ export function AgentDetailPageClient({
       <Card>
         <CardContent className={styles.configCardContent}>
           <ConfigRow label="Agent ID" value={agent.id} />
+          <ConfigRow label="Role" value={agent.role ?? "Not set"} />
           <ConfigRow label="Status" value={liveStatus} detail={liveStatusDetail} />
           <ConfigRow label="Heartbeat" value={formatHeartbeatCadence(agent.heartbeatCron)} />
         </CardContent>

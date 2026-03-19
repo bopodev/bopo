@@ -3630,7 +3630,7 @@ export function WorkspaceClient({
                 </Button>
               ) : (
                 <Button
-                  variant="outline"
+                  variant="default"
                   size="sm"
                   disabled={isActionPending(activateActionKey)}
                   onClick={() => setPluginEnabled(plugin, true)}
@@ -3703,7 +3703,7 @@ export function WorkspaceClient({
           return (
             <div className={styles.formatDurationContainer3}>
               <Button
-                variant="outline"
+                variant="default"
                 size="sm"
                 disabled={applyPending}
                 onClick={() => applyTemplate(template.id)}
@@ -4429,6 +4429,19 @@ export function WorkspaceClient({
                 ) : null}
                 <DialogFooter className={styles.attentionDialogFooter}>
                   <div className={styles.attentionDialogActionGroup}>
+                    {selectedAttentionItem && selectedAttentionItem.state !== "dismissed" ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setAttentionDetailsOpen(false);
+                          void dismissAttention(selectedAttentionItem.key);
+                        }}
+                        disabled={isActionPending(`attention:${selectedAttentionItem.key}:dismiss`)}
+                      >
+                        Dismiss
+                      </Button>
+                    ) : null}
                     {selectedAttentionHasPendingApproval && selectedAttentionItem?.evidence.approvalId ? (
                       <Button
                         variant="default"
@@ -4444,19 +4457,6 @@ export function WorkspaceClient({
                     ) : selectedAttentionItem ? (
                       <Button asChild variant="default" size="sm">
                         <a href={toAttentionActionHref(selectedAttentionItem.actionHref, companyId)}>{selectedAttentionItem.actionLabel}</a>
-                      </Button>
-                    ) : null}
-                    {selectedAttentionItem && selectedAttentionItem.state !== "dismissed" ? (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setAttentionDetailsOpen(false);
-                          void dismissAttention(selectedAttentionItem.key);
-                        }}
-                        disabled={isActionPending(`attention:${selectedAttentionItem.key}:dismiss`)}
-                      >
-                        Dismiss
                       </Button>
                     ) : null}
                   </div>
@@ -4980,6 +4980,7 @@ export function WorkspaceClient({
                 <div className={styles.renderSectionActionsContainer6}>
                   <TextActionModal
                     triggerLabel="Rename Company"
+                    triggerVariant="outline"
                     title="Rename company"
                     description="Update the company name used across the workspace."
                     submitLabel="Save"
@@ -4996,6 +4997,7 @@ export function WorkspaceClient({
                   />
                   <TextActionModal
                     triggerLabel="Edit Mission"
+                    triggerVariant="outline"
                     title="Edit mission"
                     description="Define the mission that should be visible to your agent runtime context."
                     submitLabel="Save"

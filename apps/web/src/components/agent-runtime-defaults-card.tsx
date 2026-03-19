@@ -327,7 +327,7 @@ export function AgentRuntimeDefaultsCard({
                 }
                 await onDeleteCompany();
               }}
-              triggerVariant="outline"
+              triggerVariant="ghost"
               triggerDisabled={!companyId || !onDeleteCompany || deleteActionPending}
             />
             <Button onClick={save}>Save defaults</Button>

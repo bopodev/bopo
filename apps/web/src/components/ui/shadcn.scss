@@ -335,7 +335,7 @@ body {
 }
 
 .ui-data-table-empty-cell {
-  @apply h-24 text-center text-muted-foreground;
+  @apply h-24 text-center text-muted-foreground/50;
 }
 
 .ui-data-table-column-header {
