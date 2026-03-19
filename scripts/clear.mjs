@@ -19,6 +19,7 @@ async function main() {
   const workspaceRoot = process.cwd();
   const envFromFile = await loadDotEnv(join(workspaceRoot, ".env"));
   applyEnvDefaults(envFromFile);
+  await stopOrphanBopoProcesses(workspaceRoot, process.env);
 
   const instanceRoot = resolveInstanceRoot(process.env);
   const dbPath = normalizeOptionalPath(process.env.BOPO_DB_PATH);
@@ -53,6 +54,171 @@ function runPnpm(args) {
   if (result.status !== 0) {
     throw new Error(`Command failed: pnpm ${args.join(" ")}`);
   }
+}
+
+async function stopOrphanBopoProcesses(workspaceRoot, env) {
+  const ports = resolveRuntimePorts(env);
+  const processTable = readProcessTable();
+  const candidatePids = new Set();
+
+  for (const port of ports) {
+    for (const pid of readListeningPidsForPort(port)) {
+      candidatePids.add(pid);
+    }
+  }
+
+  const workspaceMarkers = [
+    "scripts/dev-runner.mjs",
+    "scripts/start-runner.mjs",
+    "apps/api/src/server.ts",
+    "pnpm --filter bopodev-api dev",
+    "pnpm --filter bopodev-api start",
+    "next dev --turbopack",
+    "next start --port",
+    "turbo --no-update-notifier start --filter=bopodev-api",
+    "turbo --no-update-notifier dev"
+  ];
+  for (const entry of processTable) {
+    if (!entry.command.includes(workspaceRoot)) {
+      continue;
+    }
+    if (workspaceMarkers.some((marker) => entry.command.includes(marker))) {
+      candidatePids.add(entry.pid);
+    }
+  }
+
+  const withDescendants = collectDescendantPids(processTable, candidatePids);
+  withDescendants.delete(process.pid);
+  if (withDescendants.size === 0) {
+    logStep("No active Bopo runtime processes detected.");
+    return;
+  }
+
+  const sorted = Array.from(withDescendants).sort((a, b) => a - b);
+  logStep(`Stopping ${sorted.length} runtime process${sorted.length === 1 ? "" : "es"}: ${sorted.join(", ")}`);
+  terminatePids(sorted, "SIGTERM");
+  await wait(1200);
+  const stillRunning = sorted.filter((pid) => isPidAlive(pid));
+  if (stillRunning.length > 0) {
+    logStep(`Force-stopping stubborn process${stillRunning.length === 1 ? "" : "es"}: ${stillRunning.join(", ")}`);
+    terminatePids(stillRunning, "SIGKILL");
+    await wait(400);
+  }
+}
+
+function resolveRuntimePorts(env) {
+  const webPort = parseIntegerPort(env.WEB_PORT) ?? 4010;
+  const apiPort = parseIntegerPort(env.API_PORT) ?? parseIntegerPort(env.PORT) ?? 4020;
+  return Array.from(new Set([webPort, apiPort]));
+}
+
+function parseIntegerPort(value) {
+  const parsed = Number(value?.trim());
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    return null;
+  }
+  return parsed;
+}
+
+function readListeningPidsForPort(port) {
+  const result = spawnSync("lsof", ["-t", "-nP", `-iTCP:${port}`, "-sTCP:LISTEN"], {
+    encoding: "utf8"
+  });
+  if (result.status !== 0 || !result.stdout.trim()) {
+    return [];
+  }
+  return result.stdout
+    .split(/\r?\n/)
+    .map((line) => Number(line.trim()))
+    .filter((value) => Number.isInteger(value) && value > 0);
+}
+
+function readProcessTable() {
+  const result = spawnSync("ps", ["-Ao", "pid=,ppid=,command="], {
+    encoding: "utf8"
+  });
+  if (result.status !== 0 || !result.stdout.trim()) {
+    return [];
+  }
+  return result.stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .map((line) => {
+      const firstSpace = line.indexOf(" ");
+      if (firstSpace < 0) {
+        return null;
+      }
+      const pid = Number(line.slice(0, firstSpace).trim());
+      const rest = line.slice(firstSpace).trim();
+      const secondSpace = rest.indexOf(" ");
+      if (secondSpace < 0) {
+        return null;
+      }
+      const ppid = Number(rest.slice(0, secondSpace).trim());
+      const command = rest.slice(secondSpace).trim();
+      if (!Number.isInteger(pid) || pid <= 0 || !Number.isInteger(ppid) || ppid < 0 || command.length === 0) {
+        return null;
+      }
+      return { pid, ppid, command };
+    })
+    .filter((entry) => entry !== null);
+}
+
+function collectDescendantPids(processTable, rootPids) {
+  const result = new Set(rootPids);
+  const childrenByParent = new Map();
+  for (const entry of processTable) {
+    const existing = childrenByParent.get(entry.ppid);
+    if (existing) {
+      existing.push(entry.pid);
+    } else {
+      childrenByParent.set(entry.ppid, [entry.pid]);
+    }
+  }
+  const queue = Array.from(rootPids);
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (current === undefined) {
+      continue;
+    }
+    const children = childrenByParent.get(current) ?? [];
+    for (const child of children) {
+      if (result.has(child)) {
+        continue;
+      }
+      result.add(child);
+      queue.push(child);
+    }
+  }
+  return result;
+}
+
+function terminatePids(pids, signal) {
+  for (const pid of pids) {
+    try {
+      process.kill(pid, signal);
+    } catch (error) {
+      const code = error && typeof error === "object" && "code" in error ? error.code : undefined;
+      if (code === "ESRCH") {
+        continue;
+      }
+      throw error;
+    }
+  }
+}
+
+function isPidAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function wait(ms) {
+  return new Promise((resolvePromise) => setTimeout(resolvePromise, ms));
 }
 
 function resolveInstanceRoot(env) {

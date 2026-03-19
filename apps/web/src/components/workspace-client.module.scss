@@ -53,7 +53,7 @@
 }
 
 .attentionItemContext {
-  @apply block max-w-[440px] truncate;
+  @apply block max-w-[440px] truncate text-sidebar-foreground/50;
 }
 
 .formatDurationLabel {
