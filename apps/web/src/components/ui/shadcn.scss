@@ -1293,11 +1293,11 @@ body {
 }
 
 .ui-issue-comment-row {
-  @apply flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between;
+  @apply flex flex-col gap-3;
 }
 
 .ui-issue-comment-copy {
-  @apply min-w-0 space-y-1;
+  @apply min-w-0 flex-1 space-y-1;
 }
 
 .ui-issue-comment-author {

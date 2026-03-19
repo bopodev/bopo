@@ -919,24 +919,27 @@ export function IssueDetailPageClient({
                 <div key={comment.id} className="ui-issue-comment-card">
                   <div className="ui-issue-comment-row">
                     <div className="ui-issue-comment-copy">
-                      <div className={styles.commentAuthorRow}>
-                        {comment.authorType === "agent" ? (
-                          <AgentAvatar
-                            seed={agentAvatarSeed(
-                              comment.authorId ?? "agent",
-                              formatCommentAuthorLabel(comment, agents),
-                              agents.find((agent) => agent.id === comment.authorId)?.avatarSeed
-                            )}
-                            name={formatCommentAuthorLabel(comment, agents)}
-                            size={32}
-                            className={styles.commentAuthorAvatar}
-                          />
-                        ) : (
-                          <div className={styles.commentAuthorFallbackAvatar} aria-hidden>
-                            {formatCommentAuthorBadgeLabel(comment)}
-                          </div>
-                        )}
-                        <div className="ui-issue-comment-author">{formatCommentAuthorLabel(comment, agents)}</div>
+                      <div className={styles.commentHeaderRow}>
+                        <div className={styles.commentAuthorRow}>
+                          {comment.authorType === "agent" ? (
+                            <AgentAvatar
+                              seed={agentAvatarSeed(
+                                comment.authorId ?? "agent",
+                                formatCommentAuthorLabel(comment, agents),
+                                agents.find((agent) => agent.id === comment.authorId)?.avatarSeed
+                              )}
+                              name={formatCommentAuthorLabel(comment, agents)}
+                              size={32}
+                              className={styles.commentAuthorAvatar}
+                            />
+                          ) : (
+                            <div className={styles.commentAuthorFallbackAvatar} aria-hidden>
+                              {formatCommentAuthorBadgeLabel(comment)}
+                            </div>
+                          )}
+                          <div className="ui-issue-comment-author">{formatCommentAuthorLabel(comment, agents)}</div>
+                        </div>
+                        <span className={styles.commentTimestamp}>{formatCommentDate(comment.createdAt)}</span>
                       </div>
                       <CollapsibleMarkdown
                         content={comment.authorType === "agent" ? normalizeAgentCommentBodyForDisplay(comment.body) : comment.body}
@@ -970,9 +973,6 @@ export function IssueDetailPageClient({
                           </Link>
                         </div>
                       ) : null}
-                    </div>
-                    <div className="ui-issue-action-row">
-                      <span className={styles.commentTimestamp}>{formatCommentDate(comment.createdAt)}</span>
                     </div>
                   </div>
                 </div>
