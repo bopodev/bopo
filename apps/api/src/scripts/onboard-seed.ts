@@ -26,7 +26,6 @@ import { normalizeRuntimeConfig, runtimeConfigToDb, runtimeConfigToStateBlobPatc
 import {
   normalizeAbsolutePath,
   normalizeCompanyWorkspacePath,
-  resolveAgentFallbackWorkspacePath,
   resolveProjectWorkspacePath
 } from "../lib/instance-paths";
 import { buildDefaultCeoBootstrapPrompt } from "../lib/ceo-bootstrap-prompt";
@@ -305,15 +304,15 @@ async function ensureCeoStartupTask(
       typeof issue.body === "string" &&
       issue.body.includes(CEO_STARTUP_TASK_MARKER)
   );
-  const ceoWorkspaceRoot = resolveAgentFallbackWorkspacePath(input.companyId, input.ceoId);
-  const ceoOperatingFolder = `${ceoWorkspaceRoot}/operating`;
-  const ceoTmpFolder = `${ceoWorkspaceRoot}/tmp`;
+  const issueScopedAgentRoot = `agents/${input.ceoId}`;
+  const ceoOperatingFolder = `${issueScopedAgentRoot}/operating`;
+  const ceoTmpFolder = `${issueScopedAgentRoot}/tmp`;
   const body = [
     CEO_STARTUP_TASK_MARKER,
     "",
     "Stand up your leadership operating baseline before taking on additional delivery work.",
     "",
-    `1. Create your operating folder at \`${ceoOperatingFolder}/\` (system path, outside project workspaces).`,
+    `1. Create your operating folder at \`${ceoOperatingFolder}/\` (relative to the current issue workspace).`,
     "2. Author these files with your own voice and responsibilities:",
     `   - \`${ceoOperatingFolder}/AGENTS.md\``,
     `   - \`${ceoOperatingFolder}/HEARTBEAT.md\``,
@@ -335,7 +334,7 @@ async function ensureCeoStartupTask(
     "7. Do not use unsupported hire fields such as `adapterType`, `adapterConfig`, or `reportsTo`.",
     "",
     "Safety checks before requesting hire:",
-    "- Do not write operating/system files under any project workspace folder.",
+    "- Keep operating/system files inside the current issue workspace.",
     "- Do not request duplicates if a Founding Engineer already exists.",
     "- Do not request duplicates if a pending approval for the same role is already open.",
     "- For control-plane calls, prefer direct header env vars (`BOPODEV_COMPANY_ID`, `BOPODEV_ACTOR_TYPE`, `BOPODEV_ACTOR_ID`, `BOPODEV_ACTOR_COMPANIES`, `BOPODEV_ACTOR_PERMISSIONS`) instead of parsing `BOPODEV_REQUEST_HEADERS_JSON`.",

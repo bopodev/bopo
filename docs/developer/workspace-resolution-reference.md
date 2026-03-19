@@ -38,6 +38,9 @@ Managed company root:
     <companyId>/
       projects/
         <projectId>/
+          issues/
+            <issueId>/
+              ...
           .bopo/
             issues/
               <issueId>/
@@ -101,6 +104,18 @@ Attachments are stored under:
 - `<projectWorkspace>/.bopo/issues/<issueId>/attachments/...`
 
 Read/download/delete paths are resolved and validated with inside-root checks to prevent traversal.
+
+Issue runtime execution folders are separate from attachment storage and are resolved under:
+
+- `<projectWorkspace>/issues/<issueId>/...`
+
+## Run Artifact Paths In Issue Comments
+
+Run summary comments keep artifact download links in the same route shape:
+
+- `/observability/heartbeats/:runId/artifacts/:artifactIndex/download?companyId=...`
+
+Artifact link labels are rendered as normalized workspace-relative paths (relative to `<instanceRoot>/workspaces/<companyId>`), not absolute host filesystem paths.
 
 ## Migration and Backfill
 

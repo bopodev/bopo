@@ -1685,6 +1685,9 @@ describe("BopoDev core workflows", () => {
     expect(runSummaryComment?.body ?? "").toContain("Completed the workspace setup and recorded the created folders for review.");
     expect((runSummaryComment?.body ?? "").toLowerCase()).toContain("created folders for the agent");
     expect((runSummaryComment?.body ?? "").toLowerCase()).toContain("added memory files");
+    expect(runSummaryComment?.body ?? "").toContain(
+      `[issues/${issue.id}/agents/digest-worker](http://127.0.0.1:4020/observability/heartbeats/${encodeURIComponent(runId!)}/artifacts/0/download?companyId=${encodeURIComponent(companyId)})`
+    );
     expect((runSummaryComment?.body ?? "").toLowerCase()).not.toContain("command:");
     expect((runSummaryComment?.body ?? "").toLowerCase()).not.toContain("/users/");
   });

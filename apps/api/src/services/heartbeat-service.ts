@@ -1,5 +1,5 @@
 import { mkdir } from "node:fs/promises";
-import { join, relative, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { resolveAdapter } from "bopodev-agent-sdk";
@@ -3018,26 +3018,51 @@ function buildRunArtifacts(input: {
   const workspaceRootPath = input.workspaceRootPath?.trim() ? input.workspaceRootPath.trim() : null;
   return sourceArtifacts.map((artifact) => {
     const originalPath = artifact.path.trim();
-    const isAbsolute = originalPath.startsWith("/");
-    const absolutePath = isAbsolute ? originalPath : runtimeCwd ? resolve(runtimeCwd, originalPath) : null;
+    const artifactIsAbsolute = isAbsolute(originalPath);
+    const absolutePath = artifactIsAbsolute ? resolve(originalPath) : runtimeCwd ? resolve(runtimeCwd, originalPath) : null;
     let relativePathValue: string | null = null;
     if (absolutePath && workspaceRootPath && isInsidePath(workspaceRootPath, absolutePath)) {
-      const candidate = relative(workspaceRootPath, absolutePath);
-      relativePathValue = candidate || null;
-    } else if (!isAbsolute) {
-      relativePathValue = originalPath;
+      relativePathValue = toNormalizedWorkspaceRelativePath(relative(workspaceRootPath, absolutePath));
+    } else if (!artifactIsAbsolute) {
+      relativePathValue = toNormalizedWorkspaceRelativePath(originalPath);
     } else if (runtimeCwd) {
-      const candidate = relative(runtimeCwd, originalPath);
-      relativePathValue = candidate && !candidate.startsWith("..") ? candidate : null;
+      const candidate = toNormalizedWorkspaceRelativePath(relative(runtimeCwd, absolutePath ?? originalPath));
+      relativePathValue = candidate && !candidate.startsWith("../") ? candidate : null;
     }
+    const location = relativePathValue ?? absolutePath ?? originalPath;
     return {
       path: originalPath,
       kind: artifact.kind,
-      label: describeArtifact(artifact.kind, relativePathValue ?? absolutePath ?? originalPath),
+      label: describeArtifact(artifact.kind, location),
       relativePath: relativePathValue,
       absolutePath
     };
   });
+}
+
+function toNormalizedWorkspaceRelativePath(inputPath: string | null | undefined) {
+  const trimmed = inputPath?.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const unixSeparated = trimmed.replace(/\\/g, "/");
+  const parts: string[] = [];
+  for (const part of unixSeparated.split("/")) {
+    if (!part || part === ".") {
+      continue;
+    }
+    if (part === "..") {
+      if (parts.length > 0 && parts[parts.length - 1] !== "..") {
+        parts.pop();
+      } else {
+        parts.push(part);
+      }
+      continue;
+    }
+    parts.push(part);
+  }
+  const normalized = parts.join("/");
+  return normalized || null;
 }
 
 function describeArtifact(kind: string, location: string) {
@@ -3242,7 +3267,7 @@ function formatRunArtifactMarkdownLink(
   artifact: RunArtifact,
   options: { runId: string; companyId: string; artifactIndex: number }
 ) {
-  const label = artifact.relativePath ?? artifact.absolutePath ?? artifact.path;
+  const label = resolveRunArtifactDisplayPath(artifact);
   const href = buildRunArtifactLinkHref(options);
   if (!label) {
     return "`artifact`";
@@ -3251,6 +3276,18 @@ function formatRunArtifactMarkdownLink(
     return `\`${label}\``;
   }
   return `[${label}](${href})`;
+}
+
+function resolveRunArtifactDisplayPath(artifact: RunArtifact) {
+  const relative = toNormalizedWorkspaceRelativePath(artifact.relativePath);
+  if (relative && !relative.startsWith("../")) {
+    return relative;
+  }
+  const pathValue = toNormalizedWorkspaceRelativePath(artifact.path);
+  if (pathValue && !pathValue.startsWith("../") && !isAbsolute(artifact.path)) {
+    return pathValue;
+  }
+  return null;
 }
 
 function buildRunArtifactLinkHref(options: { runId: string; companyId: string; artifactIndex: number }) {
@@ -3829,10 +3866,7 @@ async function resolveRuntimeWorkspaceForWorkItems(
     }
 
     if (projectIssue?.id) {
-      const issueScopedWorkspaceCwd = normalizeCompanyWorkspacePath(
-        companyId,
-        join(selectedWorkspaceCwd, "issues", projectIssue.id)
-      );
+      const issueScopedWorkspaceCwd = resolveProjectIssueWorkspaceCwd(companyId, selectedWorkspaceCwd, projectIssue.id);
       await mkdir(issueScopedWorkspaceCwd, { recursive: true });
       selectedWorkspaceCwd = issueScopedWorkspaceCwd;
     }
@@ -3879,6 +3913,10 @@ async function resolveRuntimeWorkspaceForWorkItems(
       cwd: fallbackWorkspace
     }
   };
+}
+
+function resolveProjectIssueWorkspaceCwd(companyId: string, projectWorkspaceCwd: string, issueId: string) {
+  return normalizeCompanyWorkspacePath(companyId, join(projectWorkspaceCwd, "issues", issueId));
 }
 
 function resolveGitWorktreeIsolationEnabled() {

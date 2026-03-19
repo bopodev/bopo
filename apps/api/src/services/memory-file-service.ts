@@ -74,9 +74,6 @@ export async function loadAgentMemoryContext(input: {
       label: "agent"
     }
   ];
-  for (const source of scopedRoots) {
-    await ensureMemoryDirs(source.root, join(source.root, "life"), join(source.root, "memory"));
-  }
   const tacitBlocks = await Promise.all(
     scopedRoots.map(async (source) => {
       const tacit = await readTacitNotes(source.root);

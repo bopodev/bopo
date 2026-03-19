@@ -406,13 +406,16 @@ function toRecord(value: unknown) {
 
 function resolveRunArtifactAbsolutePath(companyId: string, artifact: Record<string, unknown>) {
   const companyWorkspaceRoot = resolveCompanyWorkspaceRootPath(companyId);
-  const absolutePathRaw = typeof artifact.absolutePath === "string" ? artifact.absolutePath.trim() : "";
-  const relativePathRaw =
+  const absolutePathRaw = normalizeAbsoluteArtifactPath(
+    typeof artifact.absolutePath === "string" ? artifact.absolutePath.trim() : ""
+  );
+  const relativePathRaw = normalizeWorkspaceRelativeArtifactPath(
     typeof artifact.relativePath === "string"
       ? artifact.relativePath.trim()
       : typeof artifact.path === "string"
         ? artifact.path.trim()
-        : "";
+        : ""
+  );
   const candidate = absolutePathRaw
     ? absolutePathRaw
     : relativePathRaw
@@ -426,6 +429,41 @@ function resolveRunArtifactAbsolutePath(companyId: string, artifact: Record<stri
     return null;
   }
   return resolved;
+}
+
+function normalizeAbsoluteArtifactPath(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed || !isAbsolute(trimmed)) {
+    return "";
+  }
+  return resolve(trimmed);
+}
+
+function normalizeWorkspaceRelativeArtifactPath(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "";
+  }
+  const unixSeparated = trimmed.replace(/\\/g, "/");
+  if (isAbsolute(unixSeparated)) {
+    return "";
+  }
+  const parts: string[] = [];
+  for (const part of unixSeparated.split("/")) {
+    if (!part || part === ".") {
+      continue;
+    }
+    if (part === "..") {
+      if (parts.length > 0 && parts[parts.length - 1] !== "..") {
+        parts.pop();
+      } else {
+        parts.push(part);
+      }
+      continue;
+    }
+    parts.push(part);
+  }
+  return parts.join("/");
 }
 
 function serializeRunRow(

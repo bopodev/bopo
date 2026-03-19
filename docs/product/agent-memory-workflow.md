@@ -25,6 +25,8 @@ Memory is merged from multiple scopes at runtime:
 - project memory roots (for active run projects)
 - agent memory root
 
+Scope roots are read opportunistically. Context preview and memory reads do not create missing scope folders.
+
 Prompt recall prefers higher-relevance records (keyword overlap, recency, confidence, and scope weighting) while staying within fixed prompt memory limits.
 
 ## Directory Model
@@ -51,6 +53,7 @@ Before a heartbeat starts, runtime context is assembled from:
 - recent daily notes (`memory/*.md`).
 
 This compact context is injected into the run so the agent can act with continuity.
+If a scope directory does not exist yet, it is skipped without creating new folders.
 
 ### 2) Post-run episodic capture
 

@@ -4,8 +4,9 @@ import { join } from "node:path";
 import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../apps/api/src/app";
+import { runHeartbeatForAgent } from "../apps/api/src/services/heartbeat-service";
 import type { BopoDb } from "../packages/db/src/client";
-import { bootstrapDatabase, createCompany, createProject } from "../packages/db/src/index";
+import { bootstrapDatabase, createAgent, createCompany, createIssue, createProject, listIssueComments } from "../packages/db/src/index";
 
 describe("workspace path policy", { timeout: 60_000 }, () => {
   let db: BopoDb;
@@ -125,5 +126,46 @@ describe("workspace path policy", { timeout: 60_000 }, () => {
     });
     expect(updateResponse.status).toBe(422);
     expect(String(updateResponse.body.error ?? "")).toContain("must be inside");
+  });
+
+  it("records artifact labels with full project issue workspace-relative paths", async () => {
+    const workspaceCwd = join(tempDir, "instances", "workspaces", companyId, "projects", projectId, "primary");
+    const workspaceResponse = await request(app).post(`/projects/${projectId}/workspaces`).set("x-company-id", companyId).send({
+      name: "Primary workspace for issue runtime",
+      cwd: workspaceCwd,
+      isPrimary: true
+    });
+    expect(workspaceResponse.status).toBe(200);
+
+    const agent = await createAgent(db, {
+      companyId,
+      role: "Engineer",
+      name: "Issue Path Worker",
+      providerType: "shell",
+      heartbeatCron: "*/5 * * * *",
+      monthlyBudgetUsd: "10.0000",
+      initialState: {
+        runtime: {
+          command: "echo",
+          args: [
+            '{"employee_comment":"done","results":["ok"],"errors":[],"artifacts":[{"kind":"directory","path":"output"}],"tokenInput":0,"tokenOutput":0,"usdCost":0}'
+          ]
+        }
+      }
+    });
+    const issue = await createIssue(db, {
+      companyId,
+      projectId,
+      title: "Check runtime issue cwd placement",
+      assigneeAgentId: agent.id
+    });
+
+    const runId = await runHeartbeatForAgent(db, companyId, agent.id, { trigger: "manual" });
+    expect(runId).toBeTruthy();
+
+    const comments = await listIssueComments(db, companyId, issue.id);
+    const summaryComment = comments.find((comment) => comment.runId === runId && comment.authorType === "agent");
+    expect(summaryComment?.body ?? "").toContain(`projects/${projectId}/`);
+    expect(summaryComment?.body ?? "").toContain(`/issues/${issue.id}/output`);
   });
 });

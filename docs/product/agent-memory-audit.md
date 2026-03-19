@@ -19,6 +19,7 @@ This audit captures current memory behavior in production code before introducin
    - tacit notes from `MEMORY.md`
    - durable facts from `life/summary.md` and `life/items.yaml`
    - recent daily notes from latest daily files
+   - missing scope folders are ignored (read paths do not auto-create directories)
 3. Prompt assembly injects memory with company mission, goals, and work items.
 4. After adapter execution:
    - daily episodic note is appended

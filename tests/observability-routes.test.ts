@@ -1,9 +1,14 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../apps/api/src/app";
+import {
+  resolveAgentMemoryRootPath,
+  resolveCompanyMemoryRootPath,
+  resolveProjectMemoryRootPath
+} from "../apps/api/src/lib/instance-paths";
 import { runHeartbeatForAgent } from "../apps/api/src/services/heartbeat-service";
 import type { BopoDb } from "../packages/db/src/client";
 import {
@@ -262,6 +267,42 @@ describe("observability routes", { timeout: 30_000 }, () => {
     expect(runRow.runType).toBe("no_assigned_work");
   });
 
+  it("downloads artifacts resolved from workspace-relative report paths", async () => {
+    const project = await createProject(db, {
+      companyId,
+      name: "Artifact Download"
+    });
+    const script =
+      "const fs=require('node:fs');fs.mkdirSync('reports',{recursive:true});fs.writeFileSync('reports/run.md','artifact body\\n');console.log(JSON.stringify({employee_comment:'done',results:['created report'],errors:[],artifacts:[{kind:'file',path:'./reports/run.md'}],tokenInput:1,tokenOutput:1,usdCost:0.0001}));";
+    const agent = await createAgent(db, {
+      companyId,
+      role: "Worker",
+      name: "Artifact Worker",
+      providerType: "shell",
+      heartbeatCron: "* * * * *",
+      monthlyBudgetUsd: "25.0000",
+      canHireAgents: false,
+      runtimeCommand: process.execPath,
+      runtimeArgsJson: JSON.stringify(["-e", script])
+    });
+    await createIssue(db, {
+      companyId,
+      projectId: project.id,
+      title: "Produce downloadable artifact",
+      assigneeAgentId: agent.id
+    });
+
+    const runId = await runHeartbeatForAgent(db, companyId, agent.id, { trigger: "manual" });
+    expect(runId).toBeTruthy();
+
+    const downloadResponse = await request(app)
+      .get(`/observability/heartbeats/${encodeURIComponent(runId!)}/artifacts/0/download`)
+      .query({ companyId })
+      .set("x-company-id", companyId);
+    expect(downloadResponse.status).toBe(200);
+    expect(Buffer.from(downloadResponse.body).toString("utf8")).toContain("artifact body");
+  });
+
   it("preserves nextCursor when filters reduce returned items", async () => {
     const project = await createProject(db, {
       companyId,
@@ -309,5 +350,38 @@ describe("observability routes", { timeout: 30_000 }, () => {
     expect(Array.isArray(response.body.data.items)).toBe(true);
     expect(response.body.data.items.length).toBeLessThan(10);
     expect(response.body.data.nextCursor).not.toBeNull();
+  });
+
+  it("does not create memory folders when reading context preview", async () => {
+    const project = await createProject(db, {
+      companyId,
+      name: "Context Preview Read Only"
+    });
+    const agent = await createAgent(db, {
+      companyId,
+      role: "Worker",
+      name: "Read Only Memory Agent",
+      providerType: "shell",
+      heartbeatCron: "* * * * *",
+      monthlyBudgetUsd: "25.0000",
+      canHireAgents: false,
+      runtimeCommand: "echo",
+      runtimeArgsJson: '["{\\"summary\\":\\"no-op\\",\\"tokenInput\\":1,\\"tokenOutput\\":1,\\"usdCost\\":0.0001}"]'
+    });
+
+    const contextResponse = await request(app)
+      .get(
+        `/observability/memory/${encodeURIComponent(agent.id)}/context-preview?projectIds=${encodeURIComponent(project.id)}`
+      )
+      .set("x-company-id", companyId);
+    expect(contextResponse.status).toBe(200);
+
+    const companyMemoryRoot = resolveCompanyMemoryRootPath(companyId);
+    const projectMemoryRoot = resolveProjectMemoryRootPath(companyId, project.id);
+    const agentMemoryRoot = resolveAgentMemoryRootPath(companyId, agent.id);
+
+    await expect(stat(companyMemoryRoot)).rejects.toThrow();
+    await expect(stat(projectMemoryRoot)).rejects.toThrow();
+    await expect(stat(agentMemoryRoot)).rejects.toThrow();
   });
 });

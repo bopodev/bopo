@@ -39,7 +39,6 @@ import {
 import { resolveOpencodeRuntimeModel } from "../lib/opencode-model";
 import {
   normalizeCompanyWorkspacePath,
-  resolveAgentFallbackWorkspacePath,
   resolveProjectWorkspacePath
 } from "../lib/instance-paths";
 import { assertRuntimeCwdForCompany, hasText, resolveDefaultRuntimeCwdForCompany } from "../lib/workspace-policy";
@@ -698,7 +697,7 @@ async function ensureAgentStartupIssue(
   roleTitle: string
 ) {
   const title = `Set up ${roleTitle} operating files`;
-  const body = buildAgentStartupTaskBody(companyId, agentId);
+  const body = buildAgentStartupTaskBody(agentId);
   const existingIssues = await listIssues(db, companyId);
   const existing = existingIssues.find(
     (issue) =>
@@ -769,15 +768,15 @@ function resolveAgentDisplayTitle(title: string | null | undefined, roleKeyInput
   return role;
 }
 
-function buildAgentStartupTaskBody(companyId: string, agentId: string) {
-  const agentWorkspaceRoot = resolveAgentFallbackWorkspacePath(companyId, agentId);
-  const agentOperatingFolder = `${agentWorkspaceRoot}/operating`;
+function buildAgentStartupTaskBody(agentId: string) {
+  const issueScopedAgentRoot = `agents/${agentId}`;
+  const agentOperatingFolder = `${issueScopedAgentRoot}/operating`;
   return [
     AGENT_STARTUP_TASK_MARKER,
     "",
     `Create your operating baseline before starting feature delivery work.`,
     "",
-    `1. Create your operating folder at \`${agentOperatingFolder}/\` (system path, outside project workspaces).`,
+    `1. Create your operating folder at \`${agentOperatingFolder}/\` (relative to the current issue workspace).`,
     "2. Author these files with your own responsibilities and working style:",
     `   - \`${agentOperatingFolder}/AGENTS.md\``,
     `   - \`${agentOperatingFolder}/HEARTBEAT.md\``,
@@ -787,7 +786,7 @@ function buildAgentStartupTaskBody(companyId: string, agentId: string) {
     "4. Post an issue comment summarizing completed setup artifacts.",
     "",
     "Safety checks:",
-    "- Do not write operating/system files under any project workspace folder.",
+    "- Keep operating files inside the current issue workspace.",
     "- Do not overwrite another agent's operating folder.",
     "- Keep content original to your role and scope."
   ].join("\n");
