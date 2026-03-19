@@ -290,8 +290,12 @@ body {
 }
 
 .ui-data-table-surface {
-  @apply w-full min-w-0 overflow-x-auto overflow-y-hidden rounded-xl border border-border/70 bg-card;
+  @apply w-full max-w-full min-w-0 overflow-x-auto overflow-y-hidden rounded-xl border border-border/70 bg-card;
   -webkit-overflow-scrolling: touch;
+}
+
+.ui-data-table-table {
+  @apply w-full min-w-full;
 }
 
 .ui-data-table-surface-hover-scrollbar {
@@ -327,7 +331,7 @@ body {
 }
 
 .ui-data-table-cell {
-  @apply px-4 py-3;
+  @apply px-4 py-3 whitespace-normal break-words;
 }
 
 .ui-data-table-empty-cell {

@@ -101,6 +101,13 @@ export interface AdapterExecutionResult {
   outcome?: ExecutionOutcome;
   nextState?: AgentState;
   trace?: AdapterTrace;
+  dispositionHint?: {
+    kind: "provider_usage_limited";
+    persistStatus: "skipped";
+    pauseAgent: boolean;
+    notifyBoard: boolean;
+    message: string;
+  };
 }
 
 export interface AgentAdapter {

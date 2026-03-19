@@ -1320,6 +1320,24 @@ export function containsRateLimitFailure(text: string) {
   );
 }
 
+export function containsUsageLimitHardStopFailure(text: string) {
+  const normalized = text.toLowerCase();
+  return (
+    normalized.includes("api usage limits") ||
+    normalized.includes("you have reached your specified api usage limits") ||
+    normalized.includes("you will regain access on") ||
+    normalized.includes("regain access on") ||
+    normalized.includes("insufficient_quota") ||
+    normalized.includes("billing_hard_limit_reached") ||
+    normalized.includes("exceeded your current quota") ||
+    normalized.includes("usage limit reached")
+  );
+}
+
+export function containsProviderUsageLimitFailure(text: string) {
+  return containsUsageLimitHardStopFailure(text);
+}
+
 export async function checkRuntimeCommandHealth(
   command: string,
   options?: { cwd?: string; timeoutMs?: number; env?: Record<string, string> }

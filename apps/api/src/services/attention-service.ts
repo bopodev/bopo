@@ -219,6 +219,7 @@ export async function listBoardAttentionItems(db: BopoDb, companyId: string, act
     const key = `comment:${comment.id}`;
     const body = comment.body.trim().replace(/\s+/g, " ");
     const summaryBody = body.length > 140 ? `${body.slice(0, 137)}...` : body;
+    const conciseUsageLimitSummary = summarizeUsageLimitBoardComment(body);
     items.push(
       withState(
         {
@@ -226,8 +227,8 @@ export async function listBoardAttentionItems(db: BopoDb, companyId: string, act
           category: "board_mentioned_comment",
           severity: "warning",
           requiredActor: "board",
-          title: "Board input requested on issue comment",
-          contextSummary: `${comment.issueTitle}: ${summaryBody}`,
+          title: conciseUsageLimitSummary ? "Provider usage limit reached" : "Board input requested on issue comment",
+          contextSummary: conciseUsageLimitSummary ?? summaryBody,
           actionLabel: "Open issue thread",
           actionHref: `/issues/${comment.issueId}`,
           impactSummary: "The team is waiting for board clarification to continue confidently.",
@@ -248,6 +249,26 @@ export async function listBoardAttentionItems(db: BopoDb, companyId: string, act
   }
 
   return dedupeItems(items).sort(compareAttentionItems);
+}
+
+function summarizeUsageLimitBoardComment(body: string) {
+  const normalized = body.replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return null;
+  }
+  const providerMatch = normalized.match(
+    /\b(claude[_\s-]*code|codex|cursor|openai[_\s-]*api|anthropic[_\s-]*api|gemini[_\s-]*cli|opencode)\b(?=.*\busage limit reached\b)/i
+  );
+  if (!providerMatch) {
+    return null;
+  }
+  const providerToken = providerMatch[1];
+  if (!providerToken) {
+    return null;
+  }
+  const rawProvider = providerToken.toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
+  const providerLabel = rawProvider.charAt(0).toUpperCase() + rawProvider.slice(1);
+  return `${providerLabel} usage limit reached.`;
 }
 
 export async function markBoardAttentionSeen(db: BopoDb, companyId: string, actorId: string, itemKey: string) {

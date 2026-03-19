@@ -659,6 +659,19 @@ function formatRunMessage(message: string | null | undefined) {
   return candidate.replace(/\s+/g, " ").trim();
 }
 
+function formatAttentionContextSummary(contextSummary: string, maxLength = 120) {
+  const normalized = contextSummary.replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return "Review details and take action.";
+  }
+  const firstSentenceMatch = normalized.match(/^(.+?[.!?])(?:\s|$)/);
+  const focused = (firstSentenceMatch?.[1] ?? normalized).trim();
+  if (focused.length <= maxLength) {
+    return focused;
+  }
+  return `${focused.slice(0, Math.max(0, maxLength - 3)).trimEnd()}...`;
+}
+
 function formatRelativeAgeCompact(timestamp: string | null) {
   if (!timestamp) {
     return "n/a";
@@ -1082,34 +1095,10 @@ export function WorkspaceClient({
     }, "Failed to restore inbox item.", `inbox:${approvalId}:undismiss`);
   }
 
-  async function markAttentionSeen(itemKey: string) {
-    await runCrudAction(async () => {
-      await apiPost(`/attention/${encodeURIComponent(itemKey)}/seen`, companyId!, {});
-    }, "Failed to mark attention item as seen.", `attention:${itemKey}:seen`);
-  }
-
-  async function acknowledgeAttention(itemKey: string) {
-    await runCrudAction(async () => {
-      await apiPost(`/attention/${encodeURIComponent(itemKey)}/acknowledge`, companyId!, {});
-    }, "Failed to acknowledge attention item.", `attention:${itemKey}:acknowledge`);
-  }
-
   async function dismissAttention(itemKey: string) {
     await runCrudAction(async () => {
       await apiPost(`/attention/${encodeURIComponent(itemKey)}/dismiss`, companyId!, {});
     }, "Failed to dismiss attention item.", `attention:${itemKey}:dismiss`);
-  }
-
-  async function undismissAttention(itemKey: string) {
-    await runCrudAction(async () => {
-      await apiPost(`/attention/${encodeURIComponent(itemKey)}/undismiss`, companyId!, {});
-    }, "Failed to restore attention item.", `attention:${itemKey}:undismiss`);
-  }
-
-  async function resolveAttention(itemKey: string) {
-    await runCrudAction(async () => {
-      await apiPost(`/attention/${encodeURIComponent(itemKey)}/resolve`, companyId!, {});
-    }, "Failed to resolve attention item.", `attention:${itemKey}:resolve`);
   }
 
   async function installPlugin(pluginId: string) {
@@ -1208,8 +1197,6 @@ export function WorkspaceClient({
     return approvalById.get(approvalId) ?? null;
   }, [approvalById, selectedAttentionItem]);
   const selectedAttentionHasPendingApproval = selectedAttentionApproval?.status === "pending";
-  const selectedAttentionIsPendingHireApproval =
-    selectedAttentionHasPendingApproval && selectedAttentionApproval.action === "hire_agent";
   const pendingApprovalsCount = useMemo(
     () =>
       attentionItems.reduce(
@@ -3160,12 +3147,15 @@ export function WorkspaceClient({
       {
         accessorKey: "title",
         header: ({ column }) => <DataTableColumnHeader column={column} title="Item" />,
-        cell: ({ row }) => (
-          <div className={styles.formatDurationContainer5}>
-            <div className={styles.formatDurationContainer1}>{row.original.title}</div>
-            <div>{row.original.contextSummary}</div>
-          </div>
-        )
+        cell: ({ row }) => {
+          const focusedContext = formatAttentionContextSummary(row.original.contextSummary);
+          return (
+            <div className={styles.formatDurationContainer5} title={row.original.contextSummary}>
+              <div className={styles.formatDurationContainer1}>{row.original.title}</div>
+              <div className={styles.attentionItemContext}>{focusedContext}</div>
+            </div>
+          );
+        }
       },
       {
         id: "category",
@@ -3198,32 +3188,27 @@ export function WorkspaceClient({
             row.original.category === "approval_required" && row.original.evidence.approvalId
               ? approvalById.get(row.original.evidence.approvalId)
               : undefined;
-          const isPendingHireApproval = linkedApproval?.status === "pending" && linkedApproval.action === "hire_agent";
-          const isRunFailureSpike = row.original.category === "run_failure_spike";
-          const showStandardAttentionActions = !isPendingHireApproval && !isRunFailureSpike;
-          const showActionLink = showStandardAttentionActions || isRunFailureSpike;
-          const showApprovalResolutionActions = linkedApproval?.status === "pending" && Boolean(row.original.evidence.approvalId);
+          const hasApprovalPrimaryAction = linkedApproval?.status === "pending" && Boolean(row.original.evidence.approvalId);
+          const hasLinkPrimaryAction = !hasApprovalPrimaryAction && Boolean(row.original.actionLabel && row.original.actionHref);
 
           return (
             <div className={styles.formatDurationContainer3} onClick={(event) => event.stopPropagation()}>
-              {showStandardAttentionActions && !row.original.seenAt ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => markAttentionSeen(row.original.key)}
-                  disabled={isActionPending(`attention:${row.original.key}:seen`)}
-                >
-                  Mark seen
-                </Button>
+              {hasApprovalPrimaryAction ? (
+                <ConfirmActionModal
+                  triggerLabel="Approve"
+                  triggerVariant="outline"
+                  triggerSize="sm"
+                  title="Approve request?"
+                  description="Apply the queued change to the control plane."
+                  details={formatApprovalPayloadDetails(linkedApproval?.payload)}
+                  confirmLabel="Approve"
+                  onConfirm={() => resolveApproval(row.original.evidence.approvalId!, "approved")}
+                  triggerDisabled={isActionPending(`approval:${row.original.evidence.approvalId}:resolve`)}
+                />
               ) : null}
-              {showStandardAttentionActions && row.original.state === "open" ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => acknowledgeAttention(row.original.key)}
-                  disabled={isActionPending(`attention:${row.original.key}:acknowledge`)}
-                >
-                  Acknowledge
+              {hasLinkPrimaryAction ? (
+                <Button asChild variant="outline" size="sm">
+                  <a href={toAttentionActionHref(row.original.actionHref, companyId)}>{row.original.actionLabel}</a>
                 </Button>
               ) : null}
               {row.original.state !== "dismissed" ? (
@@ -3234,71 +3219,6 @@ export function WorkspaceClient({
                   disabled={isActionPending(`attention:${row.original.key}:dismiss`)}
                 >
                   Dismiss
-                </Button>
-              ) : showStandardAttentionActions ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => undismissAttention(row.original.key)}
-                  disabled={isActionPending(`attention:${row.original.key}:undismiss`)}
-                >
-                  Restore
-                </Button>
-              ) : null}
-              {showStandardAttentionActions && row.original.state !== "resolved" ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => resolveAttention(row.original.key)}
-                  disabled={isActionPending(`attention:${row.original.key}:resolve`)}
-                >
-                  Resolve
-                </Button>
-              ) : null}
-              {showApprovalResolutionActions ? (
-                <>
-                  <ConfirmActionModal
-                    triggerLabel="Approve"
-                    triggerVariant="outline"
-                    triggerSize="sm"
-                    title="Approve request?"
-                    description="Apply the queued change to the control plane."
-                    details={formatApprovalPayloadDetails(linkedApproval?.payload)}
-                    confirmLabel="Approve"
-                    onConfirm={() => resolveApproval(row.original.evidence.approvalId!, "approved")}
-                    triggerDisabled={isActionPending(`approval:${row.original.evidence.approvalId}:resolve`)}
-                  />
-                  {isPendingHireApproval ? null : (
-                    <>
-                      <ConfirmActionModal
-                        triggerLabel="Reject"
-                        triggerVariant="outline"
-                        triggerSize="sm"
-                        title="Reject request?"
-                        description="Reject this governance request."
-                        details={formatApprovalPayloadDetails(linkedApproval?.payload)}
-                        confirmLabel="Reject"
-                        onConfirm={() => resolveApproval(row.original.evidence.approvalId!, "rejected")}
-                        triggerDisabled={isActionPending(`approval:${row.original.evidence.approvalId}:resolve`)}
-                      />
-                      <ConfirmActionModal
-                        triggerLabel="Override"
-                        triggerVariant="outline"
-                        triggerSize="sm"
-                        title="Override request?"
-                        description="Mark the request as overridden without applying it."
-                        details={formatApprovalPayloadDetails(linkedApproval?.payload)}
-                        confirmLabel="Override"
-                        onConfirm={() => resolveApproval(row.original.evidence.approvalId!, "overridden")}
-                        triggerDisabled={isActionPending(`approval:${row.original.evidence.approvalId}:resolve`)}
-                      />
-                    </>
-                  )}
-                </>
-              ) : null}
-              {showActionLink ? (
-                <Button asChild variant="outline" size="sm">
-                  <a href={toAttentionActionHref(row.original.actionHref, companyId)}>{row.original.actionLabel}</a>
                 </Button>
               ) : null}
             </div>
@@ -4033,7 +3953,7 @@ export function WorkspaceClient({
                             <span>{item.severity}</span>
                           </div>
                           <div className={styles.dashboardApprovalPreviewMeta}>
-                            <span>{item.contextSummary}</span>
+                            <span title={item.contextSummary}>{formatAttentionContextSummary(item.contextSummary, 96)}</span>
                             <span>{formatRelativeAgeCompact(item.sourceTimestamp)} ago</span>
                           </div>
                         </li>
@@ -4448,7 +4368,7 @@ export function WorkspaceClient({
                 <DialogHeader>
                   <DialogTitle>{selectedAttentionItem?.title ?? "Inbox item details"}</DialogTitle>
                   <DialogDescription>
-                    {selectedAttentionItem?.contextSummary ?? "Review details and take action."}
+                    {selectedAttentionItem ? formatAttentionContextSummary(selectedAttentionItem.contextSummary, 180) : "Review details and take action."}
                   </DialogDescription>
                 </DialogHeader>
                 {selectedAttentionItem ? (
@@ -4522,31 +4442,6 @@ export function WorkspaceClient({
                 ) : null}
                 <DialogFooter className={styles.attentionDialogFooter}>
                   <div className={styles.attentionDialogActionGroup}>
-                    {selectedAttentionItem && selectedAttentionItem.state !== "dismissed" ? (
-                      <Button
-                        variant={selectedAttentionIsPendingHireApproval ? "outline" : "secondary"}
-                        size="sm"
-                        onClick={() => {
-                          setAttentionDetailsOpen(false);
-                          void dismissAttention(selectedAttentionItem.key);
-                        }}
-                        disabled={isActionPending(`attention:${selectedAttentionItem.key}:dismiss`)}
-                      >
-                        Dismiss
-                      </Button>
-                    ) : selectedAttentionItem ? (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setAttentionDetailsOpen(false);
-                          void undismissAttention(selectedAttentionItem.key);
-                        }}
-                        disabled={isActionPending(`attention:${selectedAttentionItem.key}:undismiss`)}
-                      >
-                        Restore
-                      </Button>
-                    ) : null}
                     {selectedAttentionHasPendingApproval && selectedAttentionItem?.evidence.approvalId ? (
                       <Button
                         variant="default"
@@ -4558,6 +4453,23 @@ export function WorkspaceClient({
                         disabled={isActionPending(`approval:${selectedAttentionItem.evidence.approvalId}:resolve`)}
                       >
                         {isActionPending(`approval:${selectedAttentionItem.evidence.approvalId}:resolve`) ? "Approving..." : "Approve"}
+                      </Button>
+                    ) : selectedAttentionItem ? (
+                      <Button asChild variant="default" size="sm">
+                        <a href={toAttentionActionHref(selectedAttentionItem.actionHref, companyId)}>{selectedAttentionItem.actionLabel}</a>
+                      </Button>
+                    ) : null}
+                    {selectedAttentionItem && selectedAttentionItem.state !== "dismissed" ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setAttentionDetailsOpen(false);
+                          void dismissAttention(selectedAttentionItem.key);
+                        }}
+                        disabled={isActionPending(`attention:${selectedAttentionItem.key}:dismiss`)}
+                      >
+                        Dismiss
                       </Button>
                     ) : null}
                   </div>

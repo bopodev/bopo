@@ -1,6 +1,10 @@
 import type { HeartbeatContext, AdapterExecutionResult } from "../../../../agent-sdk/src/types";
-import { createPrompt, createSkippedResult, withProviderMetadata } from "../../../../agent-sdk/src/adapters";
-import { containsRateLimitFailure } from "../../../../agent-sdk/src/runtime-core";
+import {
+  classifyProviderFailure,
+  createPrompt,
+  createSkippedResult,
+  withProviderMetadata
+} from "../../../../agent-sdk/src/adapters";
 import { executeDirectApiRuntime } from "../../../../agent-sdk/src/runtime-http";
 import { ExecutionOutcomeSchema, type ExecutionOutcome } from "../../../../contracts/src/index";
 
@@ -48,12 +52,15 @@ export async function execute(context: HeartbeatContext): Promise<AdapterExecuti
       nextState: withProviderMetadata(context, "openai_api", runtime.elapsedMs, runtime.statusCode)
     };
   }
-  const failureDetail = runtime.error ?? "direct API request failed";
-  const rateLimitedFailure =
-    runtime.failureType === "rate_limit" || containsRateLimitFailure(`${failureDetail}\n${runtime.responsePreview ?? ""}`);
+  const failure = classifyProviderFailure("openai_api", {
+    detail: runtime.error ?? "direct API request failed",
+    stderr: runtime.error,
+    stdout: runtime.responsePreview ?? "",
+    failureType: runtime.failureType
+  });
   return {
     status: "failed",
-    summary: `openai_api runtime failed: ${failureDetail}`,
+    summary: `openai_api runtime failed: ${failure.detail}`,
     tokenInput: 0,
     tokenOutput: 0,
     usdCost: 0,
@@ -62,12 +69,12 @@ export async function execute(context: HeartbeatContext): Promise<AdapterExecuti
     outcome: toOutcome({
       kind: "failed",
       issueIdsTouched: issueIdsTouched(context),
-      actions: [{ type: "runtime.execute", status: "error", detail: failureDetail }],
+      actions: [{ type: "runtime.execute", status: "error", detail: failure.detail }],
       blockers: [
         {
-          code: runtime.failureType ?? "runtime_failed",
-          message: failureDetail,
-          retryable: runtime.failureType !== "auth" && runtime.failureType !== "bad_response" && !rateLimitedFailure
+          code: failure.blockerCode,
+          message: failure.detail,
+          retryable: failure.retryable
         }
       ],
       artifacts: [],
@@ -92,6 +99,17 @@ export async function execute(context: HeartbeatContext): Promise<AdapterExecuti
       stderrPreview: runtime.error,
       stdoutPreview: runtime.responsePreview
     },
+    ...(failure.providerUsageLimited
+      ? {
+          dispositionHint: {
+            kind: "provider_usage_limited" as const,
+            persistStatus: "skipped" as const,
+            pauseAgent: true,
+            notifyBoard: true,
+            message: `openai_api usage limit reached: ${failure.detail}`
+          }
+        }
+      : {}),
     nextState: context.state
   };
 }

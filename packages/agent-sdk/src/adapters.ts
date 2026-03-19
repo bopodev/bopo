@@ -11,7 +11,12 @@ import type {
   HeartbeatContext
 } from "./types";
 import { ExecutionOutcomeSchema, type ExecutionOutcome } from "bopodev-contracts";
-import { checkRuntimeCommandHealth, containsRateLimitFailure, executeAgentRuntime, executePromptRuntime } from "./runtime-core";
+import {
+  checkRuntimeCommandHealth,
+  containsUsageLimitHardStopFailure,
+  executeAgentRuntime,
+  executePromptRuntime
+} from "./runtime-core";
 import {
   parseClaudeStreamOutput,
   parseCursorStreamOutput,
@@ -24,6 +29,10 @@ import {
   resolveDirectApiCredentials,
   type DirectApiProvider
 } from "./runtime-http";
+import {
+  classifyProviderFailure as classifyProviderFailureByProvider,
+  normalizeProviderFailureDetail as normalizeProviderFailureDetailByProvider
+} from "./provider-failures";
 import { homedir } from "node:os";
 import { basename, join, resolve } from "node:path";
 
@@ -42,8 +51,39 @@ function toOutcome(outcome: ExecutionOutcome): ExecutionOutcome {
   return ExecutionOutcomeSchema.parse(outcome);
 }
 
-function isRateLimitedRuntimeFailure(runtime: { stdout: string; stderr: string }, detail?: string) {
-  return containsRateLimitFailure(`${detail ?? ""}\n${runtime.stderr}\n${runtime.stdout}`);
+function isProviderUsageLimitedRuntimeFailure(runtime: { stdout: string; stderr: string }, detail?: string) {
+  return containsUsageLimitHardStopFailure(`${detail ?? ""}\n${runtime.stderr}\n${runtime.stdout}`);
+}
+
+function buildProviderUsageLimitedDispositionHint(
+  provider: string,
+  detail: string
+): NonNullable<AdapterExecutionResult["dispositionHint"]> {
+  const normalizedDetail = detail.replace(/\s+/g, " ").trim();
+  const message = normalizedDetail ? `${provider} usage limit reached: ${normalizedDetail}` : `${provider} usage limit reached.`;
+  return {
+    kind: "provider_usage_limited",
+    persistStatus: "skipped",
+    pauseAgent: true,
+    notifyBoard: true,
+    message
+  };
+}
+
+export function normalizeProviderFailureDetail(provider: AgentProviderType, detail: string) {
+  return normalizeProviderFailureDetailByProvider(provider, detail);
+}
+
+export function classifyProviderFailure(
+  provider: AgentProviderType,
+  input: {
+    detail: string;
+    stderr?: string;
+    stdout?: string;
+    failureType?: string | null;
+  }
+): ReturnType<typeof classifyProviderFailureByProvider> {
+  return classifyProviderFailureByProvider(provider, input);
 }
 
 type RuntimeParsedUsage = {
@@ -409,23 +449,27 @@ export class GenericHeartbeatAdapter implements AgentAdapter {
     }
 
     const failedUsage = resolveFailedUsage(runtime);
-    const failureDetail = resolveRuntimeFailureDetail(runtime);
-    const rateLimitedFailure = isRateLimitedRuntimeFailure(runtime, failureDetail);
+    const failure = classifyProviderFailure(this.providerType, {
+      detail: resolveRuntimeFailureDetail(runtime, this.providerType),
+      stdout: runtime.stdout,
+      stderr: runtime.stderr,
+      failureType: runtime.failureType
+    });
     return {
       status: "failed",
-      summary: runtime.parsedUsage?.summary ?? `${this.providerType} runtime failed: ${failureDetail}`,
+      summary: runtime.parsedUsage?.summary ?? `${this.providerType} runtime failed: ${failure.detail}`,
       tokenInput: failedUsage.tokenInput,
       tokenOutput: failedUsage.tokenOutput,
       usdCost: failedUsage.usdCost,
       outcome: toOutcome({
         kind: "failed",
         issueIdsTouched: issueIdsTouched(context),
-        actions: [{ type: "runtime.execute", status: "error", detail: failureDetail }],
+        actions: [{ type: "runtime.execute", status: "error", detail: failure.detail }],
         blockers: [
           {
-            code: runtime.failureType ?? "runtime_failed",
-            message: failureDetail,
-            retryable: !rateLimitedFailure
+            code: failure.blockerCode,
+            message: failure.detail,
+            retryable: failure.retryable
           }
         ],
         artifacts: [],
@@ -449,6 +493,9 @@ export class GenericHeartbeatAdapter implements AgentAdapter {
         stderrPreview: toPreview(runtime.stderr),
         transcript: runtime.transcript
       },
+      ...(failure.providerUsageLimited
+        ? { dispositionHint: buildProviderUsageLimitedDispositionHint(this.providerType, failure.detail) }
+        : {}),
       nextState: context.state
     };
   }
@@ -875,12 +922,15 @@ export async function runDirectApiWork(
       nextState: withProviderMetadata(context, provider, runtime.elapsedMs, runtime.statusCode)
     };
   }
-  const failureDetail = runtime.error ?? "direct API request failed";
-  const rateLimitedFailure =
-    runtime.failureType === "rate_limit" || containsRateLimitFailure(`${failureDetail}\n${runtime.responsePreview ?? ""}`);
+  const failure = classifyProviderFailure(provider, {
+    detail: runtime.error ?? "direct API request failed",
+    stderr: runtime.error,
+    stdout: runtime.responsePreview ?? "",
+    failureType: runtime.failureType
+  });
   return {
     status: "failed",
-    summary: `${provider} runtime failed: ${failureDetail}`,
+    summary: `${provider} runtime failed: ${failure.detail}`,
     tokenInput: 0,
     tokenOutput: 0,
     usdCost: 0,
@@ -889,11 +939,11 @@ export async function runDirectApiWork(
     outcome: toOutcome({
       kind: "failed",
       issueIdsTouched: issueIdsTouched(context),
-      actions: [{ type: "runtime.execute", status: "error", detail: failureDetail }],
+      actions: [{ type: "runtime.execute", status: "error", detail: failure.detail }],
         blockers: [{
-          code: runtime.failureType ?? "runtime_failed",
-          message: failureDetail,
-          retryable: runtime.failureType !== "auth" && runtime.failureType !== "bad_response" && !rateLimitedFailure
+          code: failure.blockerCode,
+          message: failure.detail,
+          retryable: failure.retryable
         }],
       artifacts: [],
       nextSuggestedState: "blocked"
@@ -917,6 +967,9 @@ export async function runDirectApiWork(
       stderrPreview: runtime.error,
       stdoutPreview: runtime.responsePreview
     },
+    ...(failure.providerUsageLimited
+      ? { dispositionHint: buildProviderUsageLimitedDispositionHint(provider, failure.detail) }
+      : {}),
     nextState: context.state
   };
 }
@@ -1128,11 +1181,15 @@ export async function runProviderWork(
     };
   }
   const failedUsage = resolveFailedUsage(runtime);
-  const failureDetail = resolveRuntimeFailureDetail(runtime);
-  const rateLimitedFailure = isRateLimitedRuntimeFailure(runtime, failureDetail);
+  const failure = classifyProviderFailure(provider, {
+    detail: resolveRuntimeFailureDetail(runtime, provider),
+    stdout: runtime.stdout,
+    stderr: runtime.stderr,
+    failureType: runtime.failureType
+  });
   return {
     status: "failed",
-    summary: runtime.parsedUsage?.summary ?? `${provider} runtime failed: ${failureDetail}`,
+    summary: runtime.parsedUsage?.summary ?? `${provider} runtime failed: ${failure.detail}`,
     tokenInput: failedUsage.tokenInput,
     tokenOutput: failedUsage.tokenOutput,
     usdCost: failedUsage.usdCost,
@@ -1142,12 +1199,12 @@ export async function runProviderWork(
     outcome: toOutcome({
       kind: "failed",
       issueIdsTouched: issueIdsTouched(context),
-      actions: [{ type: "runtime.execute", status: "error", detail: failureDetail }],
+      actions: [{ type: "runtime.execute", status: "error", detail: failure.detail }],
       blockers: [
         {
-          code: runtime.failureType ?? "runtime_failed",
-          message: failureDetail,
-          retryable: !rateLimitedFailure
+          code: failure.blockerCode,
+          message: failure.detail,
+          retryable: failure.retryable
         }
       ],
       artifacts: [],
@@ -1171,6 +1228,9 @@ export async function runProviderWork(
       stderrPreview: toPreview(runtime.stderr),
       transcript: runtime.transcript
     },
+    ...(failure.providerUsageLimited
+      ? { dispositionHint: buildProviderUsageLimitedDispositionHint(provider, failure.detail) }
+      : {}),
     nextState: context.state
   };
 }
@@ -1220,7 +1280,7 @@ export async function runCursorWork(
   if (
     !runtime.ok &&
     resumeState.resumeSessionId &&
-    !isRateLimitedRuntimeFailure(runtime) &&
+    !isProviderUsageLimitedRuntimeFailure(runtime) &&
     isUnknownSessionError(runtime.stderr, runtime.stdout)
   ) {
     const retry = withResolvedRuntimeUsage(
@@ -1331,7 +1391,12 @@ export async function runOpenCodeWork(context: HeartbeatContext): Promise<Adapte
     { provider: "opencode" }
   );
   const parsed = parseOpenCodeOutput(runtime.stdout);
-  if (!runtime.ok && resumeSessionId && !isRateLimitedRuntimeFailure(runtime) && isUnknownSessionError(runtime.stderr, runtime.stdout)) {
+  if (
+    !runtime.ok &&
+    resumeSessionId &&
+    !isProviderUsageLimitedRuntimeFailure(runtime) &&
+    isUnknownSessionError(runtime.stderr, runtime.stdout)
+  ) {
     const retry = await executePromptRuntime(
       context.runtime?.command ?? "opencode",
       prompt,
@@ -1426,7 +1491,7 @@ export async function runGeminiCliWork(
   if (
     !runtime.ok &&
     resumeState.resumeSessionId &&
-    !isRateLimitedRuntimeFailure(runtime) &&
+    !isProviderUsageLimitedRuntimeFailure(runtime) &&
     isGeminiUnknownSessionError(runtime.stdout, runtime.stderr)
   ) {
     const retry = withResolvedRuntimeUsage(
@@ -1670,11 +1735,15 @@ export function toProviderResult(
     };
   }
   const failedUsage = resolveFailedUsage(runtime);
-  const failureDetail = resolveRuntimeFailureDetail(runtime);
-  const rateLimitedFailure = isRateLimitedRuntimeFailure(runtime, failureDetail);
+  const failure = classifyProviderFailure(provider, {
+    detail: resolveRuntimeFailureDetail(runtime, provider),
+    stdout: runtime.stdout,
+    stderr: runtime.stderr,
+    failureType: runtime.failureType
+  });
   return {
     status: "failed",
-    summary: runtime.parsedUsage?.summary ?? `${provider} runtime failed: ${failureDetail}`,
+    summary: runtime.parsedUsage?.summary ?? `${provider} runtime failed: ${failure.detail}`,
     tokenInput: failedUsage.tokenInput,
     tokenOutput: failedUsage.tokenOutput,
     usdCost: failedUsage.usdCost,
@@ -1684,12 +1753,12 @@ export function toProviderResult(
     outcome: toOutcome({
       kind: "failed",
       issueIdsTouched: issueIdsTouched(context),
-      actions: [{ type: "runtime.execute", status: "error", detail: failureDetail }],
+      actions: [{ type: "runtime.execute", status: "error", detail: failure.detail }],
       blockers: [
         {
-          code: runtime.failureType ?? "runtime_failed",
-          message: failureDetail,
-          retryable: !rateLimitedFailure
+          code: failure.blockerCode,
+          message: failure.detail,
+          retryable: failure.retryable
         }
       ],
       artifacts: [],
@@ -1714,6 +1783,9 @@ export function toProviderResult(
       stderrPreview: toPreview(runtime.stderr),
       transcript: runtime.transcript
     },
+    ...(failure.providerUsageLimited
+      ? { dispositionHint: buildProviderUsageLimitedDispositionHint(provider, failure.detail) }
+      : {}),
     nextState: applyProviderSessionState(context, provider, sessionUpdate)
   };
 }
@@ -1724,29 +1796,99 @@ export function resolveRuntimeFailureDetail(runtime: {
   code: number | null;
   failureType?: "timeout" | "spawn_error" | "nonzero_exit";
   attempts: Array<{ spawnErrorCode?: string }>;
-}) {
+}, provider?: AgentProviderType) {
   const stderr = runtime.stderr.trim();
+  const normalize = (detail: string) => (provider ? normalizeProviderFailureDetail(provider, detail) : detail);
   if (stderr.length > 0) {
-    return stderr;
+    return normalize(extractStructuredRuntimeErrorDetail(stderr) ?? stderr);
   }
   const lastAttempt = runtime.attempts[runtime.attempts.length - 1];
   if (runtime.failureType === "spawn_error") {
     if (lastAttempt?.spawnErrorCode) {
-      return `failed to launch runtime command (${lastAttempt.spawnErrorCode}). Verify the CLI is installed and on PATH.`;
+      return normalize(`failed to launch runtime command (${lastAttempt.spawnErrorCode}). Verify the CLI is installed and on PATH.`);
     }
-    return "failed to launch runtime command. Verify the CLI is installed and on PATH.";
+    return normalize("failed to launch runtime command. Verify the CLI is installed and on PATH.");
   }
   if (runtime.failureType === "timeout") {
-    return "timed out before completion. Increase runtimeTimeoutSec for this agent/runtime.";
+    return normalize("timed out before completion. Increase runtimeTimeoutSec for this agent/runtime.");
   }
   if (runtime.code !== null) {
-    return `process exited with code ${runtime.code} without stderr output.`;
+    return normalize(`process exited with code ${runtime.code} without stderr output.`);
   }
   const stdout = runtime.stdout.trim();
   if (stdout.length > 0) {
-    return `no stderr output; stdout preview: ${toPreview(stdout, 320)}`;
+    const structuredStdoutDetail = extractStructuredRuntimeErrorDetail(stdout);
+    if (structuredStdoutDetail) {
+      return normalize(structuredStdoutDetail);
+    }
+    return normalize(`no stderr output; stdout preview: ${toPreview(stdout, 320)}`);
   }
-  return "runtime exited without diagnostic output.";
+  return normalize("runtime exited without diagnostic output.");
+}
+
+function extractStructuredRuntimeErrorDetail(text: string) {
+  const normalized = text.trim();
+  if (!normalized) {
+    return null;
+  }
+  const candidatePayloads = collectJsonObjectCandidates(normalized);
+  for (const candidate of candidatePayloads) {
+    try {
+      const parsed = JSON.parse(candidate) as unknown;
+      const detail = extractErrorDetailFromUnknown(parsed);
+      if (detail) {
+        return detail;
+      }
+    } catch {
+      // ignore malformed JSON fragments
+    }
+  }
+  return null;
+}
+
+function collectJsonObjectCandidates(text: string) {
+  const candidates: string[] = [];
+  if (text.startsWith("{") && text.endsWith("}")) {
+    candidates.push(text);
+  }
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+      candidates.push(trimmed);
+    }
+  }
+  return candidates;
+}
+
+function extractErrorDetailFromUnknown(value: unknown): string | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  const directCandidates = [
+    record.detail,
+    record.message,
+    record.summary,
+    record.reason,
+    record.error,
+    record.description
+  ];
+  for (const candidate of directCandidates) {
+    if (typeof candidate === "string" && candidate.trim()) {
+      return candidate.trim();
+    }
+  }
+  const nestedError = record.error;
+  if (nestedError && typeof nestedError === "object" && !Array.isArray(nestedError)) {
+    const nestedRecord = nestedError as Record<string, unknown>;
+    const nestedCandidates = [nestedRecord.detail, nestedRecord.message, nestedRecord.reason, nestedRecord.description];
+    for (const candidate of nestedCandidates) {
+      if (typeof candidate === "string" && candidate.trim()) {
+        return candidate.trim();
+      }
+    }
+  }
+  return null;
 }
 
 export function parseOpenCodeOutput(stdout: string) {

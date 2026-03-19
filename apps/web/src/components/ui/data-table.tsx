@@ -129,7 +129,7 @@ export function DataTable<TData, TValue>({
         </div>
       ) : null}
       <div className={cn("ui-data-table-surface", showHorizontalScrollbarOnHover ? "ui-data-table-surface-hover-scrollbar" : undefined)}>
-        <Table>
+        <Table className="ui-data-table-table">
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id} className="ui-data-table-header-row">

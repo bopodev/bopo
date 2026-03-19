@@ -1,4 +1,5 @@
 import type { AgentRuntimeConfig } from "./types";
+import { containsUsageLimitHardStopFailure } from "./runtime";
 
 export type DirectApiProvider = "openai_api" | "anthropic_api";
 
@@ -133,8 +134,9 @@ export async function executeDirectApiRuntime(
       const preview = toPreview(text);
       const parsed = tryParseJson(text);
       if (!response.ok) {
-        const failureType = classifyHttpFailure(response.status);
         const error = extractErrorMessage(provider, parsed, text) || `HTTP ${response.status}`;
+        const providerUsageLimited = containsUsageLimitHardStopFailure(`${error}\n${preview}\n${text}`);
+        const failureType = classifyHttpFailure(response.status, providerUsageLimited);
         attempts.push({
           attempt,
           statusCode: response.status,
@@ -149,7 +151,7 @@ export async function executeDirectApiRuntime(
           error,
           responsePreview: preview
         };
-        if (!isRetryableFailure(failureType, response.status) || attempt >= maxAttempts) {
+        if (providerUsageLimited || !isRetryableFailure(failureType, response.status) || attempt >= maxAttempts) {
           break;
         }
         await sleep(retryBackoffMs * attempt);
@@ -349,14 +351,22 @@ function extractAnthropicUsage(parsed: Record<string, unknown>) {
 function extractErrorMessage(provider: DirectApiProvider, parsed: Record<string, unknown> | null, fallback: string) {
   const fallbackMessage = toPreview(fallback, 320);
   if (!parsed) return fallbackMessage;
+  if (typeof parsed.detail === "string" && parsed.detail.trim()) {
+    return parsed.detail.trim();
+  }
+  if (typeof parsed.reason === "string" && parsed.reason.trim()) {
+    return parsed.reason.trim();
+  }
   const error = parsed.error;
   if (typeof error === "string" && error.trim()) return error.trim();
   if (error && typeof error === "object") {
     const errorRecord = error as Record<string, unknown>;
     const candidates = [
       errorRecord.message,
+      errorRecord.detail,
       errorRecord.error?.toString(),
-      (errorRecord.details as string | undefined) ?? undefined
+      (errorRecord.details as string | undefined) ?? undefined,
+      errorRecord.reason
     ];
     for (const candidate of candidates) {
       if (typeof candidate === "string" && candidate.trim()) return candidate.trim();
@@ -368,9 +378,12 @@ function extractErrorMessage(provider: DirectApiProvider, parsed: Record<string,
   return fallbackMessage;
 }
 
-function classifyHttpFailure(statusCode: number): "auth" | "rate_limit" | "http_error" {
+function classifyHttpFailure(
+  statusCode: number,
+  providerUsageLimited: boolean
+): "auth" | "rate_limit" | "http_error" {
   if (statusCode === 401 || statusCode === 403) return "auth";
-  if (statusCode === 429) return "rate_limit";
+  if (statusCode === 429 || providerUsageLimited) return "rate_limit";
   return "http_error";
 }
 

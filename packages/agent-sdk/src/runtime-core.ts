@@ -4,4 +4,10 @@ export type {
   RuntimeExecutionOutput,
   RuntimeTranscriptEvent
 } from "./runtime";
-export { checkRuntimeCommandHealth, containsRateLimitFailure, executeAgentRuntime, executePromptRuntime } from "./runtime";
+export {
+  checkRuntimeCommandHealth,
+  containsUsageLimitHardStopFailure,
+  containsRateLimitFailure,
+  executeAgentRuntime,
+  executePromptRuntime
+} from "./runtime";

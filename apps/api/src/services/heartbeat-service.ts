@@ -518,6 +518,13 @@ export async function runHeartbeatForAgent(
   let runtimeLaunchSummary: ReturnType<typeof summarizeRuntimeLaunch> | null = null;
   let primaryIssueId: string | null = null;
   let primaryProjectId: string | null = null;
+  let providerUsageLimitDisposition:
+    | {
+        message: string;
+        notifyBoard: boolean;
+        pauseAgent: boolean;
+      }
+    | null = null;
   let transcriptSequence = 0;
   let transcriptWriteQueue = Promise.resolve();
   let transcriptLiveCount = 0;
@@ -943,7 +950,20 @@ export async function runHeartbeatForAgent(
       runtime: workspaceResolution.runtime,
       externalAbortSignal: activeRunAbort.signal
     });
-    executionSummary = execution.summary;
+    const usageLimitHint = execution.dispositionHint?.kind === "provider_usage_limited" ? execution.dispositionHint : null;
+    if (usageLimitHint) {
+      providerUsageLimitDisposition = {
+        message: usageLimitHint.message,
+        notifyBoard: usageLimitHint.notifyBoard,
+        pauseAgent: usageLimitHint.pauseAgent
+      };
+    }
+    executionSummary =
+      usageLimitHint?.message && usageLimitHint.message.trim().length > 0 ? usageLimitHint.message.trim() : execution.summary;
+    executionSummary = sanitizeAgentSummaryCommentBody(extractNaturalRunUpdate(executionSummary));
+    const persistedExecutionStatus: "ok" | "failed" | "skipped" = usageLimitHint ? "skipped" : execution.status;
+    const persistedRunStatus: "completed" | "failed" | "skipped" =
+      persistedExecutionStatus === "ok" ? "completed" : persistedExecutionStatus;
     const normalizedUsage = execution.usage ?? {
       inputTokens: Math.max(0, execution.tokenInput),
       cachedInputTokens: 0,
@@ -994,7 +1014,7 @@ export async function runHeartbeatForAgent(
       issueId: primaryIssueId,
       projectId: primaryProjectId,
       agentId,
-      status: execution.status
+      status: persistedExecutionStatus
     });
     const executionUsdCost = costDecision.usdCost;
     await appendProjectBudgetUsage(db, {
@@ -1007,8 +1027,8 @@ export async function runHeartbeatForAgent(
       companyId,
       agentId,
       runId,
-      status: execution.status,
-      summary: execution.summary,
+      status: persistedExecutionStatus === "ok" ? "ok" : "failed",
+      summary: executionSummary,
       outcomeKind: executionOutcome?.kind ?? null,
       mission: context.company.mission ?? null,
       goalContext: {
@@ -1030,7 +1050,7 @@ export async function runHeartbeatForAgent(
         candidateFacts: persistedMemory.candidateFacts
       }
     });
-    if (execution.status === "ok") {
+    if (execution.status === "ok" && !usageLimitHint) {
       for (const fact of persistedMemory.candidateFacts) {
         const targetFile = await appendDurableFact({
           companyId,
@@ -1054,7 +1074,7 @@ export async function runHeartbeatForAgent(
       }
     }
     const missionAlignment = computeMissionAlignmentSignal({
-      summary: execution.summary,
+      summary: executionSummary,
       mission: context.company.mission ?? null,
       companyGoals: context.goalContext?.companyGoals ?? [],
       projectGoals: context.goalContext?.projectGoals ?? []
@@ -1079,7 +1099,7 @@ export async function runHeartbeatForAgent(
       executionUsdCost > 0 ||
       effectiveTokenInput > 0 ||
       effectiveTokenOutput > 0 ||
-      execution.status !== "skipped"
+      persistedExecutionStatus !== "skipped"
     ) {
       await db
         .update(agents)
@@ -1157,8 +1177,8 @@ export async function runHeartbeatForAgent(
         runId,
         requestId: options?.requestId,
         providerType: agent.providerType,
-        status: execution.status,
-        summary: execution.summary
+        status: persistedExecutionStatus,
+        summary: executionSummary
       },
       failClosed: false
     });
@@ -1169,46 +1189,49 @@ export async function runHeartbeatForAgent(
     await db
       .update(heartbeatRuns)
       .set({
-        status: execution.status === "failed" ? "failed" : "completed",
+        status: persistedRunStatus,
         finishedAt: new Date(),
-        message: execution.summary
+        message: executionSummary
       })
       .where(eq(heartbeatRuns.id, runId));
     publishHeartbeatRunStatus(options?.realtimeHub, {
       companyId,
       runId,
-      status: execution.status === "failed" ? "failed" : "completed",
-      message: execution.summary,
+      status: persistedRunStatus,
+      message: executionSummary,
       finishedAt: new Date()
     });
-    try {
-      await appendRunSummaryComments(db, {
-        companyId,
-        issueIds,
-        agentId,
-        runId,
-        status: execution.status === "failed" ? "failed" : "completed",
-        executionSummary: execution.summary
-      });
-    } catch (commentError) {
-      await appendAuditEvent(db, {
-        companyId,
-        actorType: "system",
-        eventType: "heartbeat.run_comment_failed",
-        entityType: "heartbeat_run",
-        entityId: runId,
-        correlationId: options?.requestId ?? runId,
-        payload: {
-          agentId,
+    if (persistedRunStatus !== "skipped") {
+      try {
+        await appendRunSummaryComments(db, {
+          companyId,
           issueIds,
-          error: String(commentError)
-        }
-      });
+          agentId,
+          runId,
+          status: persistedRunStatus === "failed" ? "failed" : "completed",
+          executionSummary
+        });
+      } catch (commentError) {
+        await appendAuditEvent(db, {
+          companyId,
+          actorType: "system",
+          eventType: "heartbeat.run_comment_failed",
+          entityType: "heartbeat_run",
+          entityId: runId,
+          correlationId: options?.requestId ?? runId,
+          payload: {
+            agentId,
+            issueIds,
+            error: String(commentError)
+          }
+        });
+      }
     }
 
     const fallbackMessages = normalizeTraceTranscript(executionTrace);
     const fallbackHighSignalCount = fallbackMessages.filter((message) => message.signalLevel === "high").length;
     const shouldAppendFallback =
+      !providerUsageLimitDisposition &&
       fallbackMessages.length > 0 &&
       (transcriptLiveCount === 0 ||
         transcriptLiveUsefulCount < 2 ||
@@ -1287,8 +1310,8 @@ export async function runHeartbeatForAgent(
         runId,
         requestId: options?.requestId,
         providerType: agent.providerType,
-        status: execution.status,
-        summary: execution.summary,
+        status: persistedExecutionStatus,
+        summary: executionSummary,
         trace: executionTrace,
         outcome: executionOutcome
       },
@@ -1296,6 +1319,48 @@ export async function runHeartbeatForAgent(
     });
     if (afterPersistHook.failures.length > 0) {
       pluginFailureSummary = [...pluginFailureSummary, ...afterPersistHook.failures];
+    }
+
+    if (providerUsageLimitDisposition) {
+      await appendAuditEvent(db, {
+        companyId,
+        actorType: "system",
+        eventType: "heartbeat.provider_usage_limited",
+        entityType: "heartbeat_run",
+        entityId: runId,
+        correlationId: options?.requestId ?? runId,
+        payload: {
+          agentId,
+          providerType: agent.providerType,
+          issueIds,
+          message: providerUsageLimitDisposition.message
+        }
+      });
+      const pauseResult = providerUsageLimitDisposition.pauseAgent
+        ? await pauseAgentForProviderUsageLimit(db, {
+            companyId,
+            agentId,
+            requestId: options?.requestId ?? runId,
+            runId,
+            providerType: agent.providerType,
+            message: providerUsageLimitDisposition.message
+          })
+        : { paused: false };
+      if (providerUsageLimitDisposition.notifyBoard) {
+        await appendProviderUsageLimitBoardComments(db, {
+          companyId,
+          issueIds,
+          agentId,
+          runId,
+          providerType: agent.providerType,
+          message: providerUsageLimitDisposition.message,
+          paused: pauseResult.paused
+        });
+        if (options?.realtimeHub) {
+          await publishAttentionSnapshot(db, options.realtimeHub, companyId);
+        }
+      }
+      await publishOfficeOccupantForAgent(db, options?.realtimeHub, companyId, agentId);
     }
 
     await appendAuditEvent(db, {
@@ -1307,8 +1372,9 @@ export async function runHeartbeatForAgent(
       correlationId: options?.requestId ?? runId,
       payload: {
         agentId,
-        result: execution.summary,
-        message: execution.summary,
+        status: persistedRunStatus,
+        result: executionSummary,
+        message: executionSummary,
         outcome: executionOutcome,
         issueIds,
         usage: {
@@ -2391,6 +2457,106 @@ async function appendRunSummaryComments(
       body: commentBody
     });
   }
+}
+
+async function appendProviderUsageLimitBoardComments(
+  db: BopoDb,
+  input: {
+    companyId: string;
+    issueIds: string[];
+    agentId: string;
+    runId: string;
+    providerType: string;
+    message: string;
+    paused: boolean;
+  }
+) {
+  if (input.issueIds.length === 0) {
+    return;
+  }
+  const commentBody = buildProviderUsageLimitBoardCommentBody(input);
+  for (const issueId of input.issueIds) {
+    const [existingRunComment] = await db
+      .select({ id: issueComments.id })
+      .from(issueComments)
+      .where(
+        and(
+          eq(issueComments.companyId, input.companyId),
+          eq(issueComments.issueId, issueId),
+          eq(issueComments.runId, input.runId),
+          eq(issueComments.authorType, "system"),
+          eq(issueComments.authorId, input.agentId)
+        )
+      )
+      .limit(1);
+    if (existingRunComment) {
+      continue;
+    }
+    await addIssueComment(db, {
+      companyId: input.companyId,
+      issueId,
+      authorType: "system",
+      authorId: input.agentId,
+      runId: input.runId,
+      recipients: [
+        {
+          recipientType: "board",
+          deliveryStatus: "pending"
+        }
+      ],
+      body: commentBody
+    });
+  }
+}
+
+function buildProviderUsageLimitBoardCommentBody(input: {
+  providerType: string;
+  message: string;
+  paused: boolean;
+}) {
+  const providerLabel = input.providerType.replace(/[_-]+/g, " ").trim();
+  const normalizedProvider = providerLabel.charAt(0).toUpperCase() + providerLabel.slice(1);
+  const agentStateLine = input.paused ? "Agent paused." : "Agent already paused.";
+  return `${normalizedProvider} usage limit reached.\nRun skipped.\n${agentStateLine}\nNext: resume after usage reset or billing/credential fix.`;
+}
+
+async function pauseAgentForProviderUsageLimit(
+  db: BopoDb,
+  input: {
+    companyId: string;
+    agentId: string;
+    requestId: string;
+    runId: string;
+    providerType: string;
+    message: string;
+  }
+) {
+  const [agentRow] = await db
+    .select({ status: agents.status })
+    .from(agents)
+    .where(and(eq(agents.companyId, input.companyId), eq(agents.id, input.agentId)))
+    .limit(1);
+  if (!agentRow || agentRow.status === "paused" || agentRow.status === "terminated") {
+    return { paused: false as const };
+  }
+  await db
+    .update(agents)
+    .set({ status: "paused", updatedAt: new Date() })
+    .where(and(eq(agents.companyId, input.companyId), eq(agents.id, input.agentId)));
+  await appendAuditEvent(db, {
+    companyId: input.companyId,
+    actorType: "system",
+    eventType: "agent.paused_auto_provider_limit",
+    entityType: "agent",
+    entityId: input.agentId,
+    correlationId: input.requestId,
+    payload: {
+      runId: input.runId,
+      providerType: input.providerType,
+      reason: input.message
+    }
+  });
+  return { paused: true as const };
 }
 
 function parseAgentState(stateBlob: string | null) {

@@ -52,6 +52,10 @@
   @apply text-base text-muted-foreground;
 }
 
+.attentionItemContext {
+  @apply block max-w-[440px] truncate;
+}
+
 .formatDurationLabel {
   @apply text-base text-muted-foreground;
 }

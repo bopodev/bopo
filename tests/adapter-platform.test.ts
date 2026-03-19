@@ -9,6 +9,7 @@ import {
   resolveAdapter,
   runAdapterEnvironmentTest
 } from "../packages/agent-sdk/src/registry";
+import { classifyProviderFailure, resolveRuntimeFailureDetail } from "../packages/agent-sdk/src/adapters";
 
 describe("adapter platform contracts", () => {
   it("exposes cursor and opencode in adapter metadata", () => {
@@ -259,6 +260,69 @@ describe("adapter platform contracts", () => {
     expect(result.status).toBe("failed");
     expect(result.summary.toLowerCase()).toContain("spawn");
     expect(result.summary).not.toContain("unknown error");
+  });
+
+  it("extracts concise detail from JSON stderr system errors", () => {
+    const detail = resolveRuntimeFailureDetail({
+      stderr: `{"detail":"The 'claude-haiku-4-5' model is not supported when using Codex with a ChatGPT account."}`,
+      stdout: "",
+      code: 1,
+      failureType: "nonzero_exit",
+      attempts: [{ spawnErrorCode: undefined }]
+    });
+    expect(detail).toBe("The 'claude-haiku-4-5' model is not supported when using Codex with a ChatGPT account.");
+  });
+
+  it("extracts nested JSON error message when stderr contains an error object", () => {
+    const detail = resolveRuntimeFailureDetail({
+      stderr: `{"error":{"message":"Model unavailable for this account tier."}}`,
+      stdout: "",
+      code: 1,
+      failureType: "nonzero_exit",
+      attempts: [{ spawnErrorCode: undefined }]
+    });
+    expect(detail).toBe("Model unavailable for this account tier.");
+  });
+
+  it("normalizes codex model support errors into actionable guidance", () => {
+    const detail = resolveRuntimeFailureDetail(
+      {
+        stderr: `{"detail":"The 'claude-haiku-4-5' model is not supported when using Codex with a ChatGPT account."}`,
+        stdout: "",
+        code: 1,
+        failureType: "nonzero_exit",
+        attempts: [{ spawnErrorCode: undefined }]
+      },
+      "codex"
+    );
+    expect(detail).toBe("Codex model not supported for this ChatGPT account. Select a supported Codex model.");
+  });
+
+  it("classifies codex unsupported model as non-retryable", () => {
+    const failure = classifyProviderFailure("codex", {
+      detail: "The 'claude-haiku-4-5' model is not supported when using Codex with a ChatGPT account.",
+      failureType: "nonzero_exit"
+    });
+    expect(failure.blockerCode).toBe("model_not_supported");
+    expect(failure.retryable).toBe(false);
+  });
+
+  it("classifies claude login-required errors as auth_required", () => {
+    const failure = classifyProviderFailure("claude_code", {
+      detail: "Not logged in. Please run `claude login`.",
+      failureType: "nonzero_exit"
+    });
+    expect(failure.blockerCode).toBe("auth_required");
+    expect(failure.retryable).toBe(false);
+  });
+
+  it("keeps transient rate limits retryable when no hard quota lockout", () => {
+    const failure = classifyProviderFailure("openai_api", {
+      detail: "Rate limit exceeded, please retry shortly.",
+      failureType: "rate_limit"
+    });
+    expect(failure.retryable).toBe(true);
+    expect(failure.providerUsageLimited).toBe(false);
   });
 
   it("fails successful runtimes that do not emit structured heartbeat output", async () => {
