@@ -236,6 +236,29 @@ describe("authorization route matrix", { timeout: 30_000 }, () => {
     expect(allowed.status).toBe(200);
   });
 
+  it("enforces company scope for observability artifact download route", async () => {
+    const runId = "missing-run";
+    const artifactIndex = "0";
+    const routePath = `/observability/heartbeats/${encodeURIComponent(runId)}/artifacts/${artifactIndex}/download`;
+
+    const crossCompany = await request(app)
+      .get(routePath)
+      .set("x-company-id", companyId)
+      .set("x-actor-type", "member")
+      .set("x-actor-id", "member-observability-artifact-cross")
+      .set("x-actor-companies", secondaryCompanyId);
+    expect(crossCompany.status).toBe(403);
+
+    const allowed = await request(app)
+      .get(routePath)
+      .set("x-company-id", companyId)
+      .set("x-actor-type", "member")
+      .set("x-actor-id", "member-observability-artifact-allowed")
+      .set("x-actor-companies", companyId);
+    expect(allowed.status).toBe(404);
+    expect(allowed.body.error).toContain("Run not found");
+  });
+
   it("requires actor identity in authenticated mode and accepts bearer actor token", async () => {
     const previousMode = process.env.BOPO_DEPLOYMENT_MODE;
     const previousSecret = process.env.BOPO_AUTH_TOKEN_SECRET;

@@ -3,6 +3,7 @@ import { readFile, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 const DEFAULT_INSTANCE_ID = "default";
 const DEFAULT_BOPO_HOME_DIR = resolve(homedir(), ".bopodev");
@@ -13,6 +14,17 @@ const ONBOARDING_ENV_KEYS_TO_CLEAR = [
   "BOPO_DEFAULT_AGENT_PROVIDER",
   "BOPO_DEFAULT_AGENT_MODEL",
   "BOPO_DEFAULT_TEMPLATE_ID"
+];
+const WORKSPACE_RUNTIME_MARKERS = [
+  "scripts/dev-runner.mjs",
+  "scripts/start-runner.mjs",
+  "apps/api/src/server.ts",
+  "pnpm --filter bopodev-api dev",
+  "pnpm --filter bopodev-api start",
+  "next dev --turbopack",
+  "next start --port",
+  "turbo --no-update-notifier start --filter=bopodev-api",
+  "turbo --no-update-notifier dev"
 ];
 
 async function main() {
@@ -67,24 +79,8 @@ async function stopOrphanBopoProcesses(workspaceRoot, env) {
     }
   }
 
-  const workspaceMarkers = [
-    "scripts/dev-runner.mjs",
-    "scripts/start-runner.mjs",
-    "apps/api/src/server.ts",
-    "pnpm --filter bopodev-api dev",
-    "pnpm --filter bopodev-api start",
-    "next dev --turbopack",
-    "next start --port",
-    "turbo --no-update-notifier start --filter=bopodev-api",
-    "turbo --no-update-notifier dev"
-  ];
-  for (const entry of processTable) {
-    if (!entry.command.includes(workspaceRoot)) {
-      continue;
-    }
-    if (workspaceMarkers.some((marker) => entry.command.includes(marker))) {
-      candidatePids.add(entry.pid);
-    }
+  for (const pid of collectWorkspaceRuntimePids(workspaceRoot, processTable)) {
+    candidatePids.add(pid);
   }
 
   const withDescendants = collectDescendantPids(processTable, candidatePids);
@@ -124,23 +120,50 @@ function readListeningPidsForPort(port) {
   const result = spawnSync("lsof", ["-t", "-nP", `-iTCP:${port}`, "-sTCP:LISTEN"], {
     encoding: "utf8"
   });
-  if (result.status !== 0 || !result.stdout.trim()) {
+  if (result.status !== 0) {
     return [];
   }
-  return result.stdout
-    .split(/\r?\n/)
-    .map((line) => Number(line.trim()))
-    .filter((value) => Number.isInteger(value) && value > 0);
+  return parseListeningPidsOutput(result.stdout);
 }
 
 function readProcessTable() {
   const result = spawnSync("ps", ["-Ao", "pid=,ppid=,command="], {
     encoding: "utf8"
   });
-  if (result.status !== 0 || !result.stdout.trim()) {
+  if (result.status !== 0) {
     return [];
   }
-  return result.stdout
+  return parseProcessTableOutput(result.stdout);
+}
+
+function collectWorkspaceRuntimePids(workspaceRoot, processTable, markers = WORKSPACE_RUNTIME_MARKERS) {
+  const pids = new Set();
+  for (const entry of processTable) {
+    if (!entry.command.includes(workspaceRoot)) {
+      continue;
+    }
+    if (markers.some((marker) => entry.command.includes(marker))) {
+      pids.add(entry.pid);
+    }
+  }
+  return pids;
+}
+
+function parseListeningPidsOutput(stdout) {
+  if (!stdout.trim()) {
+    return [];
+  }
+  return stdout
+    .split(/\r?\n/)
+    .map((line) => Number(line.trim()))
+    .filter((value) => Number.isInteger(value) && value > 0);
+}
+
+function parseProcessTableOutput(stdout) {
+  if (!stdout.trim()) {
+    return [];
+  }
+  return stdout
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter((line) => line.length > 0)
@@ -310,8 +333,24 @@ function logStep(message) {
   console.log(`[clear] ${message}`);
 }
 
-void main().catch((error) => {
-  // eslint-disable-next-line no-console
-  console.error(`[clear] failed: ${error instanceof Error ? error.message : String(error)}`);
-  process.exit(1);
-});
+const isDirectExecution = process.argv[1] ? resolve(process.argv[1]) === fileURLToPath(import.meta.url) : false;
+
+if (isDirectExecution) {
+  void main().catch((error) => {
+    // eslint-disable-next-line no-console
+    console.error(`[clear] failed: ${error instanceof Error ? error.message : String(error)}`);
+    process.exit(1);
+  });
+}
+
+export {
+  collectDescendantPids,
+  collectWorkspaceRuntimePids,
+  isPathInside,
+  normalizeOptionalPath,
+  parseIntegerPort,
+  parseListeningPidsOutput,
+  parseProcessTableOutput,
+  resolveRuntimePorts,
+  stripWrappingQuotes
+};

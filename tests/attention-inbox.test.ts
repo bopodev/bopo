@@ -72,6 +72,8 @@ describe("board attention inbox", { timeout: 30_000 }, () => {
     const items = attentionResponse.body.data.items as Array<{
       key: string;
       category: string;
+      title: string;
+      contextSummary: string;
       state: string;
       seenAt: string | null;
       acknowledgedAt: string | null;
@@ -120,5 +122,31 @@ describe("board attention inbox", { timeout: 30_000 }, () => {
       (item) => item.key === commentItem!.key
     );
     expect(resolvedItem?.state).toBe("resolved");
+  });
+
+  it("summarizes provider usage-limit board comments into concise attention items", async () => {
+    const commentResponse = await request(app)
+      .post(`/issues/${issueId}/comments`)
+      .set("x-company-id", companyId)
+      .send({
+        body: "Board heads-up: codex usage limit reached while running heartbeat tasks for this issue.",
+        recipients: [{ recipientType: "board" }]
+      });
+    expect(commentResponse.status).toBe(200);
+    const commentId = commentResponse.body.data.id as string;
+
+    const attentionResponse = await request(app).get("/attention").set("x-company-id", companyId);
+    expect(attentionResponse.status).toBe(200);
+    const items = attentionResponse.body.data.items as Array<{
+      key: string;
+      category: string;
+      title: string;
+      contextSummary: string;
+    }>;
+    const usageLimitItem = items.find((item) => item.key === `comment:${commentId}`);
+    expect(usageLimitItem).toBeDefined();
+    expect(usageLimitItem?.category).toBe("board_mentioned_comment");
+    expect(usageLimitItem?.title).toBe("Provider usage limit reached");
+    expect(usageLimitItem?.contextSummary).toBe("Codex usage limit reached.");
   });
 });

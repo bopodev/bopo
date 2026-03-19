@@ -45,6 +45,42 @@ describe("observability routes", { timeout: 30_000 }, () => {
     companyId = company.id;
   });
 
+  async function seedArtifactRun(artifacts: Array<Record<string, unknown>>) {
+    const project = await createProject(db, {
+      companyId,
+      name: "Artifact Download Seed"
+    });
+    const report = {
+      employee_comment: "done",
+      results: ["created report"],
+      errors: [],
+      artifacts,
+      tokenInput: 1,
+      tokenOutput: 1,
+      usdCost: 0.0001
+    };
+    const agent = await createAgent(db, {
+      companyId,
+      role: "Worker",
+      name: "Artifact Seed Worker",
+      providerType: "shell",
+      heartbeatCron: "* * * * *",
+      monthlyBudgetUsd: "25.0000",
+      canHireAgents: false,
+      runtimeCommand: "echo",
+      runtimeArgsJson: JSON.stringify([JSON.stringify(report)])
+    });
+    await createIssue(db, {
+      companyId,
+      projectId: project.id,
+      title: "Produce artifact report",
+      assigneeAgentId: agent.id
+    });
+    const runId = await runHeartbeatForAgent(db, companyId, agent.id, { trigger: "manual" });
+    expect(runId).toBeTruthy();
+    return runId!;
+  }
+
   afterEach(async () => {
     process.env.BOPO_INSTANCE_ROOT = previousInstanceRoot;
     process.env.NODE_ENV = previousNodeEnv;
@@ -356,6 +392,82 @@ describe("observability routes", { timeout: 30_000 }, () => {
       .set("x-company-id", companyId);
     expect(downloadResponse.status).toBe(200);
     expect(Buffer.from(downloadResponse.body).toString("utf8")).toContain("workspace scoped artifact");
+  });
+
+  it("rejects invalid artifact index values", async () => {
+    const runId = await seedArtifactRun([{ kind: "file", path: "reports/run.md" }]);
+
+    const nonNumericResponse = await request(app)
+      .get(`/observability/heartbeats/${encodeURIComponent(runId)}/artifacts/not-a-number/download`)
+      .set("x-company-id", companyId);
+    expect(nonNumericResponse.status).toBe(422);
+    expect(nonNumericResponse.body.error).toContain("non-negative integer");
+
+    const negativeIndexResponse = await request(app)
+      .get(`/observability/heartbeats/${encodeURIComponent(runId)}/artifacts/-1/download`)
+      .set("x-company-id", companyId);
+    expect(negativeIndexResponse.status).toBe(422);
+    expect(negativeIndexResponse.body.error).toContain("non-negative integer");
+  });
+
+  it("rejects unsafe absolute artifact paths and safely handles unresolved relative paths", async () => {
+    const outsidePath = join(tempDir, "outside-artifact.txt");
+    await writeFile(outsidePath, "outside scope\n");
+
+    const traversalRunId = await seedArtifactRun([
+      {
+        kind: "file",
+        path: "../../outside-artifact.txt"
+      }
+    ]);
+    const traversalResponse = await request(app)
+      .get(`/observability/heartbeats/${encodeURIComponent(traversalRunId)}/artifacts/0/download`)
+      .set("x-company-id", companyId);
+    expect(traversalResponse.status).toBe(404);
+    expect(traversalResponse.body.error).toContain("not found on disk");
+
+    const absoluteEscapeRunId = await seedArtifactRun([
+      {
+        kind: "file",
+        absolutePath: outsidePath
+      }
+    ]);
+    const absoluteEscapeResponse = await request(app)
+      .get(`/observability/heartbeats/${encodeURIComponent(absoluteEscapeRunId)}/artifacts/0/download`)
+      .set("x-company-id", companyId);
+    expect(absoluteEscapeResponse.status).toBe(422);
+    expect(absoluteEscapeResponse.body.error).toContain("invalid");
+  });
+
+  it("returns not found for missing artifact entries", async () => {
+    const runId = await seedArtifactRun([{ kind: "file", path: "reports/run.md" }]);
+
+    const response = await request(app)
+      .get(`/observability/heartbeats/${encodeURIComponent(runId)}/artifacts/5/download`)
+      .set("x-company-id", companyId);
+    expect(response.status).toBe(404);
+    expect(response.body.error).toContain("Artifact not found");
+  });
+
+  it("returns unprocessable entity when artifact path resolves to a directory", async () => {
+    const dirRelativePath = `workspace/${companyId}/agents/non-file-worker/operating/report-dir`;
+    const runId = await seedArtifactRun([{ kind: "file", path: dirRelativePath }]);
+    const directoryAbsolutePath = join(
+      process.env.BOPO_INSTANCE_ROOT!,
+      "workspaces",
+      companyId,
+      "agents",
+      "non-file-worker",
+      "operating",
+      "report-dir"
+    );
+    await mkdir(directoryAbsolutePath, { recursive: true });
+
+    const response = await request(app)
+      .get(`/observability/heartbeats/${encodeURIComponent(runId)}/artifacts/0/download`)
+      .set("x-company-id", companyId);
+    expect(response.status).toBe(422);
+    expect(response.body.error).toContain("not a file");
   });
 
   it("preserves nextCursor when filters reduce returned items", async () => {
