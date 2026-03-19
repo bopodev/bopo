@@ -101,6 +101,6 @@ describe("heartbeat provider usage limit handling", { timeout: 90_000 }, () => {
       comment.recipients.some((recipient) => recipient.recipientType === "board")
     );
     expect(boardComment).toBeDefined();
-    expect((boardComment?.body ?? "").toLowerCase()).toContain("run skipped");
+    expect((boardComment?.body ?? "").toLowerCase()).toContain("run failed due to provider limits");
   });
 });

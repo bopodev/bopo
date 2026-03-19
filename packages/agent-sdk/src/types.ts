@@ -1,4 +1,4 @@
-import type { ExecutionOutcome, ProviderType } from "bopodev-contracts";
+import type { AgentFinalRunOutput, ExecutionOutcome, ProviderType } from "bopodev-contracts";
 
 export type AgentProviderType = ProviderType;
 
@@ -95,6 +95,7 @@ export interface AdapterExecutionResult {
   tokenInput: number;
   tokenOutput: number;
   usdCost: number;
+  finalRunOutput?: AgentFinalRunOutput;
   usage?: AdapterNormalizedUsage;
   pricingProviderType?: string | null;
   pricingModelId?: string | null;

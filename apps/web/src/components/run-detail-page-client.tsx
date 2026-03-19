@@ -47,6 +47,7 @@ export function RunDetailPageClient({
     id: string;
     agentId: string;
     status: string;
+    publicStatus?: "started" | "completed" | "failed";
     runType: "work" | "no_assigned_work" | "budget_skip" | "overlap_skip" | "other_skip" | "failed" | "running";
     message: string | null;
     startedAt: string;
@@ -62,6 +63,9 @@ export function RunDetailPageClient({
   const [signalFilter, setSignalFilter] = useState<"all" | HeartbeatRunMessageRow["signalLevel"]>("all");
   const [sourceFilter, setSourceFilter] = useState<"all" | HeartbeatRunMessageRow["source"]>("all");
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
+  const [showRawDebug, setShowRawDebug] = useState(false);
+  const report = runDetail.details?.report ?? null;
+  const displayStatus = run.publicStatus ?? report?.finalStatus ?? run.status;
 
   useEffect(() => {
     const unsubscribe = subscribeToRealtime({
@@ -78,6 +82,10 @@ export function RunDetailPageClient({
             setRun((prev) => ({
               ...prev,
               status: runSnapshot.status,
+              publicStatus:
+                runSnapshot.status === "completed" || runSnapshot.status === "failed"
+                  ? runSnapshot.status
+                  : prev.publicStatus ?? "failed",
               message: runSnapshot.message ?? prev.message,
               startedAt: runSnapshot.startedAt ?? prev.startedAt,
               finishedAt: runSnapshot.finishedAt ?? prev.finishedAt
@@ -103,6 +111,10 @@ export function RunDetailPageClient({
           setRun((prev) => ({
             ...prev,
             status: event.status,
+            publicStatus:
+              event.status === "completed" || event.status === "failed"
+                ? event.status
+                : prev.publicStatus ?? "failed",
             message: event.message ?? prev.message,
             startedAt: event.startedAt ?? prev.startedAt,
             finishedAt: event.finishedAt ?? prev.finishedAt
@@ -141,7 +153,7 @@ export function RunDetailPageClient({
   }, [companyId, runDetail.run.id]);
 
   const sortedMessages = useMemo(() => [...messages].sort((a, b) => a.sequence - b.sequence), [messages]);
-  const transcriptRows = useMemo(() => toTranscriptRows(sortedMessages), [sortedMessages]);
+  const transcriptRows = useMemo(() => toTranscriptRows(sortedMessages, showRawDebug), [sortedMessages, showRawDebug]);
   const availableSources = useMemo(
     () => Array.from(new Set(transcriptRows.map((row) => row.source))).sort((a, b) => a.localeCompare(b)),
     [transcriptRows]
@@ -149,6 +161,9 @@ export function RunDetailPageClient({
   const filteredTranscriptRows = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     return transcriptRows.filter((row) => {
+      if (!showRawDebug && (row.signalLevel === "low" || row.signalLevel === "noise")) {
+        return false;
+      }
       if (kindFilter !== "all" && row.kind !== kindFilter) {
         return false;
       }
@@ -163,7 +178,7 @@ export function RunDetailPageClient({
       }
       return true;
     });
-  }, [transcriptRows, searchQuery, kindFilter, signalFilter, sourceFilter]);
+  }, [transcriptRows, searchQuery, kindFilter, signalFilter, sourceFilter, showRawDebug]);
   const backHref = scopedAgentId
     ? { pathname: `/agents/${scopedAgentId}`, query: { companyId } }
     : { pathname: "/runs", query: { companyId } };
@@ -207,7 +222,7 @@ export function RunDetailPageClient({
                       {entry.id}
                     </span>
                     <Badge variant="outline" className="run-sidebar-item-badge">
-                      {formatRunStatusLabel(entry.status)}
+                      {formatRunStatusLabel(entry.publicStatus ?? entry.status)}
                     </Badge>
                   </div>
                   <p className="run-sidebar-item-message">{messagePreview}</p>
@@ -240,7 +255,7 @@ export function RunDetailPageClient({
                       {entry.id}
                     </span>
                     <Badge variant="outline" className="run-sidebar-item-badge">
-                      {formatRunStatusLabel(entry.status)}
+                      {formatRunStatusLabel(entry.publicStatus ?? entry.status)}
                     </Badge>
                   </div>
                 </Link>
@@ -265,13 +280,13 @@ export function RunDetailPageClient({
             </Alert>
           ) : null}
           <div className="run-transcript-filters">
-            <Input
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Search text, payload, action, or label..."
-              className="run-transcript-filters-search"
-            />
-            <div className="hidden md:contents">
+            <div className="hidden md:flex run-transcript-filters-main">
+              <Input
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder={showRawDebug ? "Search text, payload, action, or label..." : "Search the human-readable paper trail..."}
+                className="run-transcript-filters-search"
+              />
               <Select value={kindFilter} onValueChange={(value) => setKindFilter(value as typeof kindFilter)}>
                 <SelectTrigger className="run-transcript-filters-select">
                   <SelectValue placeholder="Kind" />
@@ -313,18 +328,34 @@ export function RunDetailPageClient({
                 </SelectContent>
               </Select>
             </div>
+            <div className="hidden md:flex run-transcript-filters-action">
+              <Button variant="outline" size="sm" onClick={() => setShowRawDebug((value) => !value)}>
+                {showRawDebug ? "Hide raw debug output" : "Show raw debug output"}
+              </Button>
+            </div>
             <div className="md:hidden">
+              <Input
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder={showRawDebug ? "Search text, payload, action, or label..." : "Search the human-readable paper trail..."}
+                className="run-transcript-filters-search mb-2"
+              />
               <Drawer open={mobileFilterOpen} onOpenChange={setMobileFilterOpen}>
                 <DrawerTrigger asChild>
-                  <Button variant="outline" size="sm" className="w-full">
-                    <SlidersHorizontal />
-                    Filters
-                  </Button>
+                  <div className="flex w-full gap-2">
+                    <Button variant="outline" size="sm" className="flex-1">
+                      <SlidersHorizontal />
+                      Filters
+                    </Button>
+                    <Button variant="outline" size="sm" className="flex-1" onClick={() => setShowRawDebug((value) => !value)}>
+                      {showRawDebug ? "Hide debug" : "Show debug"}
+                    </Button>
+                  </div>
                 </DrawerTrigger>
                 <DrawerContent className="ui-mobile-safe-bottom">
                   <DrawerHeader>
                     <DrawerTitle>Transcript filters</DrawerTitle>
-                    <DrawerDescription>Narrow the live transcript stream.</DrawerDescription>
+                  <DrawerDescription>{showRawDebug ? "Narrow the raw transcript stream." : "Narrow the human-readable paper trail."}</DrawerDescription>
                   </DrawerHeader>
                   <div className="space-y-3 pb-2">
                     <Select value={kindFilter} onValueChange={(value) => setKindFilter(value as typeof kindFilter)}>
@@ -380,8 +411,8 @@ export function RunDetailPageClient({
             <div className="run-transcript-outer">
               <div className="run-transcript-col-header">
                 <span>Timestamp</span>
-                <span>Action</span>
-                <span>Result</span>
+                <span>{showRawDebug ? "Action" : "Paper trail"}</span>
+                <span>{showRawDebug ? "Result" : "Manager-readable detail"}</span>
               </div>
               <div className="run-transcript-scroll" ref={transcriptScrollRef}>
                 {filteredTranscriptRows.map((row) => (
@@ -402,7 +433,7 @@ export function RunDetailPageClient({
   );
 }
 
-function toTranscriptRows(messages: HeartbeatRunMessageRow[]) {
+function toTranscriptRows(messages: HeartbeatRunMessageRow[], showRawDebug: boolean) {
   const normalized = messages
     .map((entry) => ({
       id: entry.id,
@@ -411,7 +442,7 @@ function toTranscriptRows(messages: HeartbeatRunMessageRow[]) {
       kindLabel: toKindLabel(entry.kind),
       groupKey: entry.groupKey ?? entry.kind,
       kindClass: toKindClass(entry.kind),
-      body: formatEventBody(entry),
+      body: formatEventBody(entry, showRawDebug),
       isToolBlock: entry.kind === "tool_call" || entry.kind === "tool_result",
       signalLevel: entry.signalLevel ?? "noise",
       source: entry.source ?? "trace_fallback"
@@ -462,9 +493,15 @@ function toTranscriptRows(messages: HeartbeatRunMessageRow[]) {
 }
 
 
-function formatEventBody(entry: HeartbeatRunMessageRow) {
+function formatEventBody(entry: HeartbeatRunMessageRow, showRawDebug: boolean) {
   const text = (entry.text ?? "").trim();
   const payload = (entry.payload ?? "").trim();
+  if (!showRawDebug) {
+    const concise = formatHumanReadableEventBody(entry, text, payload);
+    if (concise) {
+      return concise;
+    }
+  }
   if (entry.kind === "tool_call" || entry.kind === "tool_result") {
     const lines = [entry.label?.trim(), text, payload].filter((part): part is string => Boolean(part && part.length > 0));
     if (lines.length === 0) {
@@ -478,6 +515,51 @@ function formatEventBody(entry: HeartbeatRunMessageRow) {
   }
   const normalized = source.trim();
   return normalized.length > 2000 ? `${normalized.slice(0, 2000)}…` : normalized;
+}
+
+function formatHumanReadableEventBody(entry: HeartbeatRunMessageRow, text: string, payload: string) {
+  const parsedPayload = tryParsePayload(payload);
+  if (entry.kind === "tool_call") {
+    const command =
+      getString(parsedPayload?.command) ??
+      getString(parsedPayload?.path) ??
+      getString(parsedPayload?.description) ??
+      firstLine(text) ??
+      entry.label?.trim() ??
+      "Tool invoked";
+    return truncateBody(command, 320);
+  }
+  if (entry.kind === "tool_result") {
+    const commandResult = summarizeCommandExecution(text);
+    if (commandResult) {
+      return commandResult;
+    }
+    const primary =
+      firstLine(text) ??
+      getString(parsedPayload?.summary) ??
+      getString(parsedPayload?.message) ??
+      firstLine(payload);
+    return truncateBody(primary ?? "Tool finished without a structured result.", 360);
+  }
+  if (entry.kind === "result") {
+    const commandResult = summarizeCommandExecution(text);
+    if (commandResult) {
+      return commandResult;
+    }
+    const primary =
+      getString(parsedPayload?.summary) ??
+      getString(parsedPayload?.resultSummary) ??
+      firstLine(text) ??
+      firstLine(payload);
+    return truncateBody(primary ?? "Run produced a final result.", 360);
+  }
+  if (entry.kind === "assistant") {
+    return truncateBody(firstLine(text) ?? "Assistant responded.", 360);
+  }
+  if (entry.kind === "stderr") {
+    return truncateBody(firstLine(text) ?? firstLine(payload) ?? "Runtime reported an error.", 360);
+  }
+  return truncateBody(firstLine(text) ?? firstLine(payload) ?? "", 360);
 }
 
 function toKindLabel(kind: HeartbeatRunMessageRow["kind"]) {
@@ -524,6 +606,59 @@ function formatRelativeTime(value: string) {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
   return `${days}d ago`;
+}
+
+function tryParsePayload(payload: string) {
+  if (!payload) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(payload) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+function getString(value: unknown) {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function firstLine(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const [first] = trimmed.split("\n");
+  return first?.trim() || null;
+}
+
+function truncateBody(value: string, limit: number) {
+  return value.length > limit ? `${value.slice(0, limit - 1).trimEnd()}…` : value;
+}
+
+function summarizeCommandExecution(value: string) {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (!normalized.startsWith("command:")) {
+    return null;
+  }
+  const match = normalized.match(/^command:\s+(.+?)\s+status:\s+([a-z_]+)(?:\s+exit_code:\s+(-?\d+))?/i);
+  if (!match) {
+    return truncateBody(normalized, 220);
+  }
+  const [, command, statusRaw, exitCode] = match;
+  const status = statusRaw ?? "completed";
+  const statusLabel = status.toLowerCase() === "completed" ? "completed" : status.toLowerCase();
+  const suffix = exitCode ? ` (exit ${exitCode})` : "";
+  return truncateBody(`Command ${statusLabel}${suffix}: ${command}`, 220);
+}
+
+function formatUsdCost(value: number | null | undefined, status?: string | null) {
+  if (status === "unknown" || value === null || value === undefined) {
+    return "unknown";
+  }
+  const prefix = status === "estimated" ? "estimated " : "exact ";
+  return `${prefix}$${value.toFixed(6)}`;
 }
 
 function extractSummaryFromJsonLikeMessage(input: string) {

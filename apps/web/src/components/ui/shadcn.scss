@@ -1523,15 +1523,23 @@ body {
 }
 
 .run-transcript-filters {
-  @apply grid grid-cols-1 gap-6 md:grid-cols-[minmax(0,1fr)_180px_180px_auto] items-center mt-3 mb-3;
+  @apply flex flex-col gap-3 mt-3 mb-3 md:flex-row md:items-center md:justify-between;
+}
+
+.run-transcript-filters-main {
+  @apply min-w-0 flex-1 items-center gap-6;
+}
+
+.run-transcript-filters-action {
+  @apply items-center justify-end;
 }
 
 .run-transcript-filters-search {
-  @apply min-w-0;
+  @apply min-w-0 md:flex-1;
 }
 
 .run-transcript-filters-select {
-  @apply w-full;
+  @apply w-full md:w-[150px];
 }
 
 .run-transcript-outer {

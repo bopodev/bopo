@@ -1458,11 +1458,13 @@ export async function appendCost(
   db: BopoDb,
   input: {
     companyId: string;
+    runId?: string | null;
     providerType: string;
     runtimeModelId?: string | null;
     pricingProviderType?: string | null;
     pricingModelId?: string | null;
     pricingSource?: "exact" | "missing" | null;
+    usdCostStatus?: "exact" | "estimated" | "unknown" | null;
     tokenInput: number;
     tokenOutput: number;
     usdCost: string;
@@ -1475,11 +1477,13 @@ export async function appendCost(
   await db.insert(costLedger).values({
     id,
     companyId: input.companyId,
+    runId: input.runId ?? null,
     providerType: input.providerType,
     runtimeModelId: input.runtimeModelId ?? null,
     pricingProviderType: input.pricingProviderType ?? null,
     pricingModelId: input.pricingModelId ?? null,
     pricingSource: input.pricingSource ?? null,
+    usdCostStatus: input.usdCostStatus ?? null,
     tokenInput: input.tokenInput,
     tokenOutput: input.tokenOutput,
     usdCost: input.usdCost,

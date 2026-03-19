@@ -37,7 +37,7 @@ export default async function RunDetailPage({
   try {
     const [runDetail, transcript] = await Promise.all([
       loadHeartbeatRunDetail(workspaceData.companyId, runId),
-      loadHeartbeatRunMessages(workspaceData.companyId, runId, undefined, 200)
+      loadHeartbeatRunMessages(workspaceData.companyId, runId, undefined, 200, { signalOnly: true })
     ]);
     const fallbackMessages =
       transcript.items.length === 0 ? extractFallbackMessagesFromTrace(runDetail, workspaceData.companyId) : [];

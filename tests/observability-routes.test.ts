@@ -25,9 +25,13 @@ describe("observability routes", { timeout: 30_000 }, () => {
   let tempDir: string;
   let companyId: string;
   let client: { close?: () => Promise<void> };
+  const previousInstanceRoot = process.env.BOPO_INSTANCE_ROOT;
+  const previousNodeEnv = process.env.NODE_ENV;
 
   beforeEach(async () => {
     tempDir = await mkdtemp(join(tmpdir(), "bopodev-observability-test-"));
+    process.env.BOPO_INSTANCE_ROOT = join(tempDir, "instances");
+    process.env.NODE_ENV = "development";
     const boot = await bootstrapDatabase(join(tempDir, "test.db"));
     db = boot.db;
     client = boot.client as { close?: () => Promise<void> };
@@ -37,6 +41,8 @@ describe("observability routes", { timeout: 30_000 }, () => {
   });
 
   afterEach(async () => {
+    process.env.BOPO_INSTANCE_ROOT = previousInstanceRoot;
+    process.env.NODE_ENV = previousNodeEnv;
     await client.close?.();
     await rm(tempDir, { recursive: true, force: true });
   });
@@ -45,7 +51,7 @@ describe("observability routes", { timeout: 30_000 }, () => {
     const project = await createProject(db, {
       companyId,
       name: "Observability Project",
-      workspaceLocalPath: tempDir
+      workspaceLocalPath: join(tempDir, "instances", "workspaces", companyId, "observability-project")
     });
     const agent = await createAgent(db, {
       companyId,
@@ -56,10 +62,10 @@ describe("observability routes", { timeout: 30_000 }, () => {
       monthlyBudgetUsd: "25.0000",
       canHireAgents: false,
       runtimeCommand: "echo",
-      runtimeArgsJson: '["{\\"summary\\":\\"observability-run\\",\\"tokenInput\\":8,\\"tokenOutput\\":3,\\"usdCost\\":0.1234}"]',
-      runtimeCwd: tempDir
+      runtimeArgsJson:
+        '["{\\"employee_comment\\":\\"Completed the observability run and left the result ready for review.\\",\\"results\\":[\\"Created the run report.\\"],\\"errors\\":[],\\"artifacts\\":[{\\"kind\\":\\"file\\",\\"path\\":\\"reports/run.md\\"}],\\"tokenInput\\":8,\\"tokenOutput\\":3,\\"usdCost\\":0.1234,\\"issue_id\\":\\"wrong-issue\\",\\"agent_id\\":\\"wrong-agent\\",\\"cost\\":999}"]'
     });
-    await createIssue(db, {
+    const issue = await createIssue(db, {
       companyId,
       projectId: project.id,
       title: "Observe heartbeat cost recording",
@@ -97,7 +103,13 @@ describe("observability routes", { timeout: 30_000 }, () => {
     expect(runRow).toBeTruthy();
     expect(runRow.outcome).not.toBe(null);
     expect(typeof runRow.outcome).toBe("object");
+    expect(runRow.publicStatus).toBe("completed");
+    expect(runRow.report?.finalStatus).toBe("completed");
     expect(runRow.runType).toBe("work");
+    expect(runRow.report?.employeeComment).toContain("Completed the observability run");
+    expect(runRow.report?.cost?.usdCost).toBeCloseTo(0.1234, 6);
+    expect(runRow.report?.issueIds).toContain(issue.id);
+    expect(runRow.report?.issueIds).not.toContain("wrong-issue");
 
     const runDetailResponse = await request(app)
       .get(`/observability/heartbeats/${encodeURIComponent(runId!)}`)
@@ -105,6 +117,8 @@ describe("observability routes", { timeout: 30_000 }, () => {
     expect(runDetailResponse.status).toBe(200);
     expect(runDetailResponse.body.data.run.id).toBe(runId);
     expect(runDetailResponse.body.data.details).toBeTruthy();
+    expect(runDetailResponse.body.data.details.report).toBeTruthy();
+    expect(runDetailResponse.body.data.details.report.employeeComment).toContain("Completed the observability run");
     expect(runDetailResponse.body.data.transcript).toBeTruthy();
 
     const runMessagesResponse = await request(app)
@@ -197,8 +211,7 @@ describe("observability routes", { timeout: 30_000 }, () => {
       monthlyBudgetUsd: "25.0000",
       canHireAgents: false,
       runtimeCommand: "echo",
-      runtimeArgsJson: '["{\\"summary\\":\\"no-op\\",\\"tokenInput\\":0,\\"tokenOutput\\":0,\\"usdCost\\":0}"]',
-      runtimeCwd: tempDir
+      runtimeArgsJson: '["{\\"summary\\":\\"no-op\\",\\"tokenInput\\":0,\\"tokenOutput\\":0,\\"usdCost\\":0}"]'
     });
 
     const runId = await runHeartbeatForAgent(db, companyId, agent.id, { trigger: "manual" });
@@ -215,7 +228,7 @@ describe("observability routes", { timeout: 30_000 }, () => {
     const project = await createProject(db, {
       companyId,
       name: "Message Classification",
-      workspaceLocalPath: tempDir
+      workspaceLocalPath: join(tempDir, "instances", "workspaces", companyId, "message-classification")
     });
     const agent = await createAgent(db, {
       companyId,
@@ -226,8 +239,7 @@ describe("observability routes", { timeout: 30_000 }, () => {
       monthlyBudgetUsd: "25.0000",
       canHireAgents: false,
       runtimeCommand: "echo",
-      runtimeArgsJson: '["{\\"summary\\":\\"work-run\\",\\"tokenInput\\":1,\\"tokenOutput\\":1,\\"usdCost\\":0.0001}"]',
-      runtimeCwd: tempDir
+      runtimeArgsJson: '["{\\"summary\\":\\"work-run\\",\\"tokenInput\\":1,\\"tokenOutput\\":1,\\"usdCost\\":0.0001}"]'
     });
     await createIssue(db, {
       companyId,
@@ -254,7 +266,7 @@ describe("observability routes", { timeout: 30_000 }, () => {
     const project = await createProject(db, {
       companyId,
       name: "Cursor Correctness",
-      workspaceLocalPath: tempDir
+      workspaceLocalPath: join(tempDir, "instances", "workspaces", companyId, "cursor-correctness")
     });
     const agent = await createAgent(db, {
       companyId,
@@ -265,8 +277,7 @@ describe("observability routes", { timeout: 30_000 }, () => {
       monthlyBudgetUsd: "25.0000",
       canHireAgents: false,
       runtimeCommand: "echo",
-      runtimeArgsJson: '["{\\"summary\\":\\"cursor-run\\",\\"tokenInput\\":1,\\"tokenOutput\\":1,\\"usdCost\\":0.0001}"]',
-      runtimeCwd: tempDir
+      runtimeArgsJson: '["{\\"summary\\":\\"cursor-run\\",\\"tokenInput\\":1,\\"tokenOutput\\":1,\\"usdCost\\":0.0001}"]'
     });
     await createIssue(db, {
       companyId,

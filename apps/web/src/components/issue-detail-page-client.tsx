@@ -372,6 +372,33 @@ function normalizeAgentCommentBodyForDisplay(body: string) {
   return body;
 }
 
+function collapseRunComments(comments: IssueCommentRow[]) {
+  const chosenCommentIdsByRunKey = new Map<string, string>();
+  const commentsById = new Map(comments.map((comment) => [comment.id, comment]));
+  for (const comment of comments) {
+    if (!comment.runId) {
+      continue;
+    }
+    const runKey = `${comment.runId}:${comment.authorType}:${comment.authorId ?? "unknown"}`;
+    const existingId = chosenCommentIdsByRunKey.get(runKey);
+    if (!existingId) {
+      chosenCommentIdsByRunKey.set(runKey, comment.id);
+      continue;
+    }
+    const existingComment = commentsById.get(existingId);
+    if (existingComment && existingComment.createdAt < comment.createdAt) {
+      chosenCommentIdsByRunKey.set(runKey, comment.id);
+    }
+  }
+  return comments.filter((comment) => {
+    if (!comment.runId) {
+      return true;
+    }
+    const runKey = `${comment.runId}:${comment.authorType}:${comment.authorId ?? "unknown"}`;
+    return chosenCommentIdsByRunKey.get(runKey) === comment.id;
+  });
+}
+
 function summarizeActivityPayload(payload: Record<string, unknown>) {
   const outcome = payload.outcome;
   if (outcome && typeof outcome === "object") {
@@ -447,6 +474,7 @@ export function IssueDetailPageClient({
   const [isHeartbeatStarting, setIsHeartbeatStarting] = useState(false);
   const [isUploadingAttachments, setIsUploadingAttachments] = useState(false);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const visibleComments = useMemo(() => collapseRunComments(comments), [comments]);
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === issue.projectId) ?? null,
@@ -825,14 +853,14 @@ export function IssueDetailPageClient({
           {attachmentError ? <div className="ui-issue-error-text">{attachmentError}</div> : null}
           <Tabs defaultValue="comments">
             <TabsList className="ui-issue-tabs-list">
-              <TabsTrigger value="comments">Comments ({comments.length})</TabsTrigger>
+              <TabsTrigger value="comments">Comments ({visibleComments.length})</TabsTrigger>
               <TabsTrigger value="attachments">Attachments ({attachments.length})</TabsTrigger>
               <TabsTrigger value="subissues">Sub-issues ({subIssues.length})</TabsTrigger>
               <TabsTrigger value="activity">Activity ({activityItems.length})</TabsTrigger>
             </TabsList>
             <TabsContent value="comments" className="ui-issue-tabs-content">
               {commentsLoading ? <div className="ui-issue-muted-text">Loading comments...</div> : null}
-              {comments.map((comment) => (
+              {visibleComments.map((comment) => (
                 <div key={comment.id} className="ui-issue-comment-card">
                   <div className="ui-issue-comment-row">
                     <div className="ui-issue-comment-copy">
@@ -894,7 +922,7 @@ export function IssueDetailPageClient({
                   </div>
                 </div>
               ))}
-              {!commentsLoading && comments.length === 0 ? <EmptyState>No comments yet for this issue.</EmptyState> : null}
+              {!commentsLoading && visibleComments.length === 0 ? <EmptyState>No comments yet for this issue.</EmptyState> : null}
               <form className={styles.issueDetailForm} onSubmit={submitComment}>
                 <Textarea
                   value={draftComment}

@@ -504,6 +504,101 @@ export const ExecutionOutcomeSchema = z.object({
   nextSuggestedState: z.enum(["todo", "in_progress", "blocked", "in_review", "done"]).optional()
 });
 export type ExecutionOutcome = z.infer<typeof ExecutionOutcomeSchema>;
+export const AgentFinalRunOutputArtifactSchema = z
+  .object({
+    kind: z.string().min(1),
+    path: z.string().min(1)
+  })
+  .strict();
+export type AgentFinalRunOutputArtifact = z.infer<typeof AgentFinalRunOutputArtifactSchema>;
+export const AgentFinalRunOutputSchema = z
+  .object({
+    employee_comment: z.string().min(1),
+    results: z.array(z.string().min(1)).default([]),
+    errors: z.array(z.string().min(1)).default([]),
+    artifacts: z.array(AgentFinalRunOutputArtifactSchema).default([])
+  })
+  .passthrough();
+export type AgentFinalRunOutput = z.infer<typeof AgentFinalRunOutputSchema>;
+export const RunUsdCostStatusSchema = z.enum(["exact", "estimated", "unknown"]);
+export type RunUsdCostStatus = z.infer<typeof RunUsdCostStatusSchema>;
+export const RunCompletionReasonSchema = z.enum([
+  "task_completed",
+  "no_assigned_work",
+  "blocked",
+  "provider_rate_limited",
+  "provider_out_of_funds",
+  "provider_quota_exhausted",
+  "auth_error",
+  "timeout",
+  "cancelled",
+  "contract_invalid",
+  "runtime_error",
+  "runtime_missing",
+  "budget_hard_stop",
+  "overlap_in_progress",
+  "provider_unavailable",
+  "unknown"
+]);
+export type RunCompletionReason = z.infer<typeof RunCompletionReasonSchema>;
+export const RunResultStatusSchema = z.enum(["reported", "none_reported"]);
+export type RunResultStatus = z.infer<typeof RunResultStatusSchema>;
+export const RunArtifactSchema = z.object({
+  path: z.string().min(1),
+  kind: z.string().min(1),
+  label: z.string().nullable().optional(),
+  relativePath: z.string().nullable().optional(),
+  absolutePath: z.string().nullable().optional()
+});
+export type RunArtifact = z.infer<typeof RunArtifactSchema>;
+export const RunCostSummarySchema = z.object({
+  tokenInput: z.number().nonnegative().default(0),
+  tokenOutput: z.number().nonnegative().default(0),
+  usdCost: z.number().nonnegative().nullable().optional(),
+  usdCostStatus: RunUsdCostStatusSchema.default("unknown"),
+  pricingSource: z.string().nullable().optional(),
+  source: z.string().nullable().optional()
+});
+export type RunCostSummary = z.infer<typeof RunCostSummarySchema>;
+export const RunManagerReportSchema = z.object({
+  agentName: z.string().min(1),
+  providerType: ProviderTypeSchema,
+  whatWasDone: z.string().min(1),
+  resultSummary: z.string().min(1),
+  artifactPaths: z.array(z.string().min(1)).default([]),
+  blockers: z.array(z.string().min(1)).default([]),
+  nextAction: z.string().min(1),
+  costLine: z.string().min(1)
+});
+export type RunManagerReport = z.infer<typeof RunManagerReportSchema>;
+export const RunCompletionReportSchema = z.object({
+  finalStatus: z.enum(["completed", "failed"]),
+  completionReason: RunCompletionReasonSchema,
+  statusHeadline: z.string().min(1),
+  summary: z.string().min(1),
+  employeeComment: z.string().min(1),
+  results: z.array(z.string().min(1)).default([]),
+  errors: z.array(z.string().min(1)).default([]),
+  resultStatus: RunResultStatusSchema.default("none_reported"),
+  resultSummary: z.string().min(1),
+  issueIds: z.array(EntityIdSchema).default([]),
+  artifacts: z.array(RunArtifactSchema).default([]),
+  blockers: z.array(z.string().min(1)).default([]),
+  nextAction: z.string().min(1),
+  cost: RunCostSummarySchema,
+  managerReport: RunManagerReportSchema,
+  outcome: ExecutionOutcomeSchema.nullable().optional(),
+  debug: z
+    .object({
+      persistedRunStatus: z.string().nullable().optional(),
+      failureType: z.string().nullable().optional(),
+      errorType: z.string().nullable().optional(),
+      errorMessage: z.string().nullable().optional()
+    })
+    .nullable()
+    .optional()
+});
+export type RunCompletionReport = z.infer<typeof RunCompletionReportSchema>;
 export const ThinkingEffortSchema = z.enum(["auto", "low", "medium", "high"]);
 export type ThinkingEffort = z.infer<typeof ThinkingEffortSchema>;
 export const SandboxModeSchema = z.enum(["workspace_write", "full_access"]);
@@ -1021,6 +1116,7 @@ export type RealtimeMessage = z.infer<typeof RealtimeMessageSchema>;
 export const CostLedgerEntrySchema = z.object({
   id: EntityIdSchema,
   companyId: EntityIdSchema,
+  runId: EntityIdSchema.nullable().optional(),
   projectId: EntityIdSchema.nullable(),
   issueId: EntityIdSchema.nullable(),
   agentId: EntityIdSchema.nullable(),
@@ -1032,6 +1128,7 @@ export const CostLedgerEntrySchema = z.object({
   tokenInput: z.number().int().nonnegative(),
   tokenOutput: z.number().int().nonnegative(),
   usdCost: z.number().nonnegative(),
+  usdCostStatus: RunUsdCostStatusSchema.nullable().optional(),
   createdAt: z.string()
 });
 
@@ -1053,6 +1150,7 @@ export const HeartbeatRunSchema = z.object({
   companyId: EntityIdSchema,
   agentId: EntityIdSchema,
   status: z.enum(["started", "completed", "failed", "skipped"]),
+  publicStatus: z.enum(["started", "completed", "failed"]).optional(),
   startedAt: z.string(),
   finishedAt: z.string().nullable(),
   message: z.string().optional()
@@ -1091,11 +1189,13 @@ export const HeartbeatRunDetailSchema = z.object({
       result: z.string().nullable().optional(),
       issueIds: z.array(EntityIdSchema).optional(),
       outcome: ExecutionOutcomeSchema.nullable().optional(),
+      report: RunCompletionReportSchema.nullable().optional(),
       usage: z
         .object({
           tokenInput: z.number().nonnegative().optional(),
           tokenOutput: z.number().nonnegative().optional(),
           usdCost: z.number().nonnegative().optional(),
+          usdCostStatus: RunUsdCostStatusSchema.optional(),
           source: z.string().nullable().optional()
         })
         .nullable()

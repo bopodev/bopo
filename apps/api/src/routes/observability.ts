@@ -113,10 +113,12 @@ export function createObservabilityRouter(ctx: AppContext) {
         .filter((run) => (agentFilter ? run.agentId === agentFilter : true))
         .map((run) => {
           const details = runDetailsByRunId.get(run.id);
-          const outcome = details?.outcome ?? null;
+          const report = toRecord(details?.report);
+          const outcome = details?.outcome ?? report?.outcome ?? null;
           return {
-            ...serializeRunRow(run, outcome),
-            outcome
+            ...serializeRunRow(run, details),
+            outcome,
+            report: report ?? null
           };
         })
     );
@@ -138,7 +140,7 @@ export function createObservabilityRouter(ctx: AppContext) {
     const trace = toRecord(details?.trace);
     const traceTranscript = Array.isArray(trace?.transcript) ? trace.transcript : [];
     return sendOk(res, {
-      run: serializeRunRow(run, details?.outcome ?? null),
+      run: serializeRunRow(run, details),
       details,
       transcript: {
         hasPersistedMessages: transcriptResult.items.length > 0,
@@ -369,14 +371,27 @@ function serializeRunRow(
   finishedAt: Date | null;
   message: string | null;
   },
-  outcome: unknown
+  details: Record<string, unknown> | null | undefined
 ) {
-  const runType = resolveRunType(run, outcome);
+  const runType = resolveRunType(run, details);
+  const report = toRecord(details?.report);
+  const publicStatusRaw = typeof report?.finalStatus === "string" ? report.finalStatus : null;
+  const publicStatus =
+    publicStatusRaw === "completed" || publicStatusRaw === "failed"
+      ? publicStatusRaw
+      : run.status === "started"
+        ? "started"
+        : run.status === "failed"
+          ? "failed"
+          : run.status === "completed"
+            ? "completed"
+            : "failed";
   return {
     id: run.id,
     companyId: run.companyId,
     agentId: run.agentId,
     status: run.status,
+    publicStatus,
     startedAt: run.startedAt.toISOString(),
     finishedAt: run.finishedAt?.toISOString() ?? null,
     message: run.message ?? null,
@@ -389,13 +404,24 @@ function resolveRunType(
     status: string;
     message: string | null;
   },
-  outcome: unknown
+  details: Record<string, unknown> | null | undefined
 ): "work" | "no_assigned_work" | "budget_skip" | "overlap_skip" | "other_skip" | "failed" | "running" {
   if (run.status === "started") {
     return "running";
   }
-  if (run.status === "failed") {
+  const report = toRecord(details?.report);
+  const completionReason = typeof report?.completionReason === "string" ? report.completionReason : null;
+  if (run.status === "failed" || completionReason === "runtime_error" || completionReason === "provider_unavailable") {
     return "failed";
+  }
+  if (completionReason === "no_assigned_work") {
+    return "no_assigned_work";
+  }
+  if (completionReason === "budget_hard_stop") {
+    return "budget_skip";
+  }
+  if (completionReason === "overlap_in_progress") {
+    return "overlap_skip";
   }
   const normalizedMessage = (run.message ?? "").toLowerCase();
   if (normalizedMessage.includes("already in progress")) {
@@ -407,7 +433,7 @@ function resolveRunType(
   if (isNoAssignedWorkMessage(run.message)) {
     return "no_assigned_work";
   }
-  if (isNoAssignedWorkOutcome(outcome)) {
+  if (isNoAssignedWorkOutcome(details?.outcome)) {
     return "no_assigned_work";
   }
   if (run.status === "skipped") {

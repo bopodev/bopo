@@ -6,7 +6,7 @@ import {
   getRegisteredAdapterModules,
   runAdapterEnvironmentTest
 } from "../packages/agent-sdk/src/registry";
-import { parseStructuredUsage } from "../packages/agent-sdk/src/runtime-parsers";
+import { parseAgentFinalRunOutput, parseStructuredUsage } from "../packages/agent-sdk/src/runtime-parsers";
 
 describe("adapter module contracts", () => {
   it("registers a module for every metadata provider type", () => {
@@ -120,5 +120,77 @@ describe("adapter module contracts", () => {
     expect(usage?.summary).toBe("fixture-ok");
     expect(usage?.tokenInput).toBe(8);
     expect(usage?.tokenOutput).toBe(3);
+  });
+
+  it("parses strict final run JSON and ignores backend-owned extras", () => {
+    const parsed = parseAgentFinalRunOutput(
+      JSON.stringify({
+        employee_comment: "Completed the implementation and left the folder ready for review.",
+        results: ["Created `index.html`.", "Uploaded the build to staging."],
+        errors: [],
+        artifacts: [{ kind: "file", path: "index.html" }],
+        issue_id: "wrong-on-purpose",
+        cost: 999
+      })
+    );
+    expect(parsed.output).toEqual({
+      employee_comment: "Completed the implementation and left the folder ready for review.",
+      results: ["Created `index.html`.", "Uploaded the build to staging."],
+      errors: [],
+      artifacts: [{ kind: "file", path: "index.html" }]
+    });
+  });
+
+  it("rejects malformed final run JSON objects that do not match the schema", () => {
+    const parsed = parseAgentFinalRunOutput(
+      JSON.stringify({
+        employee_comment: 123,
+        results: [],
+        errors: [],
+        artifacts: [],
+        tokenInput: 1
+      })
+    );
+    expect(parsed.output).toBeUndefined();
+    expect(parsed.error).toBe("schema_mismatch");
+  });
+
+  it("treats unrelated streamed tool JSON as missing final output", () => {
+    const parsed = parseAgentFinalRunOutput(
+      [
+        JSON.stringify({
+          type: "item.completed",
+          item: {
+            type: "command_execution",
+            call_id: "item_1",
+            output: "command: /bin/zsh -lc 'pwd' status: completed exit_code: 0 /tmp"
+          }
+        }),
+        JSON.stringify({
+          type: "turn.completed",
+          usage: { input_tokens: 10, output_tokens: 3 },
+          result: "Completed the task."
+        })
+      ].join("\n")
+    );
+    expect(parsed.output).toBeUndefined();
+    expect(parsed.error).toBe("missing");
+  });
+
+  it("normalizes artifact objects that omit kind but include a path", () => {
+    const parsed = parseAgentFinalRunOutput(
+      JSON.stringify({
+        employee_comment: "Completed the setup and left artifacts for review.",
+        results: ["Created operating files."],
+        errors: ["Missing permission: agents:write"],
+        artifacts: [{ path: "agents/founder/operating/AGENTS.md" }]
+      })
+    );
+    expect(parsed.output).toEqual({
+      employee_comment: "Completed the setup and left artifacts for review.",
+      results: ["Created operating files."],
+      errors: ["Missing permission: agents:write"],
+      artifacts: [{ kind: "file", path: "agents/founder/operating/AGENTS.md" }]
+    });
   });
 });

@@ -3,6 +3,7 @@ import { access, cp, lstat, mkdir, mkdtemp, readdir, rm, symlink } from "node:fs
 import { homedir, tmpdir } from "node:os";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { AgentFinalRunOutputSchema, type AgentFinalRunOutput } from "bopodev-contracts";
 import type { AgentRuntimeConfig } from "./types";
 
 type LocalProvider = "claude_code" | "codex" | "cursor" | "opencode" | "gemini_cli";
@@ -32,6 +33,15 @@ type UsageSourceResolution = {
   source?: "stdout" | "stderr";
 };
 
+type FinalRunOutputParseError = "missing" | "malformed" | "schema_mismatch";
+
+type FinalRunOutputResolution = {
+  finalRunOutput?: AgentFinalRunOutput;
+  source?: "stdout" | "stderr";
+  error?: FinalRunOutputParseError;
+  detail?: string;
+};
+
 type CursorParsedStream = {
   usage: ParsedUsageRecord;
   sessionId?: string;
@@ -58,6 +68,8 @@ export interface RuntimeExecutionOutput {
     usdCost?: number;
     summary?: string;
   };
+  finalRunOutput?: AgentFinalRunOutput;
+  finalRunOutputSource?: "stdout" | "stderr";
   structuredOutputSource?: "stdout" | "stderr";
   structuredOutputDiagnostics?: {
     stdoutJsonObjectCount: number;
@@ -73,6 +85,8 @@ export interface RuntimeExecutionOutput {
       | "json_missing"
       | "json_on_stderr_only"
       | "schema_or_shape_mismatch";
+    finalRunOutputStatus?: "valid" | "missing" | "malformed" | "schema_mismatch";
+    finalRunOutputError?: string;
     claudeStopReason?: string;
     claudeResultSubtype?: string;
     claudeSessionId?: string;
@@ -380,6 +394,7 @@ export async function executePromptRuntime(
         const stdoutUsage = parseStructuredUsage(stdout);
         const stderrUsage = parseStructuredUsage(stderr);
         const usageResolution = resolveUsageSource(stdoutUsage, stderrUsage);
+        const finalRunOutputResolution = resolveFinalRunOutput(stdout, stderr);
         return {
           ok: true,
           code: attemptResult.code,
@@ -390,6 +405,8 @@ export async function executePromptRuntime(
           attemptCount: attempts.length,
           attempts,
           parsedUsage: usageResolution.usage,
+          finalRunOutput: finalRunOutputResolution.finalRunOutput,
+          finalRunOutputSource: finalRunOutputResolution.source,
           structuredOutputSource: usageResolution.source,
           structuredOutputDiagnostics: {
             stdoutJsonObjectCount: extractJsonObjectBlocks(stdout).length,
@@ -401,6 +418,12 @@ export async function executePromptRuntime(
             lastStdoutLine: tailLine(stdout),
             lastStderrLine: tailLine(stderr),
             likelyCause: classifyStructuredOutputLikelyCause(stdout, stderr, stdoutUsage, stderrUsage),
+            finalRunOutputStatus: finalRunOutputResolution.finalRunOutput
+              ? "valid"
+              : finalRunOutputResolution.error,
+            ...(finalRunOutputResolution.detail
+              ? { finalRunOutputError: finalRunOutputResolution.detail }
+              : {}),
             ...(claudeStream?.stopReason ? { claudeStopReason: claudeStream.stopReason } : {}),
             ...(claudeStream?.resultSubtype ? { claudeResultSubtype: claudeStream.resultSubtype } : {}),
             ...(claudeStream?.sessionId ? { claudeSessionId: claudeStream.sessionId } : {}),
@@ -439,6 +462,7 @@ export async function executePromptRuntime(
     const stdoutUsage = parseStructuredUsage(stdout);
     const stderrUsage = parseStructuredUsage(stderr);
     const usageResolution = resolveUsageSource(stdoutUsage, stderrUsage);
+    const finalRunOutputResolution = resolveFinalRunOutput(stdout, stderr);
     return {
       ok: false,
       code: lastResult?.code ?? null,
@@ -450,6 +474,8 @@ export async function executePromptRuntime(
       attempts,
       failureType: classifyFailure(lastResult?.timedOut ?? false, lastResult?.spawnErrorCode, lastResult?.code ?? null),
       parsedUsage: usageResolution.usage,
+      finalRunOutput: finalRunOutputResolution.finalRunOutput,
+      finalRunOutputSource: finalRunOutputResolution.source,
       structuredOutputSource: usageResolution.source,
       structuredOutputDiagnostics: {
         stdoutJsonObjectCount: extractJsonObjectBlocks(stdout).length,
@@ -461,6 +487,10 @@ export async function executePromptRuntime(
         lastStdoutLine: tailLine(stdout),
         lastStderrLine: tailLine(stderr),
         likelyCause: classifyStructuredOutputLikelyCause(stdout, stderr, stdoutUsage, stderrUsage),
+        finalRunOutputStatus: finalRunOutputResolution.finalRunOutput
+          ? "valid"
+          : finalRunOutputResolution.error,
+        ...(finalRunOutputResolution.detail ? { finalRunOutputError: finalRunOutputResolution.detail } : {}),
         ...(claudeStream?.stopReason ? { claudeStopReason: claudeStream.stopReason } : {}),
         ...(claudeStream?.resultSubtype ? { claudeResultSubtype: claudeStream.resultSubtype } : {}),
         ...(claudeStream?.sessionId ? { claudeSessionId: claudeStream.sessionId } : {}),
@@ -3256,6 +3286,241 @@ function extractJsonObjectBlocks(text: string) {
     }
   }
   return blocks;
+}
+
+export function parseAgentFinalRunOutput(text: string): {
+  output?: AgentFinalRunOutput;
+  error?: FinalRunOutputParseError;
+  detail?: string;
+} {
+  const candidates = extractFinalRunOutputCandidates(text);
+  if (candidates.length === 0) {
+    return { error: "missing", detail: "No final JSON object was found in runtime output." };
+  }
+  let sawMalformedJson = false;
+  let lastSchemaError = "";
+  for (let index = candidates.length - 1; index >= 0; index -= 1) {
+    const candidate = candidates[index] ?? "";
+    try {
+      const parsed = JSON.parse(candidate) as unknown;
+      const normalizedCandidate = normalizeAgentFinalRunOutputCandidate(parsed);
+      const validated = AgentFinalRunOutputSchema.safeParse(normalizedCandidate ?? parsed);
+      if (validated.success) {
+        const canonical = toCanonicalFinalRunOutput(validated.data);
+        if (!isPromptTemplateFinalRunOutput(canonical)) {
+          return { output: canonical };
+        }
+      } else {
+        lastSchemaError = formatFinalRunOutputSchemaError(validated.error);
+      }
+      const legacyOutput = toLegacyFinalRunOutput(parsed);
+      if (legacyOutput) {
+        return { output: legacyOutput };
+      }
+    } catch (error) {
+      sawMalformedJson = true;
+      lastSchemaError = error instanceof Error ? error.message : String(error);
+    }
+  }
+  return {
+    error: sawMalformedJson ? "malformed" : "schema_mismatch",
+    detail: lastSchemaError || "Final JSON object did not match the required schema."
+  };
+}
+
+function extractFinalRunOutputCandidates(text: string) {
+  const candidates: string[] = [];
+  const trimmed = text.trim();
+  if (looksLikeFinalRunOutputText(trimmed)) {
+    candidates.push(trimmed);
+  }
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line) {
+      continue;
+    }
+    if (looksLikeFinalRunOutputText(line)) {
+      candidates.push(line);
+    }
+    const parsed = parseJsonRecord(line);
+    if (!parsed) {
+      continue;
+    }
+    candidates.push(...collectPotentialFinalOutputStrings(parsed));
+  }
+  for (const block of extractJsonObjectBlocks(text)) {
+    if (looksLikeFinalRunOutputText(block)) {
+      candidates.push(block);
+    }
+  }
+  return Array.from(new Set(candidates.map((value) => value.trim()).filter(Boolean)));
+}
+
+function normalizeAgentFinalRunOutputCandidate(parsed: unknown): AgentFinalRunOutput | null {
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return null;
+  }
+  const record = parsed as Record<string, unknown>;
+  const employeeComment =
+    typeof record.employee_comment === "string" && record.employee_comment.trim().length > 0
+      ? record.employee_comment.trim()
+      : null;
+  if (!employeeComment) {
+    return null;
+  }
+  const results = normalizeStringList(record.results);
+  const errors = normalizeStringList(record.errors);
+  const artifacts = normalizeArtifactList(record.artifacts);
+  return {
+    employee_comment: employeeComment,
+    results,
+    errors,
+    artifacts
+  };
+}
+
+function normalizeStringList(value: unknown) {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed ? [trimmed] : [];
+  }
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+    .filter((entry): entry is string => Boolean(entry));
+}
+
+function normalizeArtifactList(value: unknown): AgentFinalRunOutput["artifacts"] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((entry) => normalizeArtifactEntry(entry))
+    .filter((entry): entry is AgentFinalRunOutput["artifacts"][number] => Boolean(entry));
+}
+
+function normalizeArtifactEntry(value: unknown): AgentFinalRunOutput["artifacts"][number] | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  const pathCandidate =
+    (typeof record.path === "string" && record.path.trim()) ||
+    (typeof record.relativePath === "string" && record.relativePath.trim()) ||
+    (typeof record.absolutePath === "string" && record.absolutePath.trim()) ||
+    "";
+  if (!pathCandidate) {
+    return null;
+  }
+  const explicitKind = typeof record.kind === "string" && record.kind.trim() ? record.kind.trim() : "";
+  return {
+    kind: explicitKind || inferArtifactKind(pathCandidate),
+    path: pathCandidate
+  };
+}
+
+function inferArtifactKind(path: string) {
+  const normalized = path.toLowerCase();
+  if (/\.[a-z0-9]{1,10}$/i.test(normalized)) {
+    return "file";
+  }
+  if (normalized.endsWith("/") || normalized.includes("/dist") || normalized.includes("/build")) {
+    return "directory";
+  }
+  return "artifact";
+}
+
+function collectPotentialFinalOutputStrings(value: unknown, depth = 0): string[] {
+  if (depth > 6 || value === null || value === undefined) {
+    return [];
+  }
+  if (typeof value === "string") {
+    return looksLikeFinalRunOutputText(value) ? [value.trim()] : [];
+  }
+  if (Array.isArray(value)) {
+    return value.flatMap((entry) => collectPotentialFinalOutputStrings(entry, depth + 1));
+  }
+  if (typeof value === "object") {
+    return Object.values(value).flatMap((entry) => collectPotentialFinalOutputStrings(entry, depth + 1));
+  }
+  return [];
+}
+
+function looksLikeFinalRunOutputText(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) {
+    return false;
+  }
+  return trimmed.includes("\"employee_comment\"") || trimmed.includes("\"summary\"");
+}
+
+function formatFinalRunOutputSchemaError(output: {
+  issues: Array<{
+    path: PropertyKey[];
+    message: string;
+  }>;
+}) {
+  const issue = output.issues[0];
+  if (!issue) {
+    return "Final JSON object did not match the required schema.";
+  }
+  const path = issue.path.length > 0 ? `${issue.path.join(".")}: ` : "";
+  return `${path}${issue.message}`;
+}
+
+function toCanonicalFinalRunOutput(output: AgentFinalRunOutput): AgentFinalRunOutput {
+  return {
+    employee_comment: output.employee_comment,
+    results: output.results,
+    errors: output.errors,
+    artifacts: output.artifacts
+  };
+}
+
+function isPromptTemplateFinalRunOutput(output: AgentFinalRunOutput) {
+  return (
+    output.employee_comment.trim().toLowerCase() === "markdown update to the manager" &&
+    output.results.length === 1 &&
+    output.results[0]?.trim().toLowerCase() === "short concrete outcome" &&
+    output.errors.length === 0 &&
+    output.artifacts.length === 1 &&
+    output.artifacts[0]?.kind === "file" &&
+    output.artifacts[0]?.path === "relative/path"
+  );
+}
+
+function toLegacyFinalRunOutput(parsed: unknown): AgentFinalRunOutput | undefined {
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return undefined;
+  }
+  const record = parsed as Record<string, unknown>;
+  const summary = typeof record.summary === "string" ? record.summary.trim() : "";
+  if (!summary) {
+    return undefined;
+  }
+  return {
+    employee_comment: summary,
+    results: [summary],
+    errors: [],
+    artifacts: []
+  };
+}
+
+function resolveFinalRunOutput(stdout: string, stderr: string): FinalRunOutputResolution {
+  const stdoutResolution = parseAgentFinalRunOutput(stdout);
+  if (stdoutResolution.output) {
+    return { finalRunOutput: stdoutResolution.output, source: "stdout" };
+  }
+  const stderrResolution = parseAgentFinalRunOutput(stderr);
+  if (stderrResolution.output) {
+    return { finalRunOutput: stderrResolution.output, source: "stderr" };
+  }
+  return {
+    error: stdoutResolution.error ?? stderrResolution.error ?? "missing",
+    detail: stdoutResolution.detail ?? stderrResolution.detail ?? "No final JSON object was found in runtime output."
+  };
 }
 
 function tryParseUsage(candidate: string) {

@@ -1,4 +1,5 @@
 export {
+  parseAgentFinalRunOutput,
   parseClaudeStreamOutput,
   parseCursorStreamOutput,
   parseGeminiStreamOutput,

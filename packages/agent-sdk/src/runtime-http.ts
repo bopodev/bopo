@@ -1,5 +1,6 @@
 import type { AgentRuntimeConfig } from "./types";
-import { containsUsageLimitHardStopFailure } from "./runtime";
+import type { AgentFinalRunOutput } from "bopodev-contracts";
+import { containsUsageLimitHardStopFailure, parseAgentFinalRunOutput } from "./runtime";
 
 export type DirectApiProvider = "openai_api" | "anthropic_api";
 
@@ -11,10 +12,19 @@ export type DirectApiExecutionOutput = {
   elapsedMs: number;
   statusCode: number;
   summary?: string;
+  finalRunOutput?: AgentFinalRunOutput;
   tokenInput?: number;
   tokenOutput?: number;
   usdCost?: number;
-  failureType?: "auth" | "rate_limit" | "timeout" | "network" | "bad_response" | "http_error";
+  failureType?:
+    | "auth"
+    | "rate_limit"
+    | "out_of_funds"
+    | "quota_exhausted"
+    | "timeout"
+    | "network"
+    | "bad_response"
+    | "http_error";
   error?: string;
   responsePreview?: string;
   attemptCount: number;
@@ -22,7 +32,15 @@ export type DirectApiExecutionOutput = {
     attempt: number;
     statusCode: number;
     elapsedMs: number;
-    failureType?: "auth" | "rate_limit" | "timeout" | "network" | "bad_response" | "http_error";
+    failureType?:
+      | "auth"
+      | "rate_limit"
+      | "out_of_funds"
+      | "quota_exhausted"
+      | "timeout"
+      | "network"
+      | "bad_response"
+      | "http_error";
     error?: string;
   }>;
 };
@@ -136,7 +154,7 @@ export async function executeDirectApiRuntime(
       if (!response.ok) {
         const error = extractErrorMessage(provider, parsed, text) || `HTTP ${response.status}`;
         const providerUsageLimited = containsUsageLimitHardStopFailure(`${error}\n${preview}\n${text}`);
-        const failureType = classifyHttpFailure(response.status, providerUsageLimited);
+        const failureType = classifyHttpFailure(response.status, providerUsageLimited, error);
         attempts.push({
           attempt,
           statusCode: response.status,
@@ -177,6 +195,7 @@ export async function executeDirectApiRuntime(
         break;
       }
       const summary = provider === "openai_api" ? extractOpenAiSummary(parsed) : extractAnthropicSummary(parsed);
+      const finalRunOutput = parseAgentFinalRunOutput(summary);
       const usage = provider === "openai_api" ? extractOpenAiUsage(parsed) : extractAnthropicUsage(parsed);
       attempts.push({
         attempt,
@@ -191,6 +210,7 @@ export async function executeDirectApiRuntime(
         elapsedMs,
         statusCode: response.status,
         summary,
+        finalRunOutput: finalRunOutput.output,
         tokenInput: usage.tokenInput,
         tokenOutput: usage.tokenOutput,
         usdCost: usage.usdCost ?? 0,
@@ -380,10 +400,22 @@ function extractErrorMessage(provider: DirectApiProvider, parsed: Record<string,
 
 function classifyHttpFailure(
   statusCode: number,
-  providerUsageLimited: boolean
-): "auth" | "rate_limit" | "http_error" {
+  providerUsageLimited: boolean,
+  detail: string
+): "auth" | "rate_limit" | "out_of_funds" | "quota_exhausted" | "http_error" {
   if (statusCode === 401 || statusCode === 403) return "auth";
-  if (statusCode === 429 || providerUsageLimited) return "rate_limit";
+  if (providerUsageLimited) {
+    const normalized = detail.toLowerCase();
+    if (
+      normalized.includes("insufficient_quota") ||
+      normalized.includes("billing_hard_limit_reached") ||
+      normalized.includes("out of funds")
+    ) {
+      return "out_of_funds";
+    }
+    return "quota_exhausted";
+  }
+  if (statusCode === 429) return "rate_limit";
   return "http_error";
 }
 

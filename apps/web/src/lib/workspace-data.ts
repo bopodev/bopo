@@ -73,6 +73,7 @@ export interface WorkspaceData {
     id: string;
     agentId: string;
     status: string;
+    publicStatus?: "started" | "completed" | "failed";
     runType: "work" | "no_assigned_work" | "budget_skip" | "overlap_skip" | "other_skip" | "failed" | "running";
     message: string | null;
     outcome?: ExecutionOutcome | null;

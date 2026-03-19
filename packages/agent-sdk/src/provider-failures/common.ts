@@ -36,9 +36,15 @@ export function classifyFromSignals(
   const detail = normalize(input.detail);
   const combined = `${detail}\n${input.stderr ?? ""}\n${input.stdout ?? ""}`.toLowerCase();
   if (containsUsageLimitHardStopFailure(combined)) {
+    const blockerCode =
+      combined.includes("insufficient_quota") ||
+      combined.includes("billing_hard_limit_reached") ||
+      combined.includes("out of funds")
+        ? "provider_out_of_funds"
+        : "provider_quota_exhausted";
     return {
       detail,
-      blockerCode: "provider_usage_limited",
+      blockerCode,
       retryable: false,
       providerUsageLimited: true
     };

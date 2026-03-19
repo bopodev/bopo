@@ -371,6 +371,7 @@ export async function bootstrapDatabase(dbPath?: string) {
     CREATE TABLE IF NOT EXISTS cost_ledger (
       id TEXT PRIMARY KEY,
       company_id TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+      run_id TEXT REFERENCES heartbeat_runs(id) ON DELETE SET NULL,
       project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
       issue_id TEXT REFERENCES issues(id) ON DELETE SET NULL,
       agent_id TEXT REFERENCES agents(id) ON DELETE SET NULL,
@@ -382,8 +383,13 @@ export async function bootstrapDatabase(dbPath?: string) {
       token_input INTEGER NOT NULL DEFAULT 0,
       token_output INTEGER NOT NULL DEFAULT 0,
       usd_cost NUMERIC(12, 6) NOT NULL DEFAULT 0,
+      usd_cost_status TEXT,
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
+  `);
+  await db.execute(sql`
+    ALTER TABLE cost_ledger
+    ADD COLUMN IF NOT EXISTS run_id TEXT REFERENCES heartbeat_runs(id) ON DELETE SET NULL;
   `);
   await db.execute(sql`
     ALTER TABLE cost_ledger
@@ -400,6 +406,10 @@ export async function bootstrapDatabase(dbPath?: string) {
   await db.execute(sql`
     ALTER TABLE cost_ledger
     ADD COLUMN IF NOT EXISTS pricing_source TEXT;
+  `);
+  await db.execute(sql`
+    ALTER TABLE cost_ledger
+    ADD COLUMN IF NOT EXISTS usd_cost_status TEXT;
   `);
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS model_pricing (

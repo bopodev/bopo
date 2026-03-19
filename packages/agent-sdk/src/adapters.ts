@@ -170,6 +170,53 @@ function usageTokenInputTotal(usage: RuntimeParsedUsage | undefined) {
   return Math.max(0, usage.tokenInput ?? 0);
 }
 
+function resolveFinalRunOutputContractDetail(input: {
+  provider: string;
+  runtime: {
+    structuredOutputDiagnostics?: {
+      finalRunOutputError?: string;
+    };
+  };
+}) {
+  const detail = input.runtime.structuredOutputDiagnostics?.finalRunOutputError?.trim();
+  return detail || `${input.provider} runtime did not return a valid final JSON object.`;
+}
+
+function createContractInvalidResult(input: {
+  context: HeartbeatContext;
+  provider: AgentProviderType;
+  summary: string;
+  tokenInput: number;
+  tokenOutput: number;
+  usdCost: number;
+  usage?: AdapterNormalizedUsage;
+  pricingProviderType?: string | null;
+  pricingModelId?: string | null;
+  trace: NonNullable<AdapterExecutionResult["trace"]>;
+  nextState: HeartbeatContext["state"];
+}): AdapterExecutionResult {
+  return {
+    status: "failed",
+    summary: input.summary,
+    tokenInput: input.tokenInput,
+    tokenOutput: input.tokenOutput,
+    usdCost: input.usdCost,
+    ...(input.usage ? { usage: input.usage } : {}),
+    pricingProviderType: input.pricingProviderType,
+    pricingModelId: input.pricingModelId,
+    outcome: toOutcome({
+      kind: "failed",
+      issueIdsTouched: issueIdsTouched(input.context),
+      actions: [{ type: "runtime.contract", status: "error", detail: input.summary }],
+      blockers: [{ code: "contract_invalid", message: input.summary, retryable: true }],
+      artifacts: [],
+      nextSuggestedState: "blocked"
+    }),
+    trace: input.trace,
+    nextState: input.nextState
+  };
+}
+
 function hasUsageMetrics(usage: RuntimeParsedUsage | undefined) {
   if (!usage) {
     return false;
@@ -412,12 +459,46 @@ export class GenericHeartbeatAdapter implements AgentAdapter {
           nextState: context.state
         };
       }
+      if (!runtime.finalRunOutput) {
+        const usage = toNormalizedUsage(runtime.parsedUsage);
+        const detail = resolveFinalRunOutputContractDetail({ provider: this.providerType, runtime });
+        return createContractInvalidResult({
+          context,
+          provider: this.providerType,
+          summary: `${this.providerType} runtime failed contract validation: ${detail}`,
+          tokenInput: usageTokenInputTotal(runtime.parsedUsage),
+          tokenOutput: runtime.parsedUsage?.tokenOutput ?? 0,
+          usdCost: runtime.parsedUsage?.usdCost ?? 0,
+          ...(usage ? { usage } : {}),
+          pricingProviderType: resolveCanonicalPricingProviderKey(this.providerType),
+          pricingModelId: context.runtime?.model?.trim() || null,
+          trace: {
+            command: runtime.commandUsed ?? context.runtime.command,
+            args: runtime.argsUsed,
+            cwd: context.runtime?.cwd,
+            exitCode: runtime.code,
+            elapsedMs: runtime.elapsedMs,
+            timedOut: runtime.timedOut,
+            failureType: "contract_invalid",
+            timeoutSource: runtime.timedOut ? "runtime" : null,
+            attemptCount: runtime.attemptCount,
+            attempts: runtime.attempts,
+            structuredOutputSource: runtime.structuredOutputSource,
+            structuredOutputDiagnostics: runtime.structuredOutputDiagnostics,
+            stdoutPreview: toPreview(runtime.stdout),
+            stderrPreview: toPreview(runtime.stderr),
+            transcript: runtime.transcript
+          },
+          nextState: context.state
+        });
+      }
       return {
         status: "ok",
         summary: runtime.parsedUsage?.summary ?? `${this.providerType} runtime finished in ${runtime.elapsedMs}ms.`,
         tokenInput: runtime.parsedUsage?.tokenInput ?? 0,
         tokenOutput: runtime.parsedUsage?.tokenOutput ?? 0,
         usdCost: runtime.parsedUsage?.usdCost ?? 0,
+        finalRunOutput: runtime.finalRunOutput,
         outcome: toOutcome({
           kind: "completed",
           issueIdsTouched: issueIdsTouched(context),
@@ -885,12 +966,51 @@ export async function runDirectApiWork(
   const prompt = createPrompt(context);
   const runtime = await executeDirectApiRuntime(provider, prompt, context.runtime);
   if (runtime.ok) {
+    if (!runtime.finalRunOutput) {
+      return createContractInvalidResult({
+        context,
+        provider,
+        summary: `${provider} runtime failed contract validation: ${runtime.summary ?? "Missing final JSON object."}`,
+        tokenInput: runtime.tokenInput ?? 0,
+        tokenOutput: runtime.tokenOutput ?? 0,
+        usdCost: runtime.usdCost ?? 0,
+        usage: {
+          inputTokens: runtime.tokenInput ?? 0,
+          cachedInputTokens: 0,
+          outputTokens: runtime.tokenOutput ?? 0,
+          ...(runtime.usdCost !== undefined ? { costUsd: runtime.usdCost } : {}),
+          ...(runtime.summary ? { summary: runtime.summary } : {})
+        },
+        pricingProviderType: runtime.provider,
+        pricingModelId: runtime.model,
+        trace: {
+          command: runtime.endpoint,
+          cwd: context.runtime?.cwd,
+          exitCode: runtime.statusCode,
+          elapsedMs: runtime.elapsedMs,
+          failureType: "contract_invalid",
+          usageSource: "structured",
+          attemptCount: runtime.attemptCount,
+          attempts: runtime.attempts.map((attempt) => ({
+            attempt: attempt.attempt,
+            code: attempt.statusCode || null,
+            timedOut: attempt.failureType === "timeout",
+            elapsedMs: attempt.elapsedMs,
+            signal: null,
+            forcedKill: false
+          })),
+          stdoutPreview: runtime.responsePreview
+        },
+        nextState: context.state
+      });
+    }
     return {
       status: "ok",
       summary: runtime.summary ?? `${provider} runtime finished in ${runtime.elapsedMs}ms.`,
       tokenInput: runtime.tokenInput ?? 0,
       tokenOutput: runtime.tokenOutput ?? 0,
       usdCost: runtime.usdCost ?? 0,
+      finalRunOutput: runtime.finalRunOutput,
       pricingProviderType: runtime.provider,
       pricingModelId: runtime.model,
       outcome: toOutcome({
@@ -1095,6 +1215,40 @@ export async function runProviderWork(
         nextState: context.state
       };
     }
+    if (!runtime.finalRunOutput) {
+      const usage = toNormalizedUsage(runtime.parsedUsage);
+      const detail = resolveFinalRunOutputContractDetail({ provider, runtime });
+      return createContractInvalidResult({
+        context,
+        provider,
+        summary: `${provider} runtime failed contract validation: ${detail}`,
+        tokenInput: usageTokenInputTotal(runtime.parsedUsage),
+        tokenOutput: runtime.parsedUsage?.outputTokens ?? runtime.parsedUsage?.tokenOutput ?? 0,
+        usdCost: runtime.parsedUsage?.costUsd ?? runtime.parsedUsage?.usdCost ?? 0,
+        ...(usage ? { usage } : {}),
+        pricingProviderType,
+        pricingModelId,
+        trace: {
+          command: runtime.commandUsed ?? context.runtime?.command ?? provider,
+          args: runtime.argsUsed,
+          cwd: context.runtime?.cwd,
+          exitCode: runtime.code,
+          elapsedMs: runtime.elapsedMs,
+          timedOut: runtime.timedOut,
+          failureType: "contract_invalid",
+          timeoutSource: runtime.timedOut ? "runtime" : null,
+          usageSource: "structured",
+          attemptCount: runtime.attemptCount,
+          attempts: runtime.attempts,
+          structuredOutputSource: runtime.structuredOutputSource,
+          structuredOutputDiagnostics: runtime.structuredOutputDiagnostics,
+          stdoutPreview: toPreview(runtime.stdout),
+          stderrPreview: toPreview(runtime.stderr),
+          transcript: runtime.transcript
+        },
+        nextState: context.state
+      });
+    }
     if (provider === "claude_code" && isClaudeRunIncomplete(runtime)) {
       const detail = "Claude run reached max-turns before completing execution for this issue.";
       const usage = toNormalizedUsage(runtime.parsedUsage);
@@ -1148,6 +1302,7 @@ export async function runProviderWork(
       tokenInput,
       tokenOutput,
       usdCost,
+      finalRunOutput: runtime.finalRunOutput,
       usage,
       pricingProviderType,
       pricingModelId,
@@ -1600,6 +1755,7 @@ export function toProviderResult(
       forcedKill: boolean;
     }>;
     parsedUsage?: RuntimeParsedUsage;
+    finalRunOutput?: AdapterExecutionResult["finalRunOutput"];
     structuredOutputSource?: "stdout" | "stderr";
     structuredOutputDiagnostics?: {
       stdoutJsonObjectCount: number;
@@ -1615,6 +1771,8 @@ export function toProviderResult(
         | "json_missing"
         | "json_on_stderr_only"
         | "schema_or_shape_mismatch";
+      finalRunOutputStatus?: "valid" | "missing" | "malformed" | "schema_mismatch";
+      finalRunOutputError?: string;
       claudeStopReason?: string;
       claudeResultSubtype?: string;
       claudeSessionId?: string;
@@ -1691,6 +1849,41 @@ export function toProviderResult(
         nextState: applyProviderSessionState(context, provider, sessionUpdate)
       };
     }
+    if (!runtime.finalRunOutput) {
+      const usage = toNormalizedUsage(runtime.parsedUsage);
+      const detail = resolveFinalRunOutputContractDetail({ provider, runtime });
+      return createContractInvalidResult({
+        context,
+        provider,
+        summary: `${provider} runtime failed contract validation: ${detail}`,
+        tokenInput: usageTokenInputTotal(runtime.parsedUsage),
+        tokenOutput: runtime.parsedUsage?.outputTokens ?? runtime.parsedUsage?.tokenOutput ?? 0,
+        usdCost: runtime.parsedUsage?.costUsd ?? runtime.parsedUsage?.usdCost ?? 0,
+        ...(usage ? { usage } : {}),
+        pricingProviderType,
+        pricingModelId,
+        trace: {
+          command: runtime.commandUsed ?? context.runtime?.command ?? provider,
+          args: runtime.argsUsed,
+          cwd: context.runtime?.cwd,
+          exitCode: runtime.code,
+          elapsedMs: runtime.elapsedMs,
+          timedOut: runtime.timedOut,
+          failureType: "contract_invalid",
+          timeoutSource: runtime.timedOut ? "runtime" : null,
+          usageSource: "structured",
+          attemptCount: runtime.attemptCount,
+          attempts: runtime.attempts,
+          session: sessionUpdate,
+          structuredOutputSource: runtime.structuredOutputSource,
+          structuredOutputDiagnostics: runtime.structuredOutputDiagnostics,
+          stdoutPreview: toPreview(runtime.stdout),
+          stderrPreview: toPreview(runtime.stderr),
+          transcript: runtime.transcript
+        },
+        nextState: applyProviderSessionState(context, provider, sessionUpdate)
+      });
+    }
     const tokenOutput = runtime.parsedUsage?.outputTokens ?? runtime.parsedUsage?.tokenOutput ?? 0;
     const usdCost = runtime.parsedUsage?.costUsd ?? runtime.parsedUsage?.usdCost ?? 0;
     const usage = toNormalizedUsage(runtime.parsedUsage);
@@ -1701,6 +1894,7 @@ export function toProviderResult(
       tokenInput: usageTokenInputTotal(runtime.parsedUsage),
       tokenOutput,
       usdCost,
+      finalRunOutput: runtime.finalRunOutput,
       usage,
       pricingProviderType,
       pricingModelId,
@@ -2529,15 +2723,20 @@ export function createPrompt(context: HeartbeatContext) {
     "- If payload files are required, write under `agents/<agent-id>/tmp/` (or OS temp via `mktemp`) and do not treat cleanup command failures as task blockers.",
     "- If control-plane API connectivity fails, report the exact failing command/error once and stop retry loops for the same endpoint.",
     "- For write_todos status values, only use: todo, in_progress, blocked, in_review, done, canceled (US spelling, not cancelled).",
-    "- If any command fails, avoid further exploratory commands and still return the required final JSON summary.",
+    "- If any command fails, avoid further exploratory commands and still return the required final JSON object.",
     "- Do not use emojis in issue comments, summaries, or status messages.",
     isCommentOrderRun
       ? "- Do not stop after planning. Execute concrete steps only for the triggering comment order."
       : "- Do not stop after planning. You must execute concrete steps for assigned issues in this run (file edits, API calls, or other verifiable actions).",
-    "- If you cannot complete concrete execution, set summary to include the blocker explicitly instead of claiming success.",
+    "- If you cannot complete concrete execution, explain the blocker plainly in `employee_comment` and add it to `errors` instead of claiming success.",
     "- Treat file memory as source of truth for long-term context: append raw observations to daily notes first, then promote stable patterns to durable facts.",
     "- Avoid writing duplicate durable facts when existing memory already contains the same lesson.",
-    "- Your final output must be only the JSON object below, with no prose before or after it.",
+    "- Your final output must be exactly one JSON object and nothing else.",
+    "- Do not include any fields besides `employee_comment`, `results`, `errors`, and `artifacts`.",
+    "- `employee_comment` must be markdown written like a concise employee updating a manager with concrete actions, outcome, and blocker or next step when relevant.",
+    "- `results` must list concrete completed outcomes as short strings.",
+    "- `errors` must list concrete blockers or failures as short strings and be empty on clean success.",
+    "- `artifacts` must contain objects like {\"kind\":\"file\",\"path\":\"relative/path\"}.",
     "- Do not invent token or cost values; the runtime records usage separately."
   ].join("\n");
 
@@ -2576,8 +2775,8 @@ ${executionDirectives}
 
 ${controlPlaneDirectives}
 
-At the end of your response, output exactly one JSON object on a single line and nothing else:
-{"summary":"brief outcome and any blocker"}
+At the end of your response, output exactly one JSON object on a single line and nothing else. Use this exact schema:
+{"employee_comment":"markdown update to the manager","results":["short concrete outcome"],"errors":[],"artifacts":[{"kind":"file","path":"relative/path"}]}
 `;
 }
 

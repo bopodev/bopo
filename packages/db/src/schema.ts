@@ -280,6 +280,7 @@ export const costLedger = pgTable("cost_ledger", {
   companyId: text("company_id")
     .notNull()
     .references(() => companies.id, { onDelete: "cascade" }),
+  runId: text("run_id").references(() => heartbeatRuns.id, { onDelete: "set null" }),
   projectId: text("project_id").references(() => projects.id, { onDelete: "set null" }),
   issueId: text("issue_id").references(() => issues.id, { onDelete: "set null" }),
   agentId: text("agent_id").references(() => agents.id, { onDelete: "set null" }),
@@ -291,6 +292,7 @@ export const costLedger = pgTable("cost_ledger", {
   tokenInput: integer("token_input").notNull().default(0),
   tokenOutput: integer("token_output").notNull().default(0),
   usdCost: numeric("usd_cost", { precision: 12, scale: 6 }).notNull().default("0"),
+  usdCostStatus: text("usd_cost_status"),
   createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull()
 });
 

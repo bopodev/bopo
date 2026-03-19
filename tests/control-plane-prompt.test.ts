@@ -29,5 +29,7 @@ describe("control-plane prompt directives", () => {
     expect(prompt).toContain('curl -sS -H "x-company-id: $BOPODEV_COMPANY_ID"');
     expect(prompt).toContain('"$BOPODEV_API_BASE_URL/agents"');
     expect(prompt).toContain("Safe example command (copy and edit path only)");
+    expect(prompt).toContain('"employee_comment":"markdown update to the manager"');
+    expect(prompt).toContain("Do not include any fields besides `employee_comment`, `results`, `errors`, and `artifacts`.");
   });
 });

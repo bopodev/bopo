@@ -1,15 +1,20 @@
 import { mkdir } from "node:fs/promises";
-import { join, resolve } from "node:path";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { join, relative, resolve } from "node:path";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { resolveAdapter } from "bopodev-agent-sdk";
 import type { AgentState, HeartbeatContext } from "bopodev-agent-sdk";
 import {
+  type AgentFinalRunOutput,
   ControlPlaneHeadersJsonSchema,
   ControlPlaneRequestHeadersSchema,
   ControlPlaneRuntimeEnvSchema,
   ExecutionOutcomeSchema,
-  type ExecutionOutcome
+  type ExecutionOutcome,
+  type RunArtifact,
+  type RunCompletionReason,
+  type RunCompletionReport,
+  type RunCostSummary
 } from "bopodev-contracts";
 import type { BopoDb } from "bopodev-db";
 import {
@@ -98,6 +103,12 @@ type RunDigest = {
     outcomeBlockerCount: number;
     failureType: string | null;
   };
+};
+
+type RunTerminalPresentation = {
+  internalStatus: "completed" | "failed" | "skipped";
+  publicStatus: "completed" | "failed";
+  completionReason: RunCompletionReason;
 };
 
 export async function claimIssuesForAgent(
@@ -361,18 +372,80 @@ export async function runHeartbeatForAgent(
   if (blockedProjectBudgetChecks.length > 0) {
     const blockedProjectIds = blockedProjectBudgetChecks.map((entry) => entry.projectId);
     const message = `Heartbeat skipped due to project budget hard-stop: ${blockedProjectIds.join(",")}.`;
+    const runDigest = buildRunDigest({
+      status: "skipped",
+      executionSummary: message,
+      outcome: null,
+      trace: null,
+      signals: []
+    });
+    const runReport = buildRunCompletionReport({
+      agentName: agent.name,
+      providerType: agent.providerType as HeartbeatProviderType,
+      issueIds: [],
+      executionSummary: message,
+      outcome: null,
+      trace: null,
+      digest: runDigest,
+      terminal: resolveRunTerminalPresentation({
+        internalStatus: "skipped",
+        executionSummary: message,
+        outcome: null,
+        trace: null
+      }),
+      cost: buildRunCostSummary({
+        tokenInput: 0,
+        tokenOutput: 0,
+        usdCost: null,
+        usdCostStatus: "unknown",
+        pricingSource: null,
+        source: "none"
+      })
+    });
+    const runListMessage = buildRunListMessageFromReport(runReport);
     await db.insert(heartbeatRuns).values({
       id: runId,
       companyId,
       agentId,
       status: "skipped",
-      message
+      finishedAt: new Date(),
+      message: runListMessage
     });
     publishHeartbeatRunStatus(options?.realtimeHub, {
       companyId,
       runId,
       status: "skipped",
-      message
+      message: runListMessage,
+      finishedAt: new Date()
+    });
+    await appendAuditEvent(db, {
+      companyId,
+      actorType: "system",
+      eventType: "heartbeat.failed",
+      entityType: "heartbeat_run",
+      entityId: runId,
+      correlationId: options?.requestId ?? runId,
+      payload: {
+        agentId,
+        issueIds: [],
+        result: runReport.resultSummary,
+        message: runListMessage,
+        errorType: runReport.completionReason,
+        errorMessage: message,
+        report: runReport,
+        outcome: null,
+        usage: {
+          tokenInput: 0,
+          tokenOutput: 0,
+          usdCostStatus: "unknown",
+          source: "none"
+        },
+        trace: null,
+        diagnostics: {
+          requestId: options?.requestId,
+          trigger: runTrigger
+        }
+      }
     });
     for (const blockedProject of blockedProjectBudgetChecks) {
       const approvalId = await ensureProjectBudgetOverrideApprovalRequest(db, {
@@ -413,45 +486,154 @@ export async function runHeartbeatForAgent(
     if (!claimed) {
       const skippedRunId = nanoid(14);
       const skippedAt = new Date();
+      const overlapMessage = "Heartbeat skipped: another run is already in progress for this agent.";
+      const runDigest = buildRunDigest({
+        status: "skipped",
+        executionSummary: overlapMessage,
+        outcome: null,
+        trace: null,
+        signals: []
+      });
+      const runReport = buildRunCompletionReport({
+        agentName: agent.name,
+        providerType: agent.providerType as HeartbeatProviderType,
+        issueIds: [],
+        executionSummary: overlapMessage,
+        outcome: null,
+        trace: null,
+        digest: runDigest,
+        terminal: resolveRunTerminalPresentation({
+          internalStatus: "skipped",
+          executionSummary: overlapMessage,
+          outcome: null,
+          trace: null
+        }),
+        cost: buildRunCostSummary({
+          tokenInput: 0,
+          tokenOutput: 0,
+          usdCost: null,
+          usdCostStatus: "unknown",
+          pricingSource: null,
+          source: "none"
+        })
+      });
+      const runListMessage = buildRunListMessageFromReport(runReport);
       await db.insert(heartbeatRuns).values({
         id: skippedRunId,
         companyId,
         agentId,
         status: "skipped",
         finishedAt: skippedAt,
-        message: "Heartbeat skipped: another run is already in progress for this agent."
+        message: runListMessage
       });
       publishHeartbeatRunStatus(options?.realtimeHub, {
         companyId,
         runId: skippedRunId,
         status: "skipped",
-        message: "Heartbeat skipped: another run is already in progress for this agent.",
+        message: runListMessage,
         finishedAt: skippedAt
       });
       await appendAuditEvent(db, {
         companyId,
         actorType: "system",
-        eventType: "heartbeat.skipped_overlap",
+        eventType: "heartbeat.failed",
         entityType: "heartbeat_run",
         entityId: skippedRunId,
         correlationId: options?.requestId ?? skippedRunId,
-        payload: { agentId, requestId: options?.requestId, trigger: runTrigger }
+        payload: {
+          agentId,
+          issueIds: [],
+          result: runReport.resultSummary,
+          message: runListMessage,
+          errorType: runReport.completionReason,
+          errorMessage: overlapMessage,
+          report: runReport,
+          outcome: null,
+          usage: {
+            tokenInput: 0,
+            tokenOutput: 0,
+            usdCostStatus: "unknown",
+            source: "none"
+          },
+          trace: null,
+          diagnostics: { requestId: options?.requestId, trigger: runTrigger }
+        }
       });
       return skippedRunId;
     }
   } else {
+    const budgetMessage = "Heartbeat skipped due to budget hard-stop.";
+    const runDigest = buildRunDigest({
+      status: "skipped",
+      executionSummary: budgetMessage,
+      outcome: null,
+      trace: null,
+      signals: []
+    });
+    const runReport = buildRunCompletionReport({
+      agentName: agent.name,
+      providerType: agent.providerType as HeartbeatProviderType,
+      issueIds: [],
+      executionSummary: budgetMessage,
+      outcome: null,
+      trace: null,
+      digest: runDigest,
+      terminal: resolveRunTerminalPresentation({
+        internalStatus: "skipped",
+        executionSummary: budgetMessage,
+        outcome: null,
+        trace: null
+      }),
+      cost: buildRunCostSummary({
+        tokenInput: 0,
+        tokenOutput: 0,
+        usdCost: null,
+        usdCostStatus: "unknown",
+        pricingSource: null,
+        source: "none"
+      })
+    });
+    const runListMessage = buildRunListMessageFromReport(runReport);
     await db.insert(heartbeatRuns).values({
       id: runId,
       companyId,
       agentId,
       status: "skipped",
-      message: "Heartbeat skipped due to budget hard-stop."
+      finishedAt: new Date(),
+      message: runListMessage
     });
     publishHeartbeatRunStatus(options?.realtimeHub, {
       companyId,
       runId,
       status: "skipped",
-      message: "Heartbeat skipped due to budget hard-stop."
+      message: runListMessage,
+      finishedAt: new Date()
+    });
+    await appendAuditEvent(db, {
+      companyId,
+      actorType: "system",
+      eventType: "heartbeat.failed",
+      entityType: "heartbeat_run",
+      entityId: runId,
+      correlationId: options?.requestId ?? runId,
+      payload: {
+        agentId,
+        issueIds: [],
+        result: runReport.resultSummary,
+        message: runListMessage,
+        errorType: runReport.completionReason,
+        errorMessage: budgetMessage,
+        report: runReport,
+        outcome: null,
+        usage: {
+          tokenInput: 0,
+          tokenOutput: 0,
+          usdCostStatus: "unknown",
+          source: "none"
+        },
+        trace: null,
+        diagnostics: { requestId: options?.requestId, trigger: runTrigger }
+      }
     });
   }
 
@@ -1035,7 +1217,6 @@ export async function runHeartbeatForAgent(
     if (afterAdapterHook.failures.length > 0) {
       pluginFailureSummary = [...pluginFailureSummary, ...afterAdapterHook.failures];
     }
-    emitCanonicalResultEvent(executionSummary, "completed");
     executionTrace = execution.trace ?? null;
     const runtimeModelId = resolveRuntimeModelId({
       runtimeModel: persistedRuntime.runtimeModel,
@@ -1046,6 +1227,7 @@ export async function runHeartbeatForAgent(
     const costDecision = await appendFinishedRunCostEntry({
       db,
       companyId,
+      runId,
       providerType: agent.providerType,
       runtimeModelId: effectivePricingModelId ?? runtimeModelId,
       pricingProviderType: effectivePricingProviderType,
@@ -1236,13 +1418,35 @@ export async function runHeartbeatForAgent(
       trace: executionTrace,
       signals: runDigestSignals
     });
-    const runListMessage = buildRunListMessage({
-      status: persistedRunStatus,
+    const terminalPresentation = resolveRunTerminalPresentation({
+      internalStatus: persistedRunStatus,
       executionSummary,
       outcome: executionOutcome,
-      signals: runDigestSignals,
-      digest: runDigest
+      trace: executionTrace
     });
+    const runCost = buildRunCostSummary({
+      tokenInput: effectiveTokenInput,
+      tokenOutput: effectiveTokenOutput,
+      usdCost: costDecision.usdCostStatus === "unknown" ? null : executionUsdCost,
+      usdCostStatus: costDecision.usdCostStatus,
+      pricingSource: costDecision.pricingSource ?? null,
+      source: readTraceString(execution.trace, "usageSource") ?? "unknown"
+    });
+    const runReport = buildRunCompletionReport({
+      agentName: agent.name,
+      providerType: agent.providerType as HeartbeatProviderType,
+      issueIds,
+      executionSummary,
+      outcome: executionOutcome,
+      finalRunOutput: execution.finalRunOutput ?? null,
+      trace: executionTrace,
+      digest: runDigest,
+      terminal: terminalPresentation,
+      cost: runCost,
+      runtimeCwd: workspaceResolution.runtime.cwd
+    });
+    emitCanonicalResultEvent(runReport.resultSummary, runReport.finalStatus);
+    const runListMessage = buildRunListMessageFromReport(runReport);
     await db
       .update(heartbeatRuns)
       .set({
@@ -1267,34 +1471,28 @@ export async function runHeartbeatForAgent(
       correlationId: options?.requestId ?? runId,
       payload: runDigest
     });
-    if (persistedRunStatus !== "skipped") {
-      try {
-        await appendRunSummaryComments(db, {
-          companyId,
-          issueIds,
+    try {
+      await appendRunSummaryComments(db, {
+        companyId,
+        issueIds,
+        agentId,
+        runId,
+        report: runReport
+      });
+    } catch (commentError) {
+      await appendAuditEvent(db, {
+        companyId,
+        actorType: "system",
+        eventType: "heartbeat.run_comment_failed",
+        entityType: "heartbeat_run",
+        entityId: runId,
+        correlationId: options?.requestId ?? runId,
+        payload: {
           agentId,
-          runId,
-          digest: runDigest,
-          status: persistedRunStatus === "failed" ? "failed" : "completed",
-          executionSummary,
-          outcome: executionOutcome,
-          signals: runDigestSignals
-        });
-      } catch (commentError) {
-        await appendAuditEvent(db, {
-          companyId,
-          actorType: "system",
-          eventType: "heartbeat.run_comment_failed",
-          entityType: "heartbeat_run",
-          entityId: runId,
-          correlationId: options?.requestId ?? runId,
-          payload: {
-            agentId,
-            issueIds,
-            error: String(commentError)
-          }
-        });
-      }
+          issueIds,
+          error: String(commentError)
+        }
+      });
     }
 
     const fallbackMessages = normalizeTraceTranscript(executionTrace);
@@ -1460,14 +1658,16 @@ export async function runHeartbeatForAgent(
       payload: {
         agentId,
         status: persistedRunStatus,
-        result: executionSummary,
-        message: executionSummary,
+        result: runReport.resultSummary,
+        message: runListMessage,
+        report: runReport,
         outcome: executionOutcome,
         issueIds,
         usage: {
           tokenInput: effectiveTokenInput,
           tokenOutput: effectiveTokenOutput,
           usdCost: executionUsdCost,
+          usdCostStatus: costDecision.usdCostStatus,
           source: readTraceString(execution.trace, "usageSource") ?? "unknown"
         },
         trace: execution.trace ?? null,
@@ -1561,6 +1761,7 @@ export async function runHeartbeatForAgent(
     const failureCostDecision = await appendFinishedRunCostEntry({
       db,
       companyId,
+      runId,
       providerType: agent.providerType,
       runtimeModelId,
       pricingProviderType: agent.providerType,
@@ -1583,13 +1784,36 @@ export async function runHeartbeatForAgent(
       trace: executionTrace,
       signals: runDigestSignals
     });
-    const runListMessage = buildRunListMessage({
-      status: "failed",
+    const runCost = buildRunCostSummary({
+      tokenInput: 0,
+      tokenOutput: 0,
+      usdCost: failureCostDecision.usdCostStatus === "unknown" ? null : failureCostDecision.usdCost,
+      usdCostStatus: failureCostDecision.usdCostStatus,
+      pricingSource: failureCostDecision.pricingSource ?? null,
+      source: readTraceString(executionTrace, "usageSource") ?? "unknown"
+    });
+    const runReport = buildRunCompletionReport({
+      agentName: agent.name,
+      providerType: agent.providerType as HeartbeatProviderType,
+      issueIds,
       executionSummary,
       outcome: executionOutcome,
-      signals: runDigestSignals,
-      digest: runDigest
+      finalRunOutput: null,
+      trace: executionTrace,
+      digest: runDigest,
+      terminal: resolveRunTerminalPresentation({
+        internalStatus: "failed",
+        executionSummary,
+        outcome: executionOutcome,
+        trace: executionTrace,
+        errorType: classified.type
+      }),
+      cost: runCost,
+      runtimeCwd: runtimeLaunchSummary?.cwd ?? persistedRuntime.runtimeCwd ?? null,
+      errorType: classified.type,
+      errorMessage: classified.message
     });
+    const runListMessage = buildRunListMessageFromReport(runReport);
     await db
       .update(heartbeatRuns)
       .set({
@@ -1605,6 +1829,7 @@ export async function runHeartbeatForAgent(
       message: runListMessage,
       finishedAt: new Date()
     });
+    emitCanonicalResultEvent(runReport.resultSummary, runReport.finalStatus);
     await appendAuditEvent(db, {
       companyId,
       actorType: "system",
@@ -1620,11 +1845,7 @@ export async function runHeartbeatForAgent(
         issueIds,
         agentId,
         runId,
-        digest: runDigest,
-        status: "failed",
-        executionSummary,
-        outcome: executionOutcome,
-        signals: runDigestSignals
+        report: runReport
       });
     } catch (commentError) {
       await appendAuditEvent(db, {
@@ -1651,12 +1872,17 @@ export async function runHeartbeatForAgent(
       payload: {
         agentId,
         issueIds,
-        result: executionSummary,
-        message: executionSummary,
+        result: runReport.resultSummary,
+        message: runListMessage,
         errorType: classified.type,
         errorMessage: classified.message,
+        report: runReport,
         outcome: executionOutcome,
         usage: {
+          tokenInput: 0,
+          tokenOutput: 0,
+          usdCost: failureCostDecision.usdCost,
+          usdCostStatus: failureCostDecision.usdCostStatus,
           source: readTraceString(executionTrace, "usageSource") ?? "unknown"
         },
         trace: executionTrace,
@@ -2753,6 +2979,389 @@ function resolveRunDigestNextAction(input: { status: "completed" | "failed" | "s
   return "Fix listed failures/blockers and rerun.";
 }
 
+function resolveRunTerminalPresentation(input: {
+  internalStatus: "completed" | "failed" | "skipped";
+  executionSummary: string;
+  outcome: ExecutionOutcome | null;
+  trace: unknown;
+  errorType?: string | null;
+}) : RunTerminalPresentation {
+  if (isNoAssignedWorkOutcomeForReport(input.outcome)) {
+    return {
+      internalStatus: input.internalStatus,
+      publicStatus: "completed",
+      completionReason: "no_assigned_work"
+    };
+  }
+  if (input.internalStatus === "completed") {
+    return {
+      internalStatus: input.internalStatus,
+      publicStatus: "completed",
+      completionReason: "task_completed"
+    };
+  }
+  const completionReason = inferRunCompletionReason(input);
+  return {
+    internalStatus: input.internalStatus,
+    publicStatus: "failed",
+    completionReason
+  };
+}
+
+function inferRunCompletionReason(input: {
+  internalStatus: "completed" | "failed" | "skipped";
+  executionSummary: string;
+  outcome: ExecutionOutcome | null;
+  trace: unknown;
+  errorType?: string | null;
+}): RunCompletionReason {
+  const texts = [
+    input.executionSummary,
+    readTraceString(input.trace, "failureType") ?? "",
+    readTraceString(input.trace, "stderrPreview") ?? "",
+    input.errorType ?? "",
+    ...(input.outcome?.blockers ?? []).flatMap((blocker) => [blocker.code, blocker.message]),
+    ...(input.outcome?.actions ?? []).flatMap((action) => [action.type, action.detail ?? ""])
+  ];
+  const combined = texts.join("\n").toLowerCase();
+  if (
+    combined.includes("insufficient_quota") ||
+    combined.includes("billing_hard_limit_reached") ||
+    combined.includes("out of funds") ||
+    combined.includes("payment required")
+  ) {
+    return "provider_out_of_funds";
+  }
+  if (
+    combined.includes("usage limit") ||
+    combined.includes("rate limit") ||
+    combined.includes("429") ||
+    combined.includes("quota")
+  ) {
+    return combined.includes("quota") ? "provider_quota_exhausted" : "provider_rate_limited";
+  }
+  if (combined.includes("budget hard-stop")) {
+    return "budget_hard_stop";
+  }
+  if (combined.includes("already in progress") || combined.includes("skipped_overlap")) {
+    return "overlap_in_progress";
+  }
+  if (combined.includes("unauthorized") || combined.includes("auth") || combined.includes("api key")) {
+    return "auth_error";
+  }
+  if (combined.includes("contract") || combined.includes("missing_structured_output")) {
+    return "contract_invalid";
+  }
+  if (combined.includes("watchdog_timeout") || combined.includes("runtime_timeout") || combined.includes("timed out")) {
+    return "timeout";
+  }
+  if (combined.includes("cancelled")) {
+    return "cancelled";
+  }
+  if (combined.includes("enoent") || combined.includes("runtime_missing")) {
+    return "runtime_missing";
+  }
+  if (
+    combined.includes("provider unavailable") ||
+    combined.includes("no capacity") ||
+    combined.includes("unavailable") ||
+    combined.includes("http_error")
+  ) {
+    return "provider_unavailable";
+  }
+  if (input.outcome?.kind === "blocked") {
+    return "blocked";
+  }
+  return "runtime_error";
+}
+
+function isNoAssignedWorkOutcomeForReport(outcome: ExecutionOutcome | null) {
+  if (!outcome) {
+    return false;
+  }
+  if (outcome.kind !== "skipped") {
+    return false;
+  }
+  if (outcome.issueIdsTouched.length === 0) {
+    return true;
+  }
+  return outcome.actions.some((action) => action.type === "heartbeat.skip");
+}
+
+function buildRunCostSummary(input: {
+  tokenInput: number;
+  tokenOutput: number;
+  usdCost: number | null;
+  usdCostStatus: "exact" | "estimated" | "unknown";
+  pricingSource: string | null;
+  source: string | null;
+}): RunCostSummary {
+  return {
+    tokenInput: Math.max(0, input.tokenInput),
+    tokenOutput: Math.max(0, input.tokenOutput),
+    usdCost: input.usdCostStatus === "unknown" ? null : Math.max(0, input.usdCost ?? 0),
+    usdCostStatus: input.usdCostStatus,
+    pricingSource: input.pricingSource ?? null,
+    source: input.source ?? null
+  };
+}
+
+function buildRunArtifacts(input: {
+  outcome: ExecutionOutcome | null;
+  finalRunOutput?: AgentFinalRunOutput | null;
+  runtimeCwd?: string | null;
+}): RunArtifact[] {
+  const sourceArtifacts =
+    input.finalRunOutput?.artifacts && input.finalRunOutput.artifacts.length > 0
+      ? input.finalRunOutput.artifacts
+      : input.outcome?.artifacts ?? [];
+  if (sourceArtifacts.length === 0) {
+    return [];
+  }
+  const runtimeCwd = input.runtimeCwd?.trim() ? input.runtimeCwd.trim() : null;
+  return sourceArtifacts.map((artifact) => {
+    const originalPath = artifact.path.trim();
+    const isAbsolute = originalPath.startsWith("/");
+    const absolutePath = isAbsolute ? originalPath : runtimeCwd ? resolve(runtimeCwd, originalPath) : null;
+    let relativePathValue: string | null = null;
+    if (!isAbsolute) {
+      relativePathValue = originalPath;
+    } else if (runtimeCwd) {
+      const candidate = relative(runtimeCwd, originalPath);
+      relativePathValue = candidate && !candidate.startsWith("..") ? candidate : null;
+    }
+    return {
+      path: originalPath,
+      kind: artifact.kind,
+      label: describeArtifact(artifact.kind, relativePathValue ?? absolutePath ?? originalPath),
+      relativePath: relativePathValue,
+      absolutePath
+    };
+  });
+}
+
+function describeArtifact(kind: string, location: string) {
+  const normalizedKind = kind.toLowerCase();
+  if (normalizedKind.includes("folder") || normalizedKind.includes("directory") || normalizedKind === "website") {
+    return `Created ${normalizedKind.replace(/_/g, " ")} at ${location}`;
+  }
+  if (normalizedKind.includes("file")) {
+    return `Updated file ${location}`;
+  }
+  return `Produced ${normalizedKind.replace(/_/g, " ")} at ${location}`;
+}
+
+function buildRunCompletionReport(input: {
+  agentName: string;
+  providerType: HeartbeatProviderType;
+  issueIds: string[];
+  executionSummary: string;
+  outcome: ExecutionOutcome | null;
+  finalRunOutput?: AgentFinalRunOutput | null;
+  trace: unknown;
+  digest: RunDigest;
+  terminal: RunTerminalPresentation;
+  cost: RunCostSummary;
+  runtimeCwd?: string | null;
+  errorType?: string | null;
+  errorMessage?: string | null;
+}): RunCompletionReport {
+  const artifacts = buildRunArtifacts({
+    outcome: input.outcome,
+    finalRunOutput: input.finalRunOutput,
+    runtimeCwd: input.runtimeCwd
+  });
+  const fallbackSummary = sanitizeAgentSummaryCommentBody(extractNaturalRunUpdate(input.executionSummary));
+  const employeeComment =
+    input.finalRunOutput?.employee_comment?.trim() || buildLegacyEmployeeComment(fallbackSummary);
+  const results = input.finalRunOutput
+    ? input.finalRunOutput.results.filter((value): value is string => Boolean(value))
+    : input.terminal.publicStatus === "completed"
+      ? dedupeRunDigestPoints(
+          [
+            input.digest.successes[0],
+            artifacts[0]?.label,
+            input.terminal.completionReason === "no_assigned_work" ? "No assigned work was available for this run." : null
+          ].filter((value): value is string => Boolean(value)),
+          4
+        )
+      : [];
+  const errors =
+    input.finalRunOutput?.errors.filter((value): value is string => Boolean(value)) ??
+    dedupeRunDigestPoints([...input.digest.blockers, ...input.digest.failures].filter((value): value is string => Boolean(value)), 4);
+  const summary = firstMeaningfulReportLine(employeeComment) || results[0] || fallbackSummary;
+  const resultSummary =
+    results[0] ??
+    (input.terminal.publicStatus === "completed"
+      ? artifacts[0]?.label ??
+        (input.terminal.completionReason === "no_assigned_work" ? "No assigned work was available for this run." : summary)
+      : input.finalRunOutput
+        ? summary
+        : "No valid final run output was produced.");
+  const statusHeadline =
+    input.terminal.publicStatus === "completed"
+      ? `Completed: ${summary}`
+      : `Failed: ${summary}`;
+  const blockers = dedupeRunDigestPoints(errors, 4);
+  const artifactPaths = artifacts
+    .map((artifact) => artifact.relativePath ?? artifact.absolutePath ?? artifact.path)
+    .filter((value): value is string => Boolean(value));
+  const managerReport = {
+    agentName: input.agentName,
+    providerType: input.providerType,
+    whatWasDone: results[0] ?? (input.terminal.publicStatus === "completed" ? input.digest.successes[0] ?? summary : summary),
+    resultSummary,
+    artifactPaths,
+    blockers,
+    nextAction: input.digest.nextAction,
+    costLine: formatRunCostLine(input.cost)
+  };
+  const fallbackOutcome: ExecutionOutcome = input.outcome ?? {
+    kind:
+      input.terminal.completionReason === "no_assigned_work"
+        ? "skipped"
+        : input.terminal.publicStatus === "completed"
+          ? "completed"
+          : "failed",
+    issueIdsTouched: input.issueIds,
+    artifacts: artifacts.map((artifact) => ({ path: artifact.path, kind: artifact.kind })),
+    actions:
+      results.length > 0
+        ? results.slice(0, 4).map((result) => ({
+            type: input.terminal.publicStatus === "completed" ? "run.completed" : "run.failed",
+            status: input.terminal.publicStatus === "completed" ? "ok" : "error",
+            detail: result
+          }))
+        : [
+            {
+              type: input.terminal.publicStatus === "completed" ? "run.completed" : "run.failed",
+              status: input.terminal.publicStatus === "completed" ? "ok" : "error",
+              detail: managerReport.whatWasDone
+            }
+          ],
+    blockers: blockers.map((message) => ({
+      code: input.terminal.completionReason,
+      message,
+      retryable: input.terminal.publicStatus !== "completed"
+    })),
+    nextSuggestedState: input.terminal.publicStatus === "completed" ? "in_review" : "blocked"
+  };
+  return {
+    finalStatus: input.terminal.publicStatus,
+    completionReason: input.terminal.completionReason,
+    statusHeadline,
+    summary,
+    employeeComment,
+    results,
+    errors,
+    resultStatus: artifacts.length > 0 ? "reported" : "none_reported",
+    resultSummary,
+    issueIds: input.issueIds,
+    artifacts,
+    blockers,
+    nextAction: input.digest.nextAction,
+    cost: input.cost,
+    managerReport,
+    outcome: input.outcome ?? fallbackOutcome,
+    debug: {
+      persistedRunStatus: input.terminal.internalStatus,
+      failureType: readTraceString(input.trace, "failureType"),
+      errorType: input.errorType ?? null,
+      errorMessage: input.errorMessage ?? null
+    }
+  };
+}
+
+function firstMeaningfulReportLine(value: string) {
+  for (const rawLine of value.split(/\r?\n/)) {
+    const line = rawLine.replace(/^[#>*\-\s`]+/, "").trim();
+    if (line) {
+      return line;
+    }
+  }
+  return "";
+}
+
+function buildLegacyEmployeeComment(summary: string) {
+  return summary;
+}
+
+function formatRunCostLine(cost: RunCostSummary) {
+  const tokens = `${cost.tokenInput} input / ${cost.tokenOutput} output tokens`;
+  if (cost.usdCostStatus === "unknown" || cost.usdCost === null || cost.usdCost === undefined) {
+    return `${tokens}; dollar cost unknown`;
+  }
+  const qualifier = cost.usdCostStatus === "estimated" ? "estimated" : "exact";
+  return `${tokens}; ${qualifier} cost $${cost.usdCost.toFixed(6)}`;
+}
+
+function buildHumanRunUpdateCommentFromReport(report: RunCompletionReport) {
+  const lines = [
+    report.employeeComment.trim(),
+    "",
+    `- Status: ${report.finalStatus}`,
+    `- Agent: ${report.managerReport.agentName}`,
+    `- Provider: ${report.managerReport.providerType}`,
+    ""
+  ];
+  if (report.results.length > 0) {
+    lines.push("### Results", "");
+    for (const result of report.results) {
+      lines.push(`- ${result}`);
+    }
+    lines.push("");
+  }
+  lines.push("### Result", "", `- What was done: ${report.managerReport.whatWasDone}`, `- Summary: ${report.managerReport.resultSummary}`);
+  if (report.managerReport.artifactPaths.length > 0) {
+    for (const artifactPath of report.managerReport.artifactPaths) {
+      lines.push(`- Artifact: \`${artifactPath}\``);
+    }
+  }
+  lines.push("");
+  lines.push("### Cost", "");
+  lines.push(`- Input tokens: \`${report.cost.tokenInput}\``);
+  lines.push(`- Output tokens: \`${report.cost.tokenOutput}\``);
+  lines.push(`- Dollar cost: ${formatRunCostForHumanReport(report.cost)}`);
+  if (report.errors.length > 0) {
+    lines.push("");
+    lines.push("### Errors", "");
+    for (const error of report.errors) {
+      lines.push(`- ${error}`);
+    }
+  }
+  lines.push("");
+  lines.push("### Next Step", "", `- Next: ${report.managerReport.nextAction}`);
+  return lines.join("\n");
+}
+
+function formatRunCostForHumanReport(cost: RunCostSummary) {
+  if (cost.usdCostStatus === "unknown" || cost.usdCost === null || cost.usdCost === undefined) {
+    return "unknown";
+  }
+  const qualifier = cost.usdCostStatus === "estimated" ? "estimated " : "exact ";
+  return `${qualifier}\`$${cost.usdCost.toFixed(6)}\``;
+}
+
+function buildRunListMessageFromReport(report: RunCompletionReport) {
+  const resultParts =
+    report.finalStatus === "completed"
+      ? report.results.length > 0
+        ? report.results.slice(0, 2)
+        : [report.resultSummary]
+      : [];
+  const parts = [report.statusHeadline, ...resultParts];
+  if (report.artifacts.length > 0) {
+    parts.push(`Artifacts: ${report.managerReport.artifactPaths.join(", ")}`);
+  }
+  if (report.cost.usdCostStatus === "unknown") {
+    parts.push("Cost: unknown");
+  } else if (report.cost.usdCost !== null && report.cost.usdCost !== undefined) {
+    parts.push(`Cost: $${report.cost.usdCost.toFixed(6)}`);
+  }
+  const compact = parts.filter(Boolean).join(" | ");
+  return compact.length > 220 ? `${compact.slice(0, 217).trimEnd()}...` : compact;
+}
+
 function normalizeHumanUpdateBullet(value: string | null | undefined, options?: { requireActionVerb?: boolean }) {
   const normalized = summarizeRunDigestPoint(value);
   if (!normalized) {
@@ -2842,24 +3451,15 @@ async function appendRunSummaryComments(
     issueIds: string[];
     agentId: string;
     runId: string;
-    digest: RunDigest;
-    status: "completed" | "failed";
-    executionSummary: string;
-    outcome: ExecutionOutcome | null;
-    signals: RunDigestSignal[];
+    report: RunCompletionReport;
   }
 ) {
   if (input.issueIds.length === 0) {
     return;
   }
-  const commentBody = buildHumanRunUpdateComment({
-    status: input.status,
-    executionSummary: input.executionSummary,
-    outcome: input.outcome,
-    signals: input.signals
-  });
+  const commentBody = buildHumanRunUpdateCommentFromReport(input.report);
   for (const issueId of input.issueIds) {
-    const [existingRunComment] = await db
+    const existingRunComments = await db
       .select({ id: issueComments.id })
       .from(issueComments)
       .where(
@@ -2871,9 +3471,17 @@ async function appendRunSummaryComments(
           eq(issueComments.authorId, input.agentId)
         )
       )
-      .limit(1);
-    if (existingRunComment) {
-      continue;
+      .orderBy(desc(issueComments.createdAt));
+    if (existingRunComments.length > 0) {
+      await db.delete(issueComments).where(
+        and(
+          eq(issueComments.companyId, input.companyId),
+          inArray(
+            issueComments.id,
+            existingRunComments.map((comment) => comment.id)
+          )
+        )
+      );
     }
     await addIssueComment(db, {
       companyId: input.companyId,
@@ -2944,7 +3552,7 @@ function buildProviderUsageLimitBoardCommentBody(input: {
   const providerLabel = input.providerType.replace(/[_-]+/g, " ").trim();
   const normalizedProvider = providerLabel.charAt(0).toUpperCase() + providerLabel.slice(1);
   const agentStateLine = input.paused ? "Agent paused." : "Agent already paused.";
-  return `${normalizedProvider} usage limit reached.\nRun skipped.\n${agentStateLine}\nNext: resume after usage reset or billing/credential fix.`;
+  return `${normalizedProvider} usage limit reached.\nRun failed due to provider limits.\n${agentStateLine}\nNext: resume after usage reset or billing/credential fix.`;
 }
 
 async function pauseAgentForProviderUsageLimit(
@@ -4007,6 +4615,7 @@ function resolveRuntimeModelId(input: { runtimeModel?: string; stateBlob?: strin
 async function appendFinishedRunCostEntry(input: {
   db: BopoDb;
   companyId: string;
+  runId?: string | null;
   providerType: string;
   runtimeModelId: string | null;
   pricingProviderType?: string | null;
@@ -4033,25 +4642,22 @@ async function appendFinishedRunCostEntry(input: {
   const shouldPersist = input.status === "ok" || input.status === "failed";
   const runtimeUsdCost = Math.max(0, input.runtimeUsdCost ?? 0);
   const pricedUsdCost = Math.max(0, pricingDecision.usdCost);
-  const shouldUseRuntimeUsdCost = pricedUsdCost <= 0 && runtimeUsdCost > 0;
-  const baseUsdCost = shouldUseRuntimeUsdCost ? runtimeUsdCost : pricedUsdCost;
-  const effectiveUsdCost =
-    baseUsdCost > 0
-      ? baseUsdCost
-      : input.status === "failed" && input.failureType !== "spawn_error"
-        ? 0.000001
-        : 0;
+  const usdCostStatus: "exact" | "estimated" | "unknown" =
+    runtimeUsdCost > 0 ? "exact" : pricedUsdCost > 0 ? "estimated" : "unknown";
+  const effectiveUsdCost = usdCostStatus === "exact" ? runtimeUsdCost : usdCostStatus === "estimated" ? pricedUsdCost : 0;
   const effectivePricingSource = pricingDecision.pricingSource;
   const shouldPersistWithUsage =
-    shouldPersist && (input.tokenInput > 0 || input.tokenOutput > 0 || effectiveUsdCost > 0);
+    shouldPersist && (input.tokenInput > 0 || input.tokenOutput > 0 || usdCostStatus !== "unknown");
   if (shouldPersistWithUsage) {
     await appendCost(input.db, {
       companyId: input.companyId,
+      runId: input.runId ?? null,
       providerType: input.providerType,
       runtimeModelId: input.runtimeModelId,
       pricingProviderType: pricingDecision.pricingProviderType,
       pricingModelId: pricingDecision.pricingModelId,
       pricingSource: effectivePricingSource,
+      usdCostStatus,
       tokenInput: input.tokenInput,
       tokenOutput: input.tokenOutput,
       usdCost: effectiveUsdCost.toFixed(6),
@@ -4064,7 +4670,8 @@ async function appendFinishedRunCostEntry(input: {
   return {
     ...pricingDecision,
     pricingSource: effectivePricingSource,
-    usdCost: effectiveUsdCost
+    usdCost: effectiveUsdCost,
+    usdCostStatus
   };
 }
 
