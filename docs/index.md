@@ -12,6 +12,8 @@ This documentation set covers Bopo from two angles:
 - Glossary: [`glossary.md`](./glossary.md)
 - Coverage matrix: [`docs-coverage-matrix.md`](./docs-coverage-matrix.md)
 
+Treat [`docs-coverage-matrix.md`](./docs-coverage-matrix.md) as the canonical source for documentation completeness status, and update it in the same PR when adding or changing major system behavior.
+
 ## Product Docs
 
 - [`product/index.md`](./product/index.md)

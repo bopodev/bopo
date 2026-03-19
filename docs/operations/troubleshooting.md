@@ -56,6 +56,10 @@ Reduce mean time to diagnose failures across API, runtime, and UI surfaces.
   - invalid runtime state blobs, malformed JSON payloads.
 - Startup warnings:
   - codex preflight warnings and default-company resolution warnings.
+- Observability artifact access:
+  - verify `GET /observability/heartbeats/:runId/artifacts/:artifactIndex/download` returns a file and the artifact path stays inside company workspace roots.
+- Memory observability:
+  - verify `GET /observability/memory` and `GET /observability/memory/:agentId/context-preview` responses match expected company and project scope.
 
 ## Recovery Patterns
 
@@ -69,4 +73,6 @@ Reduce mean time to diagnose failures across API, runtime, and UI surfaces.
 
 - Codex-specific: [`../codex-connection-debugging.md`](../codex-connection-debugging.md)
 - Index: [`runbooks-index.md`](./runbooks-index.md)
+- Workspace path surface: [`workspace-path-surface.md`](./workspace-path-surface.md)
+- Attachment storage: [`attachments-storage-runbook.md`](./attachments-storage-runbook.md)
 

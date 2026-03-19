@@ -30,9 +30,11 @@ Gate reference: [`docs/release-gate-checklist.md`](./release-gate-checklist.md)
    - Highlight breaking or config-affecting changes.
 4. **Version and tag**
    - Apply semver bump according to policy.
+   - Ensure workspace package versions are synchronized.
    - Create annotated release tag.
 5. **Publish artifacts**
-   - Publish packages/artifacts per workspace scripts.
+   - Dry-run publish sequence: `pnpm publish:all:dry`.
+   - Publish packages/artifacts: `pnpm publish:all`.
 6. **Post-release validation**
    - Verify install/start flow.
    - Verify critical routes and heartbeat behavior.
@@ -51,4 +53,5 @@ Gate reference: [`docs/release-gate-checklist.md`](./release-gate-checklist.md)
 
 - Gate checklist: [`release-gate-checklist.md`](./release-gate-checklist.md)
 - Versioning policy: [`release/versioning-and-changelog.md`](./release/versioning-and-changelog.md)
+- Changelog: [`../CHANGELOG.md`](../CHANGELOG.md)
 

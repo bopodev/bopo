@@ -32,10 +32,13 @@ Provide an end-to-end operating sequence for projects, issues, and goals.
    - Run sweeps for broader progress.
 5. **Review outcomes**
    - Inspect `runs` and `trace-logs`.
+   - Download/inspect run artifacts from run details when output quality needs verification.
    - Move successful issues to review/done, and unblock failures.
 6. **Close governance actions**
    - Resolve pending approvals in `governance`/`inbox`.
    - Confirm side effects were applied (or intentionally blocked).
+7. **Clear attention queue**
+   - Review `inbox` attention items, acknowledge what is understood, dismiss intentional deferrals, and resolve completed board actions.
 
 ## Recommended Project Structure
 
@@ -51,6 +54,9 @@ Provide an end-to-end operating sequence for projects, issues, and goals.
   - working directory and environment variables,
   - governance blocks (pending approval),
   - budget or timeout constraints.
+- If artifacts are missing from run detail:
+  - verify the run finished and produced artifacts,
+  - confirm artifact paths remain inside company workspace roots.
 - Escalate using operations docs:
   - [`../operations/troubleshooting.md`](../operations/troubleshooting.md)
   - [`../operations/runbooks-index.md`](../operations/runbooks-index.md)

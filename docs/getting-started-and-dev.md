@@ -8,11 +8,12 @@ For the full docs map, start at [`docs/index.md`](./index.md).
 
 ### Monorepo Layout
 
-- `apps/web`: Next.js 16 web client.
-- `apps/api`: Express API and realtime websocket hub.
-- `packages/contracts`: shared schemas and realtime contracts.
-- `packages/db`: PGlite/Drizzle schema and repositories.
-- `packages/agent-sdk`: runtime adapters and execution plumbing.
+- `apps/web`: Next.js 16 web client ([`apps/web/README.md`](../apps/web/README.md)).
+- `apps/api`: Express API and realtime websocket hub ([`apps/api/README.md`](../apps/api/README.md)).
+- `packages/contracts`: shared schemas and realtime contracts ([`packages/contracts/README.md`](../packages/contracts/README.md)).
+- `packages/db`: PGlite/Drizzle schema and repositories ([`packages/db/README.md`](../packages/db/README.md)).
+- `packages/agent-sdk`: runtime adapters and execution plumbing ([`packages/agent-sdk/README.md`](../packages/agent-sdk/README.md)).
+- `packages/adapters`: provider implementations ([`packages/adapters/README.md`](../packages/adapters/README.md)).
 - `packages/ui` and `packages/config`: shared UI/config.
 
 ### Runtime Flow
@@ -97,8 +98,10 @@ For full VPS guidance, see [`operations/deployment.md`](./operations/deployment.
 
 ## Command Reference
 
-- `pnpm dev` - run workspace dev tasks
-- `pnpm start` - run workspace apps in production mode
+- `pnpm dev` - run workspace dev tasks using `scripts/dev-runner.mjs`
+- `pnpm dev:full` - run raw `turbo dev` without the dev wrapper
+- `pnpm start` - run workspace apps in production mode using `scripts/start-runner.mjs`
+- `pnpm start:quiet` - run production apps with quieter Turbo log output
 - `pnpm onboard` - run local onboarding flow with defaults plus required company naming on first run
 - `pnpm doctor` - run local environment checks
 - `pnpm typecheck` - run TypeScript checks
@@ -107,19 +110,32 @@ For full VPS guidance, see [`operations/deployment.md`](./operations/deployment.
 - `pnpm test:coverage` - run tests with coverage thresholds
 - `pnpm test:e2e` - run Playwright smoke tests
 - `pnpm build` - build all packages/apps
+- `pnpm clear` - stop local Bopo runtime processes, reset instance storage, clear onboarding env keys, and reinitialize API DB
+- `pnpm smoke:vps` - run post-deploy smoke checks against configured VPS endpoints
+- `pnpm publish:all` - build and publish public packages
+- `pnpm publish:all:dry` - dry-run publish sequence for release verification
 
 ## Core Routes
 
 - `/issues`
 - `/dashboard`
+- `/projects`
 - `/goals`
 - `/agents`
 - `/org-chart`
+- `/office-space`
 - `/governance`
 - `/inbox`
+- `/runs`
+- `/plugins`
+- `/templates`
+- `/models`
 - `/trace-logs`
 - `/costs`
 - `/settings`
+- `/settings/templates`
+- `/settings/plugins`
+- `/settings/models`
 
 `/` redirects to `/issues`.
 
@@ -129,6 +145,22 @@ Issue creation requires a real project in the selected company:
 
 1. Create a project via `New Project`.
 2. Create issues and assign that project in the issue modal.
+
+## Wrapper Script Behavior
+
+- `pnpm dev` (`scripts/dev-runner.mjs`):
+  - finds open ports near `WEB_PORT` (`4010`) and `API_PORT` (`4020`),
+  - injects `NEXT_PUBLIC_API_URL=http://127.0.0.1:<apiPort>`,
+  - sets `BOPO_SKIP_CODEX_PREFLIGHT=1` for local dev startup ergonomics.
+- `pnpm start` (`scripts/start-runner.mjs`):
+  - also auto-selects open ports near `WEB_PORT`/`API_PORT`,
+  - injects `NEXT_PUBLIC_API_URL` for web runtime,
+  - optionally auto-opens browser unless disabled (`BOPO_OPEN_BROWSER=0`).
+- `pnpm clear` (`scripts/clear.mjs`):
+  - detects and stops local Bopo processes bound to runtime ports,
+  - removes the active instance root and optional external DB path,
+  - clears onboarding defaults from `.env`,
+  - runs `pnpm --filter bopodev-api db:init`.
 
 ## Testing and Release Gates
 

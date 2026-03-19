@@ -30,6 +30,8 @@ Each release note should include:
 3. operational and config impacts,
 4. migration or rollback notes if relevant.
 
+Keep `CHANGELOG.md` updated in the same PR whenever release-impacting behavior changes.
+
 ## Recommended Release Note Structure
 
 - **Summary**
@@ -43,6 +45,7 @@ Each release note should include:
 - commit history in release branch,
 - changesets or package version diffs,
 - issue/goal references for user-visible impact.
+- docs coverage matrix (`docs/docs-coverage-matrix.md`) for documentation-impacting changes.
 
 ## Related Pages
 

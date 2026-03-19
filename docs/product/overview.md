@@ -18,7 +18,8 @@ Provide one place to define goals, organize work, run agents, manage approvals, 
 - **Execution**: agent lifecycle, runtime configuration, and heartbeat runs.
 - **Governance**: explicit approvals for sensitive actions.
 - **Observability**: run diagnostics, logs, and cost signals.
-- **Realtime coordination**: governance + office-space state streamed to clients.
+- **Templates and plugins**: reusable operating patterns and extensibility.
+- **Realtime coordination**: governance, office-space, heartbeat-runs, and attention state streamed to clients.
 
 ## UI Section Map
 
@@ -37,6 +38,9 @@ Primary sections in the app:
 - `trace-logs`
 - `costs`
 - `settings`
+- `settings/templates`
+- `settings/plugins`
+- `settings/models`
 
 ## High-Level Workflow
 
@@ -46,6 +50,7 @@ Primary sections in the app:
 4. Hire/configure agents with provider and runtime policy.
 5. Run heartbeats manually or via sweeps.
 6. Resolve approvals and inspect outcomes in logs/runs/costs.
+7. Promote reusable patterns through templates/plugins and monitor attention cues in inbox flows.
 
 ## Related Pages
 

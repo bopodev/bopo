@@ -1,38 +1,49 @@
 # Documentation Coverage Matrix
 
-This matrix tracks how Bopo functionality maps to documentation areas and where coverage still needs to expand.
+This matrix tracks how Bopo functionality maps to documentation today.
+
+Status values:
+
+- `covered`: has dedicated docs and active cross-links.
+- `partial`: documented, but key details are split or too thin.
+- `needs-refresh`: docs exist, but drift risk is elevated after recent changes.
+- `missing`: no effective documentation.
 
 ## Product Surface Coverage
 
-| Functional area | Primary UI sections | Current docs | Coverage status | Planned docs |
+| Functional area | Primary UI sections | Current docs | Coverage status | Notes |
 | --- | --- | --- | --- | --- |
-| Company and project setup | Dashboard, Projects, Issues | `README.md`, `docs/getting-started-and-dev.md` | Partial | `docs/product/overview.md`, `docs/product/daily-workflows.md` |
-| Issue planning and execution | Issues, Runs | `README.md` | Partial | `docs/product/daily-workflows.md`, `docs/product/agents-and-runs.md` |
-| Goal alignment | Goals | `docs/core-parity-checklist.md` | Partial | `docs/product/daily-workflows.md`, `docs/developer/domain-model.md` |
-| Agent lifecycle and runtime config | Agents, Organization, Settings | `README.md`, `docs/adapters/overview.md` | Partial | `docs/product/agents-and-runs.md`, `docs/developer/configuration-reference.md` |
-| Governance and approval inbox | Governance, Inbox | `docs/core-parity-checklist.md` | Partial | `docs/product/governance-and-approvals.md` |
-| Realtime office coordination | Office Space, Inbox | none dedicated | Missing | `docs/product/office-space-and-realtime.md` |
-| Observability and costs | Runs, Logs, Costs | `README.md`, `docs/codex-connection-debugging.md` | Partial | `docs/product/agents-and-runs.md`, `docs/operations/troubleshooting.md` |
+| Company, project, and issue planning | `dashboard`, `projects`, `issues` | `README.md`, `docs/product/overview.md`, `docs/product/daily-workflows.md` | covered | Keep route map aligned with app sections. |
+| Goal alignment | `goals` | `docs/product/daily-workflows.md`, `docs/developer/domain-model.md` | covered | Product + data model coverage exists. |
+| Agent lifecycle and runs | `agents`, `runs`, `settings` | `docs/product/agents-and-runs.md`, `docs/developer/configuration-reference.md` | covered | Runtime/provider details documented. |
+| Governance and inbox operations | `governance`, `inbox` | `docs/product/governance-and-approvals.md`, `docs/developer/api-reference.md` | covered | Includes approval action catalog and outcomes. |
+| Office-space and realtime behavior | `office-space`, `inbox` | `docs/product/office-space-and-realtime.md` | needs-refresh | Realtime channel list changed recently; keep synced with server bootstrap channels. |
+| Observability, logs, costs, and artifacts | `runs`, `trace-logs`, `costs` | `docs/product/agents-and-runs.md`, `docs/developer/api-reference.md`, `docs/operations/troubleshooting.md` | needs-refresh | Ensure artifact download and memory endpoints stay current. |
+| Templates and plugin workflows | `templates`, `plugins`, `settings/templates`, `settings/plugins` | `docs/product/plugins-and-integrations.md`, `docs/developer/plugin-system.md`, `docs/developer/plugin-authoring.md` | partial | Product-level template workflow depth is still light. |
+| Model management | `models`, `settings/models` | `docs/developer/configuration-reference.md`, `docs/developer/api-reference.md` | partial | Add richer operator guidance over time if UX expands. |
 
 ## Developer and Platform Coverage
 
-| Platform area | Current docs | Coverage status | Planned docs |
+| Platform area | Current docs | Coverage status | Notes |
 | --- | --- | --- | --- |
-| Local onboarding and commands | `docs/getting-started-and-dev.md` | Good | Keep and cross-link |
-| Adapter architecture and authoring | `docs/adapters/overview.md`, `docs/adapter-authoring.md` | Good | Keep and cross-link |
-| System architecture overview | `docs/getting-started-and-dev.md` | Partial | `docs/developer/architecture.md` |
-| Domain model and canonical terms | `packages/contracts/src/index.ts` (code only) | Missing | `docs/glossary.md`, `docs/developer/domain-model.md` |
-| API endpoint reference | route code only | Missing | `docs/developer/api-reference.md` |
-| Environment and runtime configuration | partial in `docs/getting-started-and-dev.md`, `.env.example` | Partial | `docs/developer/configuration-reference.md` |
-| Contribution workflow | none dedicated | Missing | `docs/developer/contributing.md` |
+| Local onboarding and command flow | `docs/getting-started-and-dev.md`, `CONTRIBUTING.md` | needs-refresh | Keep command list in sync with root scripts and wrappers. |
+| Architecture and runtime boundaries | `docs/developer/architecture.md`, `docs/getting-started-and-dev.md` | covered | Includes API/web/shared package boundaries. |
+| Domain model and glossary | `docs/developer/domain-model.md`, `docs/glossary.md` | covered | Canonical vocabulary exists. |
+| API route and contract map | `docs/developer/api-reference.md` | needs-refresh | Must stay aligned with mounted routers and new endpoints. |
+| Realtime and websocket channels | `docs/product/office-space-and-realtime.md`, `docs/developer/api-reference.md` | needs-refresh | Keep channel families aligned with `apps/api/src/server.ts`. |
+| Environment/configuration reference | `docs/developer/configuration-reference.md` | covered | Good baseline with scheduler/runtime/auth settings. |
+| Workspace resolution/path policy | `docs/developer/workspace-resolution-reference.md`, `docs/operations/workspace-path-surface.md`, `docs/operations/workspace-migration-and-backfill-runbook.md` | covered | Strong policy + runbook coverage. |
+| Contribution process | `CONTRIBUTING.md`, `docs/developer/contributing.md` | covered | Root and developer docs both present. |
+| App/package local entrypoint docs | none under `apps/*` or `packages/*` | missing | Add focused `README.md` files in key app/package roots. |
 
 ## Operations and Release Coverage
 
-| Operations area | Current docs | Coverage status | Planned docs |
+| Operations area | Current docs | Coverage status | Notes |
 | --- | --- | --- | --- |
-| Codex-specific runbook | `docs/codex-connection-debugging.md` | Good (narrow scope) | Keep and link from runbooks index |
-| General troubleshooting and incident triage | none central | Missing | `docs/operations/troubleshooting.md`, `docs/operations/runbooks-index.md` |
-| Deployment guidance | none dedicated | Missing | `docs/operations/deployment.md` |
-| Release workflow | `docs/getting-started-and-dev.md` references only | Missing | `docs/release-process.md`, `docs/release-gate-checklist.md` |
-| Versioning and changelog policy | none dedicated | Missing | `docs/release/versioning-and-changelog.md` |
+| General troubleshooting and incident triage | `docs/operations/troubleshooting.md`, `docs/operations/runbooks-index.md` | covered | Includes first-response checklist and symptom map. |
+| Deployment and scaling | `docs/operations/deployment.md` | covered | Includes scheduler role and topology guidance. |
+| Workspace/path and attachment safety runbooks | `docs/operations/workspace-path-surface.md`, `docs/operations/workspace-migration-and-backfill-runbook.md`, `docs/operations/attachments-storage-runbook.md` | covered | Centralized path hardening coverage. |
+| Codex-specific runtime debugging | `docs/codex-connection-debugging.md` | covered | Narrow, intentionally specific runbook. |
+| Release workflow and gates | `docs/release-process.md`, `docs/release-gate-checklist.md`, `docs/release/versioning-and-changelog.md` | covered | Keep changelog entries synchronized with releases. |
+| Release notes/changelog completeness | `CHANGELOG.md` | needs-refresh | Verify latest release entries are represented consistently. |
 

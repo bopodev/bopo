@@ -41,6 +41,7 @@ Delegated hiring traceability:
 
 - Delegated hiring requests can include typed intent and source issue linkage.
 - Hire approvals preserve requester/source metadata so operators can trace issue -> approval -> hired agent.
+- Approval comments can be persisted as part of resolution context, so operators should provide concise rationale on high-impact decisions.
 
 ## Governance Surfaces
 

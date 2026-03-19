@@ -16,6 +16,7 @@ This matrix defines the expected tenant boundary for API routes where `company` 
 | `/issues` | company-scoped | `requireCompanyScope` + permission checks | Attachments/comments/activity are company-filtered. |
 | `/goals` | company-scoped | `requireCompanyScope` + permission checks | Goal/project/parent checks enforce same company. |
 | `/agents` | company-scoped | `requireCompanyScope` + permission/board checks | Lifecycle and writes require explicit authz. |
+| `/attention` | company-scoped | `requireCompanyScope` | Attention queue items are actor-aware but company-filtered. |
 | `/governance` | company-scoped | `requireCompanyScope` + permission checks | Approval workflows scoped by company. |
 | `/heartbeats` | company-scoped | `requireCompanyScope` + permission checks | Run operations use company-scoped IDs. |
 | `/observability` | company-scoped | `requireCompanyScope` | Logs/costs/runs are company-filtered. |

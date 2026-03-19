@@ -17,6 +17,8 @@ Give contributors and operators one reference for key environment variables and 
 | --- | --- | --- | --- |
 | `NEXT_PUBLIC_API_URL` | Web | `http://localhost:4020` | Base URL used by web client. |
 | `PORT` | API | `4020` | API server port. |
+| `API_PORT` | Dev/start wrappers | `4020` | Preferred API port for `pnpm dev` and `pnpm start`; wrapper falls forward to next free port if occupied. |
+| `WEB_PORT` | Dev/start wrappers | `4010` | Preferred web port for `pnpm dev` and `pnpm start`; wrapper falls forward to next free port if occupied. |
 | `NEXT_PUBLIC_DEFAULT_COMPANY_ID` | Web | `demo-company` fallback in code | Preferred company for initial client load. |
 | `BOPO_DEFAULT_COMPANY_ID` | API/CLI | unset | Default company for scheduler or startup behavior. |
 | `BOPO_DEFAULT_COMPANY_NAME` | CLI seed | unset | Written during onboarding seed. |
@@ -136,6 +138,8 @@ These variables are required for control-plane aware skill execution and approva
 | Variable | Default | Notes |
 | --- | --- | --- |
 | `BOPO_OPEN_BROWSER` | `1` | Start runner browser open behavior; set `0` to disable. |
+| `BOPO_OPEN_BROWSER_MAX_WAIT_MS` | `45000` | Max time `start-runner` waits for web readiness before skipping browser auto-open. |
+| `BOPO_OPEN_BROWSER_RETRY_MS` | `500` | Poll interval used by `start-runner` while waiting for web readiness. |
 | `BOPO_ALLOW_LOCAL_BOARD_FALLBACK` | enabled outside production | Controls request actor fallback behavior for local dev flows. |
 | `BOPO_BACKFILL_DRY_RUN` | `1` in check scripts | Used by project workspace path backfill tooling. |
 

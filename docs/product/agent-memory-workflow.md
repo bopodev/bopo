@@ -73,6 +73,7 @@ Use observability memory routes to inspect generated files without shell access:
 
 - `GET /observability/memory`
 - `GET /observability/memory/:agentId/file?path=...`
+- `GET /observability/memory/:agentId/context-preview?projectIds=...&query=...`
 
 Recommended debugging flow:
 

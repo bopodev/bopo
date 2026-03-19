@@ -34,6 +34,24 @@ Most mutating and company-scoped routes require:
 - `GET /health`
   - Returns API health, DB readiness, and runtime command health.
 
+## Authentication
+
+- `POST /auth/actor-token`
+  - Issues signed actor tokens when token auth is configured.
+  - Requires `BOPO_AUTH_TOKEN_SECRET`.
+  - In authenticated modes, requires matching `x-bopo-bootstrap-secret` when `BOPO_AUTH_BOOTSTRAP_SECRET` is configured.
+
+## Attention
+
+- `GET /attention`
+- `POST /attention/:itemKey/seen`
+- `POST /attention/:itemKey/acknowledge`
+- `POST /attention/:itemKey/dismiss`
+- `POST /attention/:itemKey/undismiss`
+- `POST /attention/:itemKey/resolve`
+
+All attention routes are company-scoped and publish realtime updates.
+
 ## Companies
 
 - `GET /companies`
@@ -112,6 +130,39 @@ Hiring request lineage:
 - `POST /governance/inbox/:approvalId/undismiss`
 - `POST /governance/resolve`
 
+## Heartbeats
+
+- `POST /heartbeats/run-agent`
+- `POST /heartbeats/:runId/stop`
+- `POST /heartbeats/:runId/resume`
+- `POST /heartbeats/:runId/redo`
+- `POST /heartbeats/sweep`
+- `GET /heartbeats/queue`
+
+Queue route supports filters: `status`, `agentId`, `jobType`, `limit`.
+
+## Observability
+
+- `GET /observability/logs`
+- `GET /observability/costs`
+- `GET /observability/models/pricing`
+- `PUT /observability/models/pricing`
+- `GET /observability/heartbeats`
+- `GET /observability/heartbeats/:runId`
+- `GET /observability/heartbeats/:runId/messages`
+- `GET /observability/heartbeats/:runId/artifacts/:artifactIndex/download`
+- `GET /observability/plugins/runs` (supports `pluginId`, `runId`, `limit`)
+- `GET /observability/memory` (supports `agentId` and `limit`)
+- `GET /observability/memory/:agentId/file?path=...`
+- `GET /observability/memory/:agentId/context-preview` (supports `projectIds`, `query`)
+
+Mutation permission:
+
+- `PUT /observability/models/pricing` requires `observability:write`.
+
+For memory semantics, see [`../product/agent-memory-workflow.md`](../product/agent-memory-workflow.md).
+For artifact storage/path guardrails, see [`../operations/workspace-path-surface.md`](../operations/workspace-path-surface.md).
+
 ## Plugins
 
 - `GET /plugins`
@@ -124,36 +175,35 @@ Mutation permission:
 
 - Plugin install/config mutation routes require `plugins:write`.
 
-## Heartbeats
+## Templates
 
-- `POST /heartbeats/run-agent`
-- `POST /heartbeats/:runId/stop`
-- `POST /heartbeats/:runId/resume`
-- `POST /heartbeats/:runId/redo`
-- `POST /heartbeats/sweep`
-
-## Observability
-
-- `GET /observability/logs`
-- `GET /observability/costs`
-- `GET /observability/heartbeats`
-- `GET /observability/heartbeats/:runId`
-- `GET /observability/heartbeats/:runId/messages`
-- `GET /observability/plugins/runs` (supports `pluginId`, `runId`, `limit`)
-- `GET /observability/memory` (supports `agentId` and `limit` query filters)
-- `GET /observability/memory/:agentId/file?path=...`
+- `GET /templates`
+- `POST /templates`
+- `PUT /templates/:templateId`
+- `DELETE /templates/:templateId`
+- `POST /templates/:templateId/preview`
+- `POST /templates/:templateId/apply`
+- `POST /templates/import`
+- `GET /templates/:templateId/export`
 
 Mutation permission:
 
-- `PUT /observability/models/pricing` requires `observability:write`.
-
-For endpoint usage patterns and memory semantics, see
-[`../product/agent-memory-workflow.md`](../product/agent-memory-workflow.md).
+- Template create/update/delete/import/apply routes require `templates:write`.
 
 ## Realtime
 
 - Websocket endpoint: `/realtime`
-- Channel families include governance and office-space updates.
+- Bootstrap channel families:
+  - `governance`
+  - `office-space`
+  - `heartbeat-runs`
+  - `attention`
+
+Operational notes:
+
+- Realtime payloads are company-scoped.
+- Clients should apply snapshot first, then incremental updates.
+- For troubleshooting reconnect/scope issues, use [`../operations/troubleshooting.md`](../operations/troubleshooting.md).
 
 ## Error Handling
 

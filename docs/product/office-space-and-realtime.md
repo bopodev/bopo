@@ -21,7 +21,9 @@ Explain how live updates are delivered and how to interpret office occupancy sta
 Current channel families include:
 
 - governance updates (approval lifecycle),
-- office-space updates (occupancy and status).
+- office-space updates (occupancy and status),
+- heartbeat-runs updates (live execution status),
+- attention updates (board action queue lifecycle).
 
 Channel behavior:
 
@@ -60,6 +62,7 @@ Occupant status includes:
 - Company scope mismatch in websocket headers or query params.
 - Client filtering events before snapshot application.
 - Dismiss/seen inbox race conditions when multiple operators act concurrently.
+- Missing actor token in authenticated modes causing websocket subscription rejection.
 
 ## Related Pages
 
