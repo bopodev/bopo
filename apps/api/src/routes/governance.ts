@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import {
+  addIssueComment,
   appendAuditEvent,
   clearApprovalInboxDismissed,
   countPendingApprovalRequests,
@@ -209,6 +210,36 @@ export function createGovernanceRouter(ctx: AppContext) {
       if (approval.requestedByAgentId) {
         await publishOfficeOccupantForAgent(ctx.db, ctx.realtimeHub, req.companyId!, approval.requestedByAgentId);
       }
+      if (parsed.data.status === "approved" && resolution.action === "hire_agent" && resolution.execution.applied) {
+        const hireContext = parseHireApprovalCommentContext(approval.payloadJson);
+        if (hireContext.issueIds.length > 0) {
+          const commentBody = buildHireApprovalIssueComment(hireContext.roleLabel);
+          try {
+            for (const issueId of hireContext.issueIds) {
+              await addIssueComment(ctx.db, {
+                companyId: req.companyId!,
+                issueId,
+                body: commentBody,
+                authorType: "system",
+                authorId: null
+              });
+            }
+          } catch (error) {
+            await appendAuditEvent(ctx.db, {
+              companyId: req.companyId!,
+              actorType: "system",
+              actorId: null,
+              eventType: "governance.hire_approval_comment_failed",
+              entityType: "approval_request",
+              entityId: approval.id,
+              payload: {
+                error: String(error),
+                issueIds: hireContext.issueIds
+              }
+            });
+          }
+        }
+      }
     }
 
     if (resolution.execution.entityType === "agent" && resolution.execution.entityId) {
@@ -231,11 +262,58 @@ function resolveAuditActor(actor: { type: "board" | "member" | "agent"; id: stri
   return { actorType: "human" as const, actorId: actor.id };
 }
 
-function parsePayload(payloadJson: string) {
+function parsePayload(payloadJson: string): Record<string, unknown> {
   try {
     const parsed = JSON.parse(payloadJson) as unknown;
-    return typeof parsed === "object" && parsed !== null ? parsed : {};
+    return typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : {};
   } catch {
     return {};
   }
+}
+
+function parseHireApprovalCommentContext(payloadJson: string) {
+  const payload = parsePayload(payloadJson);
+  const issueIds = normalizeSourceIssueIds(
+    typeof payload.sourceIssueId === "string" ? payload.sourceIssueId : undefined,
+    Array.isArray(payload.sourceIssueIds) ? payload.sourceIssueIds : undefined
+  );
+  const roleLabel = resolveHireRoleLabel(payload);
+  return { issueIds, roleLabel };
+}
+
+function normalizeSourceIssueIds(sourceIssueId?: string, sourceIssueIds?: unknown[]) {
+  const normalized = new Set<string>();
+  for (const entry of [sourceIssueId, ...(sourceIssueIds ?? [])]) {
+    if (typeof entry !== "string") {
+      continue;
+    }
+    const trimmed = entry.trim();
+    if (trimmed.length > 0) {
+      normalized.add(trimmed);
+    }
+  }
+  return Array.from(normalized);
+}
+
+function resolveHireRoleLabel(payload: Record<string, unknown>) {
+  const title = typeof payload.title === "string" ? payload.title.trim() : "";
+  if (title.length > 0) {
+    return title;
+  }
+  const role = typeof payload.role === "string" ? payload.role.trim() : "";
+  if (role.length > 0) {
+    return role;
+  }
+  const roleKey = typeof payload.roleKey === "string" ? payload.roleKey.trim() : "";
+  if (roleKey.length > 0) {
+    return roleKey.replace(/_/g, " ");
+  }
+  return null;
+}
+
+function buildHireApprovalIssueComment(roleLabel: string | null) {
+  if (roleLabel) {
+    return `Approved hiring of ${roleLabel}.`;
+  }
+  return "Approved hiring request.";
 }

@@ -555,6 +555,9 @@ describe("BopoDev core workflows", () => {
         comment.runId === latestRecipientRun?.id && comment.authorType === "agent" && comment.authorId === recipientAgent.id
     );
     expect((runSummaryComment?.body ?? "").length).toBeGreaterThan(0);
+    expect(runSummaryComment?.body ?? "").toContain("## Update");
+    expect(runSummaryComment?.body ?? "").toContain("Completed the run");
+    expect(runSummaryComment?.body ?? "").toContain("- ");
     expect(runSummaryComment?.body).not.toContain("{\"summary\"");
   });
 
@@ -872,6 +875,7 @@ describe("BopoDev core workflows", () => {
       managerAgentId: ceoId,
       role: "Engineer",
       name: "Execution Worker",
+      sourceIssueId: issueId,
       providerType: "shell",
       heartbeatCron: "*/5 * * * *",
       monthlyBudgetUsd: 40,
@@ -939,6 +943,7 @@ describe("BopoDev core workflows", () => {
     expect(commentsResponse.status).toBe(200);
     const commentBodies = (commentsResponse.body.data as Array<{ body: string }>).map((comment) => comment.body);
     expect(commentBodies).toContain("CEO intake: approved scope and preparing to hire execution support.");
+    expect(commentBodies).toContain("Approved hiring of Engineer.");
     expect(commentBodies).toContain("CEO handoff: assigning to Execution Worker for implementation.");
     expect(commentBodies).toContain("Worker update: implementation started.");
   });
@@ -1612,6 +1617,78 @@ describe("BopoDev core workflows", () => {
     const issueRows = await listIssues(db, companyId);
     const targetIssue = issueRows.find((row) => row.id === issue.id);
     expect(targetIssue?.isClaimed).toBe(false);
+
+    const issueComments = await listIssueComments(db, companyId, issue.id);
+    const runSummaryComment = issueComments.find(
+      (comment) => comment.runId === runId && comment.authorType === "agent" && comment.authorId === failingAgent.id
+    );
+    expect(runSummaryComment?.body ?? "").toContain("## Update");
+    expect(runSummaryComment?.body ?? "").toContain("currently blocked");
+    expect(runSummaryComment?.body ?? "").toContain("- ");
+
+    const logsResponse = await request(app).get("/observability/logs").set("x-company-id", companyId);
+    expect(logsResponse.status).toBe(200);
+    const digestEvent = (logsResponse.body.data as Array<{ entityId: string; eventType: string; payload?: Record<string, unknown> }>).find(
+      (event) => event.entityId === runId && event.eventType === "heartbeat.run_digest"
+    );
+    expect(digestEvent).toBeTruthy();
+    expect(Array.isArray(digestEvent?.payload?.failures)).toBe(true);
+    expect((digestEvent?.payload?.failures as unknown[]).length).toBeGreaterThan(0);
+  });
+
+  it("builds run comments from digest instead of trailing noisy lines", async () => {
+    const project = await createProject(db, {
+      companyId,
+      name: "Digest comments",
+      description: "Comment should not mirror trailing runtime noise.",
+      workspaceLocalPath: tempDir
+    });
+    const now = new Date();
+    const dueCron = `${now.getMinutes()} ${now.getHours()} * * *`;
+    const agent = await createAgent(db, {
+      companyId,
+      role: "Engineer",
+      name: "Digest Worker",
+      providerType: "shell",
+      heartbeatCron: dueCron,
+      monthlyBudgetUsd: "20.0000",
+      initialState: {
+        runtime: {
+          command: process.execPath,
+          cwd: tempDir,
+          args: [
+            "-e",
+            "console.log(JSON.stringify({summary:'Created folders for the agent. Added memory files.',tokenInput:3,tokenOutput:2,usdCost:0.0001})); console.log('command: /bin/zsh -lc \"mkdir -p /Users/example/workspaces/foo\"');"
+          ]
+        }
+      }
+    });
+    const issue = await createIssue(db, {
+      companyId,
+      projectId: project.id,
+      title: "Digest summary source",
+      assigneeAgentId: agent.id
+    });
+
+    const runId = await runHeartbeatForAgent(db, companyId, agent.id);
+    expect(runId).toBeTruthy();
+    const heartbeatRows = await listHeartbeatRuns(db, companyId);
+    const latestRun = heartbeatRows.find((row) => row.id === runId);
+    expect((latestRun?.message ?? "").toLowerCase()).toContain("created folders for the agent");
+    expect((latestRun?.message ?? "").toLowerCase()).toContain("added memory files");
+    expect((latestRun?.message ?? "").toLowerCase()).not.toContain("command:");
+    expect((latestRun?.message ?? "").toLowerCase()).not.toContain("/users/");
+
+    const issueComments = await listIssueComments(db, companyId, issue.id);
+    const runSummaryComment = issueComments.find(
+      (comment) => comment.runId === runId && comment.authorType === "agent" && comment.authorId === agent.id
+    );
+    expect(runSummaryComment?.body ?? "").toContain("## Update");
+    expect(runSummaryComment?.body ?? "").toContain("Completed the run");
+    expect((runSummaryComment?.body ?? "").toLowerCase()).toContain("created folders for the agent");
+    expect((runSummaryComment?.body ?? "").toLowerCase()).toContain("added memory files");
+    expect((runSummaryComment?.body ?? "").toLowerCase()).not.toContain("command:");
+    expect((runSummaryComment?.body ?? "").toLowerCase()).not.toContain("/users/");
   });
 
   it("records failed heartbeat runs when runtime binary is missing", async () => {

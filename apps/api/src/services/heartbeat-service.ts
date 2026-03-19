@@ -73,6 +73,33 @@ type HeartbeatWakeContext = {
 
 const AGENT_COMMENT_EMOJI_REGEX = /[\p{Extended_Pictographic}\uFE0F\u200D]/gu;
 
+type RunDigestSignal = {
+  sequence: number;
+  kind: "system" | "assistant" | "thinking" | "tool_call" | "tool_result" | "result" | "stderr";
+  label: string | null;
+  text: string | null;
+  payload: string | null;
+  signalLevel: "high" | "medium" | "low" | "noise";
+  groupKey: string | null;
+  source: "stdout" | "stderr" | "trace_fallback";
+};
+
+type RunDigest = {
+  status: "completed" | "failed" | "skipped";
+  headline: string;
+  summary: string;
+  successes: string[];
+  failures: string[];
+  blockers: string[];
+  nextAction: string;
+  evidence: {
+    transcriptSignalCount: number;
+    outcomeActionCount: number;
+    outcomeBlockerCount: number;
+    failureType: string | null;
+  };
+};
+
 export async function claimIssuesForAgent(
   db: BopoDb,
   companyId: string,
@@ -533,6 +560,7 @@ export async function runHeartbeatForAgent(
   let transcriptPersistFailureReported = false;
   let pluginFailureSummary: string[] = [];
   const seenResultMessages = new Set<string>();
+  const runDigestSignals: RunDigestSignal[] = [];
 
   const enqueueTranscriptEvent = (event: {
     kind: string;
@@ -559,6 +587,21 @@ export async function runHeartbeatForAgent(
     }
     if (signalLevel === "high") {
       transcriptLiveHighSignalCount += 1;
+    }
+    if (isUsefulTranscriptSignal(signalLevel)) {
+      runDigestSignals.push({
+        sequence,
+        kind: normalizeTranscriptKind(event.kind),
+        label: event.label ?? null,
+        text: event.text ?? null,
+        payload: event.payload ?? null,
+        signalLevel,
+        groupKey: groupKey ?? null,
+        source
+      });
+      if (runDigestSignals.length > 200) {
+        runDigestSignals.splice(0, runDigestSignals.length - 200);
+      }
     }
     transcriptWriteQueue = transcriptWriteQueue
       .then(async () => {
@@ -1186,20 +1229,43 @@ export async function runHeartbeatForAgent(
       pluginFailureSummary = [...pluginFailureSummary, ...beforePersistHook.failures];
     }
 
+    const runDigest = buildRunDigest({
+      status: persistedRunStatus,
+      executionSummary,
+      outcome: executionOutcome,
+      trace: executionTrace,
+      signals: runDigestSignals
+    });
+    const runListMessage = buildRunListMessage({
+      status: persistedRunStatus,
+      executionSummary,
+      outcome: executionOutcome,
+      signals: runDigestSignals,
+      digest: runDigest
+    });
     await db
       .update(heartbeatRuns)
       .set({
         status: persistedRunStatus,
         finishedAt: new Date(),
-        message: executionSummary
+        message: runListMessage
       })
       .where(eq(heartbeatRuns.id, runId));
     publishHeartbeatRunStatus(options?.realtimeHub, {
       companyId,
       runId,
       status: persistedRunStatus,
-      message: executionSummary,
+      message: runListMessage,
       finishedAt: new Date()
+    });
+    await appendAuditEvent(db, {
+      companyId,
+      actorType: "system",
+      eventType: "heartbeat.run_digest",
+      entityType: "heartbeat_run",
+      entityId: runId,
+      correlationId: options?.requestId ?? runId,
+      payload: runDigest
     });
     if (persistedRunStatus !== "skipped") {
       try {
@@ -1208,8 +1274,11 @@ export async function runHeartbeatForAgent(
           issueIds,
           agentId,
           runId,
+          digest: runDigest,
           status: persistedRunStatus === "failed" ? "failed" : "completed",
-          executionSummary
+          executionSummary,
+          outcome: executionOutcome,
+          signals: runDigestSignals
         });
       } catch (commentError) {
         await appendAuditEvent(db, {
@@ -1276,6 +1345,24 @@ export async function runHeartbeatForAgent(
         source: "trace_fallback",
         createdAt
       }));
+      for (const row of rows) {
+        if (!isUsefulTranscriptSignal(row.signalLevel)) {
+          continue;
+        }
+        runDigestSignals.push({
+          sequence: row.sequence,
+          kind: row.kind,
+          label: row.label,
+          text: row.text,
+          payload: row.payloadJson,
+          signalLevel: row.signalLevel,
+          groupKey: row.groupKey,
+          source: "trace_fallback"
+        });
+      }
+      if (runDigestSignals.length > 200) {
+        runDigestSignals.splice(0, runDigestSignals.length - 200);
+      }
       await appendHeartbeatRunMessages(db, {
         companyId,
         runId,
@@ -1489,20 +1576,43 @@ export async function runHeartbeatForAgent(
       companyId,
       projectCostsUsd: buildProjectBudgetCostAllocations(executionWorkItemsForBudget, failureCostDecision.usdCost)
     });
+    const runDigest = buildRunDigest({
+      status: "failed",
+      executionSummary,
+      outcome: executionOutcome,
+      trace: executionTrace,
+      signals: runDigestSignals
+    });
+    const runListMessage = buildRunListMessage({
+      status: "failed",
+      executionSummary,
+      outcome: executionOutcome,
+      signals: runDigestSignals,
+      digest: runDigest
+    });
     await db
       .update(heartbeatRuns)
       .set({
         status: "failed",
         finishedAt: new Date(),
-        message: executionSummary
+        message: runListMessage
       })
       .where(eq(heartbeatRuns.id, runId));
     publishHeartbeatRunStatus(options?.realtimeHub, {
       companyId,
       runId,
       status: "failed",
-      message: executionSummary,
+      message: runListMessage,
       finishedAt: new Date()
+    });
+    await appendAuditEvent(db, {
+      companyId,
+      actorType: "system",
+      eventType: "heartbeat.run_digest",
+      entityType: "heartbeat_run",
+      entityId: runId,
+      correlationId: options?.requestId ?? runId,
+      payload: runDigest
     });
     try {
       await appendRunSummaryComments(db, {
@@ -1510,8 +1620,11 @@ export async function runHeartbeatForAgent(
         issueIds,
         agentId,
         runId,
+        digest: runDigest,
         status: "failed",
-        executionSummary
+        executionSummary,
+        outcome: executionOutcome,
+        signals: runDigestSignals
       });
     } catch (commentError) {
       await appendAuditEvent(db, {
@@ -2356,14 +2469,119 @@ function sanitizeAgentSummaryCommentBody(body: string) {
   return sanitized.length > 0 ? sanitized : "Run update.";
 }
 
-function buildRunSummaryCommentBody(input: { status: "completed" | "failed"; executionSummary: string }) {
-  const summary = sanitizeAgentSummaryCommentBody(extractNaturalRunUpdate(input.executionSummary));
-  if (input.status === "failed") {
-    return summary.toLowerCase().startsWith("couldn't")
-      ? summary
-      : `Couldn't complete this run: ${summary.charAt(0).toLowerCase()}${summary.slice(1)}`;
+function buildHumanRunUpdateComment(input: {
+  status: "completed" | "failed";
+  executionSummary: string;
+  outcome: ExecutionOutcome | null;
+  signals: RunDigestSignal[];
+}) {
+  const highlights = buildHumanRunHighlights(input);
+  const lines = ["## Update", "", highlights.statusLine, ""];
+  for (const bullet of highlights.bullets) {
+    lines.push(`- ${bullet}`);
   }
-  return summary;
+  if (highlights.bullets.length === 0) {
+    lines.push("- Completed a run update.");
+  }
+  return lines.join("\n");
+}
+
+function buildRunListMessage(input: {
+  status: "completed" | "failed" | "skipped";
+  executionSummary: string;
+  outcome: ExecutionOutcome | null;
+  signals: RunDigestSignal[];
+  digest: RunDigest;
+}) {
+  const statusForHighlights: "completed" | "failed" = input.status === "failed" ? "failed" : "completed";
+  const highlights = buildHumanRunHighlights({
+    status: statusForHighlights,
+    executionSummary: input.executionSummary,
+    outcome: input.outcome,
+    signals: input.signals
+  });
+  const topBullets = highlights.bullets.slice(0, 2);
+  if (topBullets.length > 0) {
+    const compact = topBullets.join(" ");
+    const bounded = compact.length > 180 ? `${compact.slice(0, 177).trimEnd()}...` : compact;
+    return bounded;
+  }
+  const digestSummary = summarizeRunDigestPoint(input.digest.summary);
+  if (digestSummary) {
+    return digestSummary;
+  }
+  return sanitizeAgentSummaryCommentBody(extractNaturalRunUpdate(input.executionSummary));
+}
+
+function buildHumanRunHighlights(input: {
+  status: "completed" | "failed";
+  executionSummary: string;
+  outcome: ExecutionOutcome | null;
+  signals: RunDigestSignal[];
+}) {
+  const completedBullets: string[] = [];
+  const blockedBullets: string[] = [];
+  if (input.outcome) {
+    for (const action of input.outcome.actions) {
+      const normalized = normalizeHumanUpdateBullet(action.detail, { requireActionVerb: true });
+      if (!normalized) {
+        continue;
+      }
+      if (action.status === "error") {
+        blockedBullets.push(`Blocked: ${lowercaseSentenceStart(normalized)}`);
+      } else {
+        completedBullets.push(normalized);
+      }
+    }
+    for (const blocker of input.outcome.blockers) {
+      const normalized = normalizeHumanUpdateBullet(blocker.message, { requireActionVerb: false });
+      if (!normalized) {
+        continue;
+      }
+      blockedBullets.push(`Blocked: ${lowercaseSentenceStart(normalized)}`);
+    }
+  }
+  if (completedBullets.length + blockedBullets.length < 2) {
+    for (const signal of input.signals) {
+      if (signal.signalLevel !== "high" && signal.signalLevel !== "medium") {
+        continue;
+      }
+      const normalized = normalizeHumanUpdateBullet(signal.text ?? signal.payload ?? "", { requireActionVerb: false });
+      if (!normalized) {
+        continue;
+      }
+      if (looksLikeRunFailureSignal(normalized)) {
+        blockedBullets.push(`Blocked: ${lowercaseSentenceStart(normalized)}`);
+      } else {
+        completedBullets.push(normalized);
+      }
+    }
+  }
+  if (completedBullets.length + blockedBullets.length === 0) {
+    const summaryFallback = normalizeHumanUpdateBullet(input.executionSummary, { requireActionVerb: false });
+    if (summaryFallback) {
+      if (input.status === "failed") {
+        blockedBullets.push(`Blocked: ${lowercaseSentenceStart(summaryFallback)}`);
+      } else {
+        completedBullets.push(summaryFallback);
+      }
+    } else if (input.status === "failed") {
+      blockedBullets.push("Blocked: Could not complete the assigned work due to runtime errors.");
+    } else {
+      completedBullets.push("Completed the assigned work for this run.");
+    }
+  }
+  const finalBullets = dedupeRunDigestPoints([...completedBullets, ...blockedBullets], 6);
+  const statusLine =
+    input.status === "completed"
+      ? blockedBullets.length > 0
+        ? "Completed the run, but some steps are still blocked."
+        : "Completed the run and made progress on the assigned work."
+      : "Attempted the assigned work, but it is currently blocked.";
+  return {
+    statusLine,
+    bullets: finalBullets
+  };
 }
 
 function extractNaturalRunUpdate(executionSummary: string) {
@@ -2387,6 +2605,210 @@ function extractNaturalRunUpdate(executionSummary: string) {
     return "Run update.";
   }
   return /[.!?]$/.test(bounded) ? bounded : `${bounded}.`;
+}
+
+function buildRunDigest(input: {
+  status: "completed" | "failed" | "skipped";
+  executionSummary: string;
+  outcome: ExecutionOutcome | null;
+  trace: unknown;
+  signals: RunDigestSignal[];
+}): RunDigest {
+  const summary = sanitizeAgentSummaryCommentBody(extractNaturalRunUpdate(input.executionSummary));
+  const successes: string[] = [];
+  const failures: string[] = [];
+  const blockers: string[] = [];
+  if (input.outcome) {
+    for (const action of input.outcome.actions) {
+      const detail = summarizeRunDigestPoint(action.detail);
+      if (!detail) {
+        continue;
+      }
+      if (action.status === "ok") {
+        successes.push(detail);
+      } else if (action.status === "error") {
+        failures.push(detail);
+      }
+    }
+    for (const blocker of input.outcome.blockers) {
+      const detail = summarizeRunDigestPoint(blocker.message);
+      if (detail) {
+        blockers.push(detail);
+      }
+    }
+  }
+  for (const signal of input.signals) {
+    if (signal.signalLevel !== "high" && signal.signalLevel !== "medium") {
+      continue;
+    }
+    const signalText = summarizeRunDigestPoint(signal.text ?? signal.payload ?? "");
+    if (!signalText) {
+      continue;
+    }
+    if (signal.kind === "tool_result" || signal.kind === "stderr") {
+      if (looksLikeRunFailureSignal(signalText)) {
+        failures.push(signalText);
+      } else if (signal.kind === "tool_result") {
+        successes.push(signalText);
+      }
+      continue;
+    }
+    if (signal.kind === "result" && !looksLikeRunFailureSignal(signalText)) {
+      successes.push(signalText);
+    }
+  }
+  if (input.status === "completed" && successes.length === 0) {
+    successes.push(summary);
+  }
+  if (input.status === "failed" && failures.length === 0) {
+    failures.push(summary);
+  }
+  if (input.status === "failed" && blockers.length === 0) {
+    const traceFailureType = summarizeRunDigestPoint(readTraceString(input.trace, "failureType") ?? "");
+    if (traceFailureType) {
+      blockers.push(`failure type: ${traceFailureType}`);
+    }
+  }
+  const uniqueSuccesses = dedupeRunDigestPoints(successes, 3);
+  const uniqueFailures = dedupeRunDigestPoints(failures, 3);
+  const uniqueBlockers = dedupeRunDigestPoints(blockers, 2);
+  const headline =
+    input.status === "completed"
+      ? `Run completed: ${summary}`
+      : input.status === "failed"
+        ? `Run failed: ${summary}`
+        : `Run skipped: ${summary}`;
+  const nextAction = resolveRunDigestNextAction({
+    status: input.status,
+    blockers: uniqueBlockers,
+    failures: uniqueFailures
+  });
+  return {
+    status: input.status,
+    headline,
+    summary,
+    successes: uniqueSuccesses,
+    failures: uniqueFailures,
+    blockers: uniqueBlockers,
+    nextAction,
+    evidence: {
+      transcriptSignalCount: input.signals.length,
+      outcomeActionCount: input.outcome?.actions.length ?? 0,
+      outcomeBlockerCount: input.outcome?.blockers.length ?? 0,
+      failureType: readTraceString(input.trace, "failureType")
+    }
+  };
+}
+
+function summarizeRunDigestPoint(value: string | null | undefined) {
+  if (!value) {
+    return "";
+  }
+  const normalized = sanitizeAgentSummaryCommentBody(extractNaturalRunUpdate(value));
+  if (!normalized || normalized.toLowerCase() === "run update.") {
+    return "";
+  }
+  const bounded = normalized.length > 180 ? `${normalized.slice(0, 177).trimEnd()}...` : normalized;
+  return bounded;
+}
+
+function dedupeRunDigestPoints(values: string[], limit: number) {
+  const seen = new Set<string>();
+  const deduped: string[] = [];
+  for (const value of values) {
+    const key = value.toLowerCase().replace(/\s+/g, " ").trim();
+    if (!key || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    deduped.push(value);
+    if (deduped.length >= limit) {
+      break;
+    }
+  }
+  return deduped;
+}
+
+function looksLikeRunFailureSignal(value: string) {
+  const normalized = value.toLowerCase();
+  return /(failed|error|exception|timed out|timeout|unauthorized|not supported|unsupported|no capacity|rate limit|429|500|blocked|unable to)/.test(
+    normalized
+  );
+}
+
+function resolveRunDigestNextAction(input: { status: "completed" | "failed" | "skipped"; blockers: string[]; failures: string[] }) {
+  if (input.status === "completed") {
+    return "Review outputs and move the issue to the next workflow state.";
+  }
+  const combined = [...input.blockers, ...input.failures].join(" ").toLowerCase();
+  if (combined.includes("auth") || combined.includes("unauthorized") || combined.includes("login")) {
+    return "Fix credentials/authentication, then rerun.";
+  }
+  if (combined.includes("model") && (combined.includes("not supported") || combined.includes("unavailable"))) {
+    return "Select a supported model and rerun.";
+  }
+  if (combined.includes("usage limit") || combined.includes("rate limit") || combined.includes("no capacity")) {
+    return "Retry after provider quota/capacity recovers.";
+  }
+  return "Fix listed failures/blockers and rerun.";
+}
+
+function normalizeHumanUpdateBullet(value: string | null | undefined, options?: { requireActionVerb?: boolean }) {
+  const normalized = summarizeRunDigestPoint(value);
+  if (!normalized) {
+    return "";
+  }
+  let text = normalized
+    .replace(/^run (completed|failed|skipped)\s*:\s*/i, "")
+    .replace(/^(succeeded|failed|blocked by|next)\s*:\s*/i, "")
+    .replace(/^[a-z0-9_ -]*runtime completed\.?$/i, "Completed the assigned task.")
+    .replace(/\s+at\s+\/[^\s]+/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!text || isMachineNoiseLine(text)) {
+    return "";
+  }
+  if (options?.requireActionVerb && !hasHumanActionVerb(text)) {
+    return "";
+  }
+  if (text.length > 180) {
+    text = `${text.slice(0, 177).trimEnd()}...`;
+  }
+  return /[.!?]$/.test(text) ? text : `${text}.`;
+}
+
+function hasHumanActionVerb(text: string) {
+  return /\b(created|added|updated|configured|set|submitted|implemented|fixed|wrote|generated|migrated|documented|reviewed|completed|blocked|requested|opened|closed|assigned|prepared|bootstrapped|linked|paused|resumed)\b/i.test(
+    text
+  );
+}
+
+function isMachineNoiseLine(text: string) {
+  const normalized = text.trim();
+  if (!normalized) {
+    return true;
+  }
+  if (normalized.length > 220) {
+    return true;
+  }
+  const patterns = [
+    /^command:\s*/i,
+    /^\s*[\[{].*[\]}]\s*$/,
+    /\/bin\/(bash|zsh|sh)/i,
+    /(^|\s)(\/Users\/|\/home\/|\/private\/var\/|[A-Za-z]:\\)/,
+    /\b(stderr|stdout|stack trace|exit code|payload_json|tokeninput|tokenoutput|usdcost)\b/i,
+    /(^|\s)at\s+\S+:\d+:\d+/,
+    /```/,
+    /\{[\s\S]*"(summary|tokenInput|tokenOutput|usdCost|trace|error)"[\s\S]*\}/i
+  ];
+  return patterns.some((pattern) => pattern.test(normalized));
+}
+
+function lowercaseSentenceStart(text: string) {
+  if (!text) {
+    return text;
+  }
+  return `${text.charAt(0).toLowerCase()}${text.slice(1)}`;
 }
 
 function extractSummaryFromJsonLikeText(input: string) {
@@ -2420,16 +2842,21 @@ async function appendRunSummaryComments(
     issueIds: string[];
     agentId: string;
     runId: string;
+    digest: RunDigest;
     status: "completed" | "failed";
     executionSummary: string;
+    outcome: ExecutionOutcome | null;
+    signals: RunDigestSignal[];
   }
 ) {
   if (input.issueIds.length === 0) {
     return;
   }
-  const commentBody = buildRunSummaryCommentBody({
+  const commentBody = buildHumanRunUpdateComment({
     status: input.status,
-    executionSummary: input.executionSummary
+    executionSummary: input.executionSummary,
+    outcome: input.outcome,
+    signals: input.signals
   });
   for (const issueId of input.issueIds) {
     const [existingRunComment] = await db
