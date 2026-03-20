@@ -74,7 +74,8 @@ const navGroups: Array<{
     label: "Operations",
     items: [
       { slug: "inbox", label: "Inbox", icon: Inbox },
-      { slug: "runs", label: "Runs", icon: Clock3 }
+      { slug: "runs", label: "Runs", icon: Clock3 },
+      { slug: "trace-logs", label: "Logs", icon: Activity }
     ]
   },
   {
@@ -98,7 +99,6 @@ const settingsNavItems: Array<{
   { href: "/settings/models", label: "Models", icon: BarChart3, isActive: (pathname) => pathname.startsWith("/settings/models") },
   { href: "/settings/templates", label: "Templates", icon: LayoutTemplate, isActive: (pathname) => pathname.startsWith("/settings/templates") },
   { href: "/settings/plugins", label: "Plugins", icon: Puzzle, isActive: (pathname) => pathname.startsWith("/settings/plugins") },
-  { href: "/trace-logs", label: "Logs", icon: Activity, isActive: (pathname) => pathname.startsWith("/trace-logs") },
   {
     href: "/settings",
     label: "Settings",
@@ -177,7 +177,7 @@ export function AppShell({
 
   const resolvedPendingApprovalsCount =
     typeof pendingApprovalsCount === "number" ? pendingApprovalsCount : pendingApprovalsCountFromApi;
-  const isSettingsRoute = pathname.startsWith("/settings") || pathname.startsWith("/trace-logs");
+  const isSettingsRoute = pathname.startsWith("/settings");
   const resolvedSecondaryPane =
     secondaryPane ??
     (isSettingsRoute ? (

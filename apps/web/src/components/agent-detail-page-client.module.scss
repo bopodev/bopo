@@ -225,6 +225,10 @@
   @apply text-base text-sidebar-foreground/70;
 }
 
+.runTableDateTime {
+  @apply text-base text-foreground tabular-nums;
+}
+
 .runMessageCell {
   @apply max-w-[48ch] truncate text-base text-sidebar-foreground/80;
 }

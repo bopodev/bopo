@@ -17,6 +17,7 @@ Next.js web client for the Bopo control plane.
 
 Route notes:
 
+- **Logs** (`/trace-logs`) is in the main sidebar under **Operations**, below **Runs** (not under Settings).
 - `/` redirects to `/issues`.
 - Detail routes include `/issues/[issueId]`, `/projects/[projectId]`, `/runs/[runId]`, and `/agents/[agentId]`.
 

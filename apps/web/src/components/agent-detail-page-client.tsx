@@ -23,6 +23,7 @@ import { agentAvatarSeed } from "@/lib/agent-avatar";
 import { parseRuntimeFromAgentColumns } from "@/lib/agent-detail-logic";
 import { getModelOptionsForProvider, heartbeatCronToIntervalSec } from "@/lib/agent-runtime-options";
 import { getDefaultModelForProvider, type RuntimeProviderType } from "@/lib/model-registry-options";
+import { formatSmartDateTime } from "@/lib/smart-date";
 import { getStatusBadgeClassName } from "@/lib/status-presentation";
 import { isSkippedRun } from "@/lib/workspace-logic";
 import { MoreHorizontal } from "lucide-react";
@@ -185,27 +186,18 @@ function formatDateTime(value: string | null | undefined) {
   return value ? new Date(value).toLocaleString() : "Not set";
 }
 
-function formatRelative(value: string | null | undefined) {
-  if (!value) {
-    return "never";
+function formatRunDuration(startedAt: string, finishedAt?: string | null) {
+  if (!finishedAt) {
+    return "running";
   }
-  const diffMs = Date.now() - new Date(value).getTime();
-  if (!Number.isFinite(diffMs) || diffMs < 0) {
-    return "unknown";
+  const ms = new Date(finishedAt).getTime() - new Date(startedAt).getTime();
+  if (!Number.isFinite(ms) || ms < 0) {
+    return "n/a";
   }
-  if (diffMs < 60_000) {
-    return "just now";
+  if (ms < 1000) {
+    return `${ms}ms`;
   }
-  const minutes = Math.floor(diffMs / 60_000);
-  if (minutes < 60) {
-    return `${minutes}m ago`;
-  }
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) {
-    return `${hours}h ago`;
-  }
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
+  return `${(ms / 1000).toFixed(1)}s`;
 }
 
 function formatRunStatusLabel(status: string) {
@@ -408,7 +400,9 @@ export function AgentDetailPageClient({
   const latestRun = agentRuns[0] ?? null;
   const activeRun = agentRuns.find((run) => isRunActive(run)) ?? null;
   const liveStatus = activeRun ? "running" : agent.status;
-  const liveStatusDetail = activeRun ? `Run ${shortId(activeRun.id)} started ${formatRelative(activeRun.startedAt)}` : undefined;
+  const liveStatusDetail = activeRun
+    ? `Run ${shortId(activeRun.id)} started ${formatSmartDateTime(activeRun.startedAt, { includeSeconds: true })}`
+    : undefined;
 
   const agentCosts = useMemo(() => costEntries.filter((entry) => entry.agentId === agent.id), [agent.id, costEntries]);
 
@@ -523,7 +517,15 @@ export function AgentDetailPageClient({
       {
         accessorKey: "updatedAt",
         header: ({ column }) => <DataTableColumnHeader column={column} title="Last updated" />,
-        cell: ({ row }) => <div className={styles.runTableCellMuted}>{formatDateTime(row.original.updatedAt)}</div>
+        cell: ({ row }) => (
+          <time
+            className={styles.runTableDateTime}
+            dateTime={row.original.updatedAt}
+            title={formatDateTime(row.original.updatedAt)}
+          >
+            {formatSmartDateTime(row.original.updatedAt, { includeSeconds: true })}
+          </time>
+        )
       }
     ],
     [companyId]
@@ -549,9 +551,24 @@ export function AgentDetailPageClient({
         )
       },
       {
+        id: "duration",
+        header: "Duration",
+        cell: ({ row }) => (
+          <div className={styles.runTableCellMuted}>{formatRunDuration(row.original.startedAt, row.original.finishedAt)}</div>
+        )
+      },
+      {
         accessorKey: "startedAt",
         header: ({ column }) => <DataTableColumnHeader column={column} title="Started" />,
-        cell: ({ row }) => <div className={styles.runTableCellMuted}>{formatDateTime(row.original.startedAt)}</div>
+        cell: ({ row }) => (
+          <time
+            className={styles.runTableDateTime}
+            dateTime={row.original.startedAt}
+            title={formatDateTime(row.original.startedAt)}
+          >
+            {formatSmartDateTime(row.original.startedAt, { includeSeconds: true })}
+          </time>
+        )
       },
       {
         accessorKey: "message",

@@ -33,6 +33,8 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { ApiError, apiDelete, apiGet, apiPost, apiPostFormData, apiPut } from "@/lib/api";
+import { formatIssueActivityActorLabel, formatIssueActivityTitle } from "@/lib/event-display";
+import { formatSmartDateTime } from "@/lib/smart-date";
 import { agentAvatarSeed } from "@/lib/agent-avatar";
 import { getStatusBadgeClassName } from "@/lib/status-presentation";
 import styles from "./issue-detail-page-client.module.scss";
@@ -253,43 +255,6 @@ function CollapsibleMarkdown({
 
 function formatDate(value: string | null | undefined) {
   return value ? new Date(value).toLocaleString() : "Not set";
-}
-
-function formatCommentDate(value: string | null | undefined) {
-  if (!value) {
-    return "Unknown time";
-  }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "Unknown time";
-  }
-  const now = new Date();
-  const isSameYear = date.getFullYear() === now.getFullYear();
-  const isToday = date.toDateString() === now.toDateString();
-  const yesterday = new Date(now);
-  yesterday.setDate(now.getDate() - 1);
-  const isYesterday = date.toDateString() === yesterday.toDateString();
-  const timeText = new Intl.DateTimeFormat(undefined, {
-    hour: "numeric",
-    minute: "2-digit"
-  }).format(date);
-  if (isToday) {
-    return `Today ${timeText}`;
-  }
-  if (isYesterday) {
-    return `Yesterday ${timeText}`;
-  }
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    ...(isSameYear ? {} : { year: "numeric" }),
-    hour: "numeric",
-    minute: "2-digit"
-  }).format(date);
-}
-
-function formatEventType(eventType: string) {
-  return eventType.replace(/[._]/g, " ");
 }
 
 function formatCommentAuthorLabel(
@@ -939,7 +904,7 @@ export function IssueDetailPageClient({
                           )}
                           <div className="ui-issue-comment-author">{formatCommentAuthorLabel(comment, agents)}</div>
                         </div>
-                        <span className={styles.commentTimestamp}>{formatCommentDate(comment.createdAt)}</span>
+                        <span className={styles.commentTimestamp}>{formatSmartDateTime(comment.createdAt)}</span>
                       </div>
                       <CollapsibleMarkdown
                         content={comment.authorType === "agent" ? normalizeAgentCommentBodyForDisplay(comment.body) : comment.body}
@@ -1133,18 +1098,21 @@ export function IssueDetailPageClient({
                   {activityItems.map((item) => (
                     <Item key={item.id} variant="outline">
                       <ItemContent>
-                        <ItemTitle>
-                          <span className={styles.issueActivityTitleRow}>
-                            <Badge variant="outline">{item.actorType}</Badge> {formatEventType(item.eventType)}
-                          </span>
-                        </ItemTitle>
+                        <div className={styles.issueActivityHeaderRow}>
+                          <div className={styles.issueActivityTitleBlock}>
+                            <Badge variant="outline">{formatIssueActivityActorLabel(item.actorType)}</Badge>
+                            <span className={styles.issueActivityMessage} title={item.eventType}>
+                              {formatIssueActivityTitle(item, agents)}
+                            </span>
+                          </div>
+                          <time className={styles.issueActivityTimestamp} dateTime={item.createdAt}>
+                            {formatSmartDateTime(item.createdAt)}
+                          </time>
+                        </div>
                         {summarizeActivityPayload(item.payload) !== "Event recorded." ? (
                           <ItemDescription>{summarizeActivityPayload(item.payload)}</ItemDescription>
                         ) : null}
                       </ItemContent>
-                      <ItemActions>
-                        <span className={styles.issueActivityTimestamp}>{formatDate(item.createdAt)}</span>
-                      </ItemActions>
                     </Item>
                   ))}
                 </ItemGroup>

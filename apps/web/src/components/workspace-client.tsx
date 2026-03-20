@@ -21,6 +21,8 @@ import { agentAvatarSeed } from "@/lib/agent-avatar";
 import { cn } from "@/lib/utils";
 import { getStatusBadgeClassName } from "@/lib/status-presentation";
 import { getSupportedModelOptionsForProvider } from "@/lib/agent-runtime-options";
+import { formatAuditEventLabel } from "@/lib/event-display";
+import { formatSmartDateTime } from "@/lib/smart-date";
 import { isNoAssignedWorkRun, isStoppedRun, resolveWindowStart, summarizeCosts } from "@/lib/workspace-logic";
 import type { SectionLabel } from "@/lib/sections";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -1850,11 +1852,14 @@ export function WorkspaceClient({
     return Array.from(counts.entries())
       .sort((a, b) => b[1].total - a[1].total)
       .slice(0, 8)
-      .map(([eventType, values]) => ({
-        eventType: eventType.length > 22 ? `${eventType.slice(0, 19)}...` : eventType,
-        total: values.total,
-        anomalies: values.anomalies
-      }));
+      .map(([eventType, values]) => {
+        const label = formatAuditEventLabel({ eventType, entityType: "", entityId: "" }, () => undefined);
+        return {
+          eventType: label.length > 28 ? `${label.slice(0, 25)}…` : label,
+          total: values.total,
+          anomalies: values.anomalies
+        };
+      });
   }, [filteredAuditEvents]);
   const hasTraceChartData = traceDailyChartData.some((entry) => entry.total > 0 || entry.anomalies > 0) || traceEventTypeChartData.length > 0;
   const traceEventTypeChartConfig = {
@@ -3321,7 +3326,11 @@ export function WorkspaceClient({
       {
         accessorKey: "eventType",
         header: ({ column }) => <DataTableColumnHeader column={column} title="Event" />,
-        cell: ({ row }) => <div className={styles.formatDurationContainer1}>{row.original.eventType}</div>
+        cell: ({ row }) => (
+          <div className={styles.formatDurationContainer1} title={row.original.eventType}>
+            {formatAuditEventLabel(row.original, (id) => agentNameById.get(id))}
+          </div>
+        )
       },
       {
         id: "entity",
@@ -3335,10 +3344,18 @@ export function WorkspaceClient({
       {
         accessorKey: "createdAt",
         header: ({ column }) => <DataTableColumnHeader column={column} title="Created" />,
-        cell: ({ row }) => <div className={styles.formatDurationContainer5}>{formatDateTime(row.original.createdAt)}</div>
+        cell: ({ row }) => (
+          <time
+            className={cn(styles.formatDurationContainer5, "tabular-nums")}
+            dateTime={row.original.createdAt}
+            title={formatDateTime(row.original.createdAt)}
+          >
+            {formatSmartDateTime(row.original.createdAt)}
+          </time>
+        )
       }
     ],
-    []
+    [agentNameById]
   );
 
   const heartbeatRunColumns = useMemo<ColumnDef<HeartbeatRunRow>[]>(
@@ -3393,7 +3410,15 @@ export function WorkspaceClient({
       {
         accessorKey: "startedAt",
         header: ({ column }) => <DataTableColumnHeader column={column} title="Started" />,
-        cell: ({ row }) => <div className={styles.formatDurationContainer5}>{formatDateTime(row.original.startedAt)}</div>
+        cell: ({ row }) => (
+          <time
+            className={cn(styles.formatDurationContainer5, "tabular-nums")}
+            dateTime={row.original.startedAt}
+            title={formatDateTime(row.original.startedAt)}
+          >
+            {formatSmartDateTime(row.original.startedAt, { includeSeconds: true })}
+          </time>
+        )
       },
       {
         id: "actions",
@@ -4563,7 +4588,11 @@ export function WorkspaceClient({
             <div className={cn("ui-stats", "mt-4")}>
               <MetricCard label="Events in scope" value={traceSummary.total} />
               <MetricCard label="Unique entities" value={traceSummary.uniqueEntities} />
-              <MetricCard label="Event types" value={traceSummary.uniqueEventTypes} hint={`Top: ${traceSummary.topEventType}`} />
+              <MetricCard
+                label="Event types"
+                value={traceSummary.uniqueEventTypes}
+                hint={`Top: ${formatAuditEventLabel({ eventType: traceSummary.topEventType, entityType: "", entityId: "" }, () => undefined)}`}
+              />
               <MetricCard label="Anomalies" value={traceSummary.anomalies} hint="fail/error/reject/timeout events" />
             </div>
             {hasTraceChartData ? (
@@ -4652,7 +4681,7 @@ export function WorkspaceClient({
                       <SelectItem value="all">All event types</SelectItem>
                       {traceEventOptions.map((eventType) => (
                         <SelectItem key={eventType} value={eventType}>
-                          {eventType}
+                          {formatAuditEventLabel({ eventType, entityType: "", entityId: "" }, () => undefined)}
                         </SelectItem>
                       ))}
                     </SelectContent>
