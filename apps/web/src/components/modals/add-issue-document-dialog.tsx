@@ -188,7 +188,7 @@ export function IssueDocumentDialog({
               Cancel
             </Button>
             <Button type="submit" disabled={isSubmitting || isLoadingDocument}>
-              {isSubmitting ? "Saving…" : isEdit ? "Save changes" : "Save document"}
+              {isSubmitting ? "Saving…" : isEdit ? "Save" : "Save"}
             </Button>
           </DialogFooter>
         </form>

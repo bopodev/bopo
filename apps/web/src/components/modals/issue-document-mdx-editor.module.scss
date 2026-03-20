@@ -1,7 +1,7 @@
 @reference "../../app/globals.css";
 
 .mdxEditorRoot {
-  @apply min-h-[320px] bg-card border border-input rounded-md;
+  @apply min-h-[320px] bg-card border border-input rounded-md  px-5 py-4;
   h1 {
     @apply text-2xl mb-2 font-bold text-foreground;
   }
@@ -53,8 +53,8 @@
 }
 
 .mdxeditor-root-contenteditable {
-  @apply min-h-[280px] p-3;
+  @apply min-h-[280px] px-5 py-2;
   .mdxEditorContent {
-    @apply min-h-[280px] border border-border rounded-md;
+    @apply min-h-[280px] border border-border rounded-md placeholder:text-muted-foreground;
   }
 }

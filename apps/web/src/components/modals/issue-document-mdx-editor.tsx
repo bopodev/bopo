@@ -63,7 +63,7 @@ export function IssueDocumentMdxEditor({
       plugins={plugins}
       className={cn("dark-theme", styles.mdxEditorRoot)}
       contentEditableClassName={styles.mdxEditorContent}
-      placeholder="Write an update… Use markdown (e.g. ### Heading, - lists, `code`)."
+      placeholder="Write content here..."
       overlayContainer={typeof document !== "undefined" ? document.body : undefined}
     />
   );
