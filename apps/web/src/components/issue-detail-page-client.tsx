@@ -5,11 +5,15 @@ import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent 
 import { useRouter } from "next/navigation";
 import type { IssuePriority, IssueStatus } from "bopodev-contracts";
 import { AGENT_ROLE_LABELS, AGENT_ROLE_KEYS, type AgentRoleKey } from "bopodev-contracts";
-import { ChevronDownIcon } from "lucide-react";
+import { ChevronDownIcon, FileTextIcon } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { AppShell } from "@/components/app-shell";
 import { AgentAvatar } from "@/components/agent-avatar";
+import {
+  IssueDocumentDialog,
+  type IssueDocumentEditTarget
+} from "@/components/modals/add-issue-document-dialog";
 import { CreateIssueModal } from "@/components/modals/create-issue-modal";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -474,6 +478,21 @@ function isImageAttachment(attachment: IssueAttachmentRow) {
   return /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(attachment.fileName);
 }
 
+function isMarkdownDocument(attachment: IssueAttachmentRow) {
+  if (attachment.mimeType === "text/markdown") {
+    return true;
+  }
+  return /\.md$/i.test(attachment.fileName);
+}
+
+function attachmentDescriptionLine(attachment: IssueAttachmentRow, uploadedLabel: string) {
+  const kb = Math.max(1, Math.ceil(attachment.fileSizeBytes / 1024));
+  if (isMarkdownDocument(attachment)) {
+    return `Markdown document · ${kb} KB · uploaded ${uploadedLabel}`;
+  }
+  return `${attachment.mimeType ?? "unknown type"} · ${kb} KB · uploaded ${uploadedLabel}`;
+}
+
 export function IssueDetailPageClient({
   companyId,
   companies,
@@ -508,6 +527,8 @@ export function IssueDetailPageClient({
   const [isHeartbeatStarting, setIsHeartbeatStarting] = useState(false);
   const [isUploadingAttachments, setIsUploadingAttachments] = useState(false);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const [issueDocumentDialogOpen, setIssueDocumentDialogOpen] = useState(false);
+  const [issueDocumentEditTarget, setIssueDocumentEditTarget] = useState<IssueDocumentEditTarget | null>(null);
   const visibleComments = useMemo(() => collapseRunComments(comments), [comments]);
 
   const selectedProject = useMemo(
@@ -1003,6 +1024,10 @@ export function IssueDetailPageClient({
                             className={styles.issueAttachmentPreviewImage}
                             loading="lazy"
                           />
+                        ) : isMarkdownDocument(attachment) ? (
+                          <div className={styles.issueAttachmentDocIcon} aria-hidden>
+                            <FileTextIcon className={styles.issueAttachmentDocIconSvg} />
+                          </div>
                         ) : (
                           <div className={styles.issueAttachmentPlaceholder} aria-hidden>
                             {attachment.fileName.slice(0, 1).toUpperCase()}
@@ -1011,18 +1036,34 @@ export function IssueDetailPageClient({
                       </div>
                       <ItemContent>
                         <ItemTitle>
-                          <a
-                            href={buildAttachmentUrl(attachment.downloadPath, companyId)}
-                            target="_blank"
-                            rel="noreferrer"
-                            className={styles.issueDetailLink2}
-                          >
-                            {attachment.fileName}
-                          </a>
+                          {isMarkdownDocument(attachment) ? (
+                            <button
+                              type="button"
+                              className={styles.issueAttachmentDocTitle}
+                              onClick={() => {
+                                setIssueDocumentEditTarget({
+                                  id: attachment.id,
+                                  fileName: attachment.fileName,
+                                  downloadPath: attachment.downloadPath
+                                });
+                                setIssueDocumentDialogOpen(true);
+                              }}
+                            >
+                              {attachment.fileName}
+                            </button>
+                          ) : (
+                            <a
+                              href={buildAttachmentUrl(attachment.downloadPath, companyId)}
+                              target="_blank"
+                              rel="noreferrer"
+                              className={styles.issueDetailLink2}
+                            >
+                              {attachment.fileName}
+                            </a>
+                          )}
                         </ItemTitle>
                         <ItemDescription>
-                          {attachment.mimeType ?? "unknown type"} · {Math.max(1, Math.ceil(attachment.fileSizeBytes / 1024))} KB · uploaded{" "}
-                          {formatDate(attachment.createdAt)}
+                          {attachmentDescriptionLine(attachment, formatDate(attachment.createdAt))}
                         </ItemDescription>
                       </ItemContent>
                       <ItemActions>
@@ -1047,6 +1088,33 @@ export function IssueDetailPageClient({
                   onChange={(event) => void uploadAttachments(event)}
                   disabled={isUploadingAttachments}
                   className={styles.issueAttachmentInput}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={isUploadingAttachments}
+                  onClick={() => {
+                    setIssueDocumentEditTarget(null);
+                    setIssueDocumentDialogOpen(true);
+                  }}
+                >
+                  Add document
+                </Button>
+                <IssueDocumentDialog
+                  companyId={companyId}
+                  issueId={issue.id}
+                  open={issueDocumentDialogOpen}
+                  onOpenChange={(next) => {
+                    setIssueDocumentDialogOpen(next);
+                    if (!next) {
+                      setIssueDocumentEditTarget(null);
+                    }
+                  }}
+                  editTarget={issueDocumentEditTarget}
+                  onUploaded={async () => {
+                    await refreshAttachments();
+                    await refreshIssueView();
+                  }}
                 />
               </div>
             </TabsContent>

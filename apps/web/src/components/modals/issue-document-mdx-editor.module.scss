@@ -1,0 +1,60 @@
+@reference "../../app/globals.css";
+
+.mdxEditorRoot {
+  @apply min-h-[320px] bg-card border border-input rounded-md;
+  h1 {
+    @apply text-2xl mb-2 font-bold text-foreground;
+  }
+  h2 {
+    @apply text-xl mb-2 font-bold text-foreground;
+  }
+  h3 {
+    @apply text-lg mb-2 font-bold text-foreground;
+  }
+  h4 {
+    @apply text-base mb-2 font-bold text-foreground;
+  }
+  h5 {
+    @apply text-sm mb-2 font-bold text-foreground;
+  }
+  h6 {
+    @apply text-xs mb-2 font-bold text-foreground;
+  }
+  p {
+    @apply text-base mb-6 text-foreground;
+  }
+  a {
+    @apply text-foreground underline hover:text-primary;
+  }
+  ul {
+    @apply list-disc ml-8 mb-6 text-foreground;
+  }
+  ol {
+    @apply list-decimal ml-8 mb-6 text-foreground;
+  }
+  li {
+    @apply text-base text-foreground;
+  }
+  blockquote {
+    @apply text-base text-foreground;
+  }
+  code {
+    @apply text-base text-foreground;
+  } 
+  pre {
+    @apply text-base text-foreground;
+  } 
+  hr {
+    @apply text-base text-foreground;
+  }
+  img {
+    @apply text-base text-foreground;
+  }
+}
+
+.mdxeditor-root-contenteditable {
+  @apply min-h-[280px] p-3;
+  .mdxEditorContent {
+    @apply min-h-[280px] border border-border rounded-md;
+  }
+}

@@ -97,6 +97,32 @@ export async function apiDelete<T>(path: string, companyId: string): Promise<Api
   return requestWithRetry<T>("DELETE", path, companyId);
 }
 
+/**
+ * Fetch raw attachment bytes as UTF-8 text (e.g. markdown). Uses the same auth headers as JSON API calls.
+ */
+export async function apiFetchAttachmentText(downloadPath: string, companyId: string): Promise<string> {
+  const traceId = createTraceId();
+  const startedAt = Date.now();
+  const url = `${apiBase}${downloadPath}?companyId=${encodeURIComponent(companyId)}`;
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      "x-company-id": companyId,
+      "x-client-trace-id": traceId,
+      ...(readActorToken() ? { authorization: `Bearer ${readActorToken()}` } : {})
+    },
+    cache: "no-store"
+  });
+  const requestId = response.headers.get("x-request-id") ?? undefined;
+  const durationMs = Date.now() - startedAt;
+  if (!response.ok) {
+    const message =
+      response.status === 404 ? "Attachment not found." : `Request failed with status ${response.status}`;
+    throw new ApiError(message, response.status, { requestId, traceId, durationMs });
+  }
+  return response.text();
+}
+
 export function getRealtimeUrl(companyId: string, channels: RealtimeChannel[]) {
   const url = new URL("/realtime", apiBase);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
