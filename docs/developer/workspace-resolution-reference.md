@@ -87,6 +87,16 @@ Notes:
 - In mixed-project work item sets, current selection is first eligible project context.
 - Warning events are emitted when fallback or override occurs.
 
+Before each heartbeat execution, the API ensures `agents/<agentId>/operating/` exists under the company workspace (empty directory is fine).
+
+Heartbeat runtimes receive canonical absolute paths in env (in addition to `BOPODEV_COMPANY_ID`):
+
+- `BOPODEV_COMPANY_WORKSPACE_ROOT` — `<instanceRoot>/workspaces/<companyId>`
+- `BOPODEV_AGENT_HOME` — `<instanceRoot>/workspaces/<companyId>/agents/<agentId>`
+- `BOPODEV_AGENT_OPERATING_DIR` — `.../agents/<agentId>/operating`
+
+Agents should write operating files using `$BOPODEV_AGENT_OPERATING_DIR` (or an absolute path under `BOPODEV_COMPANY_WORKSPACE_ROOT`) instead of guessing `workspace/...` segments from project cwd.
+
 ## Git Workspace Behavior
 
 `git-runtime` enforces:
@@ -117,6 +127,8 @@ Run summary comments keep artifact download links in the same route shape:
 
 Artifact link labels are rendered as normalized workspace-relative paths (relative to `<instanceRoot>/workspaces/<companyId>`), not absolute host filesystem paths.
 
+After a run completes, the API checks each reported artifact path on disk. Issue comments only include download links for artifacts that were present as files at that moment; missing paths are shown as monospace text with a short note instead of a broken link.
+
 ## Migration and Backfill
 
 Backfill script behavior:
@@ -132,6 +144,7 @@ See operator details in:
 ## Related Source Files
 
 - [`../../apps/api/src/lib/instance-paths.ts`](../../apps/api/src/lib/instance-paths.ts)
+- [`../../apps/api/src/lib/run-artifact-paths.ts`](../../apps/api/src/lib/run-artifact-paths.ts)
 - [`../../apps/api/src/lib/workspace-policy.ts`](../../apps/api/src/lib/workspace-policy.ts)
 - [`../../apps/api/src/lib/git-runtime.ts`](../../apps/api/src/lib/git-runtime.ts)
 - [`../../apps/api/src/services/heartbeat-service.ts`](../../apps/api/src/services/heartbeat-service.ts)

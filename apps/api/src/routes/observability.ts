@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { readFile, stat } from "node:fs/promises";
-import { basename, isAbsolute, resolve } from "node:path";
+import { basename, resolve } from "node:path";
 import { z } from "zod";
 import {
   getHeartbeatRun,
@@ -17,7 +17,7 @@ import {
 } from "bopodev-db";
 import type { AppContext } from "../context";
 import { sendError, sendOk } from "../http";
-import { isInsidePath, resolveCompanyWorkspaceRootPath } from "../lib/instance-paths";
+import { resolveRunArtifactAbsolutePath } from "../lib/run-artifact-paths";
 import { requireCompanyScope } from "../middleware/company-scope";
 import { requirePermission } from "../middleware/request-actor";
 import { listAgentMemoryFiles, loadAgentMemoryContext, readAgentMemoryFile } from "../services/memory-file-service";
@@ -402,85 +402,6 @@ function parsePayload(payloadJson: string): Record<string, unknown> {
 
 function toRecord(value: unknown) {
   return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
-}
-
-function resolveRunArtifactAbsolutePath(companyId: string, artifact: Record<string, unknown>) {
-  const companyWorkspaceRoot = resolveCompanyWorkspaceRootPath(companyId);
-  const absolutePathRaw = normalizeAbsoluteArtifactPath(
-    typeof artifact.absolutePath === "string" ? artifact.absolutePath.trim() : ""
-  );
-  const relativePathRaw = normalizeWorkspaceRelativeArtifactPath(
-    typeof artifact.relativePath === "string"
-      ? artifact.relativePath.trim()
-      : typeof artifact.path === "string"
-        ? artifact.path.trim()
-        : "",
-    companyId
-  );
-  const candidate = relativePathRaw
-    ? resolve(companyWorkspaceRoot, relativePathRaw)
-    : absolutePathRaw
-      ? absolutePathRaw
-      : "";
-  if (!candidate) {
-    return null;
-  }
-  const resolved = isAbsolute(candidate) ? resolve(candidate) : resolve(companyWorkspaceRoot, candidate);
-  if (!isInsidePath(companyWorkspaceRoot, resolved)) {
-    return null;
-  }
-  return resolved;
-}
-
-function normalizeAbsoluteArtifactPath(value: string) {
-  const trimmed = value.trim();
-  if (!trimmed || !isAbsolute(trimmed)) {
-    return "";
-  }
-  return resolve(trimmed);
-}
-
-function normalizeWorkspaceRelativeArtifactPath(value: string, companyId: string) {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return "";
-  }
-  const unixSeparated = trimmed.replace(/\\/g, "/");
-  if (isAbsolute(unixSeparated)) {
-    return "";
-  }
-  const parts: string[] = [];
-  for (const part of unixSeparated.split("/")) {
-    if (!part || part === ".") {
-      continue;
-    }
-    if (part === "..") {
-      if (parts.length > 0 && parts[parts.length - 1] !== "..") {
-        parts.pop();
-      } else {
-        parts.push(part);
-      }
-      continue;
-    }
-    parts.push(part);
-  }
-  const normalized = parts.join("/");
-  if (!normalized) {
-    return "";
-  }
-  const workspaceScopedMatch = normalized.match(/(?:^|\/)workspace\/([^/]+)\/(.+)$/);
-  if (!workspaceScopedMatch) {
-    return normalized;
-  }
-  const scopedCompanyId = workspaceScopedMatch[1];
-  const scopedRelativePath = workspaceScopedMatch[2];
-  if (!scopedCompanyId || !scopedRelativePath) {
-    return "";
-  }
-  if (scopedCompanyId !== companyId) {
-    return "";
-  }
-  return scopedRelativePath;
 }
 
 function serializeRunRow(

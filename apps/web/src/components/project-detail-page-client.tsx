@@ -293,6 +293,15 @@ export function ProjectDetailPageClient({
         description={"Project details and timeline."}
         actions={
           <div className={styles.projectHeaderActions}>
+          <CreateIssueModal
+            companyId={companyId}
+            projects={[{ id: project.id, name: project.name }]}
+            agents={agents}
+            defaultProjectId={project.id}
+            triggerLabel="Create issue"
+            triggerVariant="outline"
+            triggerSize="sm"
+          />
           <CreateProjectModal
             companyId={companyId}
             goals={goals}
@@ -301,15 +310,6 @@ export function ProjectDetailPageClient({
             triggerVariant="default"
             triggerSize="sm"
           />
-            <CreateIssueModal
-              companyId={companyId}
-              projects={[{ id: project.id, name: project.name }]}
-              agents={agents}
-              defaultProjectId={project.id}
-              triggerLabel="Create issue"
-              triggerVariant="outline"
-              triggerSize="sm"
-            />
           </div>
         }
       />

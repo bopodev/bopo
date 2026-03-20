@@ -17,7 +17,7 @@ This inventory documents write/delete/runtime path sinks involved in workspace r
 | `apps/api/src/services/governance-service.ts` | `mkdir(runtimeCwd)` and startup workspace provisioning | approval payload + DB workspace rows | `assertRuntimeCwdForCompany()` + `normalizeCompanyWorkspacePath()` |
 | `apps/api/src/services/heartbeat-service.ts` | runtime cwd selection + `mkdir(base/fallback)` | project workspace context + agent runtime | company-root normalization before use |
 | `apps/api/src/routes/issues.ts` | attachment write/read/delete paths | project workspace cwd + `relativePath` | workspace resolved via company-root normalization + `isInsidePath` checks |
-| `apps/api/src/routes/observability.ts` | run artifact download path resolution | run report artifact `absolutePath` / `relativePath` | `resolveRunArtifactAbsolutePath()` + `isInsidePath` against company workspace root |
+| `apps/api/src/routes/observability.ts` | run artifact download path resolution | run report artifact `absolutePath` / `relativePath` | `apps/api/src/lib/run-artifact-paths.ts` `resolveRunArtifactAbsolutePath()` + `isInsidePath` against company workspace root |
 | `apps/api/src/lib/git-runtime.ts` | clone/worktree target dir creation and stale cleanup `rm -r` | project workspace policy + git strategy root | company-root assertions + per-candidate inside-root checks |
 | `apps/api/src/scripts/backfill-project-workspaces.ts` | normalization and `mkdir` for legacy relative cwd | DB workspace rows | deterministic company-root anchoring |
 | `apps/api/src/scripts/onboard-seed.ts` | startup workspace/runtime provisioning | DB defaults + fallback workspaces | company-root normalization before `mkdir` |

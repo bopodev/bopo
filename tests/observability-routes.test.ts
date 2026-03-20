@@ -394,6 +394,67 @@ describe("observability routes", { timeout: 30_000 }, () => {
     expect(Buffer.from(downloadResponse.body).toString("utf8")).toContain("workspace scoped artifact");
   });
 
+  it("downloads artifacts when workspace/ company segment typos the real company id", async () => {
+    const project = await createProject(db, {
+      companyId,
+      name: "Typo Company Segment Artifact"
+    });
+    const agentFolder = "typo-segment-worker";
+    const agent = await createAgent(db, {
+      companyId,
+      role: "Worker",
+      name: "Typo Segment Worker",
+      providerType: "shell",
+      heartbeatCron: "* * * * *",
+      monthlyBudgetUsd: "25.0000",
+      canHireAgents: false,
+      runtimeCommand: "echo",
+      runtimeArgsJson: JSON.stringify([
+        JSON.stringify({
+          employee_comment: "done",
+          results: ["reported operating file"],
+          errors: [],
+          artifacts: [
+            {
+              kind: "file",
+              path: `workspace/${companyId}typo/agents/${agentFolder}/operating/typo-segment.md`
+            }
+          ],
+          tokenInput: 1,
+          tokenOutput: 1,
+          usdCost: 0.0001
+        })
+      ])
+    });
+    await createIssue(db, {
+      companyId,
+      projectId: project.id,
+      title: "Typo workspace prefix",
+      assigneeAgentId: agent.id
+    });
+
+    const operatingDir = join(
+      process.env.BOPO_INSTANCE_ROOT!,
+      "workspaces",
+      companyId,
+      "agents",
+      agentFolder,
+      "operating"
+    );
+    await mkdir(operatingDir, { recursive: true });
+    await writeFile(join(operatingDir, "typo-segment.md"), "typo segment body\n");
+
+    const runId = await runHeartbeatForAgent(db, companyId, agent.id, { trigger: "manual" });
+    expect(runId).toBeTruthy();
+
+    const downloadResponse = await request(app)
+      .get(`/observability/heartbeats/${encodeURIComponent(runId!)}/artifacts/0/download`)
+      .query({ companyId })
+      .set("x-company-id", companyId);
+    expect(downloadResponse.status).toBe(200);
+    expect(Buffer.from(downloadResponse.body).toString("utf8")).toContain("typo segment body");
+  });
+
   it("rejects invalid artifact index values", async () => {
     const runId = await seedArtifactRun([{ kind: "file", path: "reports/run.md" }]);
 

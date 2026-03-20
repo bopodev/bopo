@@ -313,6 +313,7 @@ async function ensureCeoStartupTask(
     "Stand up your leadership operating baseline before taking on additional delivery work.",
     "",
     `1. Create your operating folder at \`${ceoOperatingFolder}/\`.`,
+    "   During heartbeats, prefer the absolute path in `$BOPODEV_AGENT_OPERATING_DIR` (set by the runtime) so files land under your agent folder even when the shell cwd is a project workspace.",
     "2. Author these files with your own voice and responsibilities:",
     `   - \`${ceoOperatingFolder}/AGENTS.md\``,
     `   - \`${ceoOperatingFolder}/HEARTBEAT.md\``,

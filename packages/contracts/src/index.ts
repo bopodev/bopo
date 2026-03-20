@@ -454,7 +454,10 @@ export const ControlPlaneRuntimeEnvSchema = z
     BOPODEV_REQUEST_HEADERS_JSON: z.string().optional(),
     BOPODEV_WAKE_REASON: z.string().optional(),
     BOPODEV_WAKE_COMMENT_ID: z.string().optional(),
-    BOPODEV_LINKED_ISSUE_IDS: z.string().optional()
+    BOPODEV_LINKED_ISSUE_IDS: z.string().optional(),
+    BOPODEV_COMPANY_WORKSPACE_ROOT: z.string().optional(),
+    BOPODEV_AGENT_HOME: z.string().optional(),
+    BOPODEV_AGENT_OPERATING_DIR: z.string().optional()
   })
   .superRefine((value, ctx) => {
     const actorType = value.BOPODEV_ACTOR_TYPE;
@@ -557,7 +560,9 @@ export const RunArtifactSchema = z.object({
   kind: z.string().min(1),
   label: z.string().nullable().optional(),
   relativePath: z.string().nullable().optional(),
-  absolutePath: z.string().nullable().optional()
+  absolutePath: z.string().nullable().optional(),
+  /** Set by API after heartbeat: file exists under company workspace at resolved path */
+  verifiedOnDisk: z.boolean().optional()
 });
 export type RunArtifact = z.infer<typeof RunArtifactSchema>;
 export const RunCostSummarySchema = z.object({

@@ -777,6 +777,7 @@ function buildAgentStartupTaskBody(companyId: string, agentId: string) {
     `Create your operating baseline before starting feature delivery work.`,
     "",
     `1. Create your operating folder at \`${agentOperatingFolder}/\`.`,
+    "   During heartbeats, prefer the absolute path in `$BOPODEV_AGENT_OPERATING_DIR` (set by the runtime) so files land under your agent folder even when the shell cwd is a project workspace.",
     "2. Author these files with your own responsibilities and working style:",
     `   - \`${agentOperatingFolder}/AGENTS.md\``,
     `   - \`${agentOperatingFolder}/HEARTBEAT.md\``,

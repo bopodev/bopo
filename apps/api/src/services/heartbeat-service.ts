@@ -1,4 +1,4 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, stat } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
@@ -41,7 +41,13 @@ import {
   resolveCompanyWorkspaceRootPath,
   resolveProjectWorkspacePath
 } from "../lib/instance-paths";
-import { assertRuntimeCwdForCompany, getProjectWorkspaceContextMap, hasText, resolveAgentFallbackWorkspace } from "../lib/workspace-policy";
+import { resolveRunArtifactAbsolutePath } from "../lib/run-artifact-paths";
+import {
+  assertRuntimeCwdForCompany,
+  getProjectWorkspaceContextMap,
+  hasText,
+  resolveAgentFallbackWorkspace
+} from "../lib/workspace-policy";
 import type { RealtimeHub } from "../realtime/hub";
 import { createHeartbeatRunsRealtimeEvent } from "../realtime/heartbeat-runs";
 import { publishAttentionSnapshot } from "../realtime/attention";
@@ -971,6 +977,7 @@ export async function runHeartbeatForAgent(
       contextWorkItems,
       mergedRuntime
     );
+    await mkdir(join(resolveAgentFallbackWorkspace(companyId, agent.id), "operating"), { recursive: true });
     state = {
       ...state,
       runtime: workspaceResolution.runtime
@@ -1474,6 +1481,7 @@ export async function runHeartbeatForAgent(
       cost: runCost,
       runtimeCwd: workspaceResolution.runtime.cwd
     });
+    await verifyRunArtifactsOnDisk(companyId, runReport.artifacts);
     emitCanonicalResultEvent(runReport.resultSummary, runReport.finalStatus);
     const runListMessage = buildRunListMessageFromReport(runReport);
     await db
@@ -1843,6 +1851,7 @@ export async function runHeartbeatForAgent(
       errorType: classified.type,
       errorMessage: classified.message
     });
+    await verifyRunArtifactsOnDisk(companyId, runReport.artifacts);
     const runListMessage = buildRunListMessageFromReport(runReport);
     await db
       .update(heartbeatRuns)
@@ -3078,6 +3087,26 @@ function buildRunArtifacts(input: {
   });
 }
 
+async function verifyRunArtifactsOnDisk(companyId: string, artifacts: RunArtifact[]) {
+  for (const artifact of artifacts) {
+    const resolved = resolveRunArtifactAbsolutePath(companyId, {
+      path: artifact.path,
+      relativePath: artifact.relativePath ?? undefined,
+      absolutePath: artifact.absolutePath ?? undefined
+    });
+    if (!resolved) {
+      artifact.verifiedOnDisk = false;
+      continue;
+    }
+    try {
+      const stats = await stat(resolved);
+      artifact.verifiedOnDisk = stats.isFile();
+    } catch {
+      artifact.verifiedOnDisk = false;
+    }
+  }
+}
+
 function toNormalizedWorkspaceRelativePath(inputPath: string | null | undefined) {
   const trimmed = inputPath?.trim();
   if (!trimmed) {
@@ -3118,11 +3147,9 @@ function normalizeAgentOperatingArtifactRelativePath(pathValue: string | null, c
     if (!parsed) {
       return null;
     }
-    const embeddedCompanyId = parsed[1]?.trim() || companyId;
     const agentId = parsed[2];
     const suffix = parsed[3] ?? "";
-    const effectiveCompanyId = embeddedCompanyId;
-    return `workspace/${effectiveCompanyId}/agents/${agentId}/operating${suffix}`;
+    return `workspace/${companyId}/agents/${agentId}/operating${suffix}`;
   }
   const directMatch = normalized.match(/^agents\/([^/]+)\/operating(\/.*)?$/);
   if (directMatch) {
@@ -3346,6 +3373,9 @@ function formatRunArtifactMarkdownLink(
   const href = buildRunArtifactLinkHref(options);
   if (!label) {
     return "`artifact`";
+  }
+  if (artifact.verifiedOnDisk === false) {
+    return `\`${label}\` (not found under company workspace at run completion)`;
   }
   if (!href) {
     return `\`${label}\``;
@@ -4349,6 +4379,9 @@ function buildHeartbeatRuntimeEnv(input: {
   canHireAgents: boolean;
   wakeContext?: HeartbeatWakeContext;
 }) {
+  const companyWorkspaceRoot = resolveCompanyWorkspaceRootPath(input.companyId);
+  const agentHome = resolveAgentFallbackWorkspace(input.companyId, input.agentId);
+  const agentOperatingDir = join(agentHome, "operating");
   const apiBaseUrl = resolveControlPlaneApiBaseUrl();
   const actorPermissions = ["issues:write", ...(input.canHireAgents ? ["agents:write"] : [])].join(",");
   const actorHeaders = JSON.stringify({
@@ -4364,6 +4397,9 @@ function buildHeartbeatRuntimeEnv(input: {
   return {
     BOPODEV_AGENT_ID: input.agentId,
     BOPODEV_COMPANY_ID: input.companyId,
+    BOPODEV_COMPANY_WORKSPACE_ROOT: companyWorkspaceRoot,
+    BOPODEV_AGENT_HOME: agentHome,
+    BOPODEV_AGENT_OPERATING_DIR: agentOperatingDir,
     BOPODEV_RUN_ID: input.heartbeatRunId,
     BOPODEV_HEARTBEAT_PROMPT_MODE: resolveHeartbeatPromptMode(),
     BOPODEV_HEARTBEAT_IDLE_POLICY: resolveHeartbeatIdlePolicy(),
