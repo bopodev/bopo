@@ -569,7 +569,24 @@ function formatCostProviderTitle(providerType: string) {
     .join(" ");
 }
 
-type ProviderDailyCostRow = {
+const COST_MODEL_UNSET_KEY = "__unset__";
+
+function costEntryModelKey(entry: Pick<CostRow, "runtimeModelId" | "pricingModelId">) {
+  const raw = entry.runtimeModelId?.trim() || entry.pricingModelId?.trim() || "";
+  return raw || COST_MODEL_UNSET_KEY;
+}
+
+function formatCostModelTitle(modelKey: string) {
+  if (modelKey === COST_MODEL_UNSET_KEY) {
+    return "Unknown model";
+  }
+  if (modelKey.length > 52) {
+    return `${modelKey.slice(0, 49)}…`;
+  }
+  return modelKey;
+}
+
+type CostDailyChartRow = {
   day: number;
   label: string;
   dateLabel: string;
@@ -579,18 +596,20 @@ type ProviderDailyCostRow = {
   outputTokens: number;
 };
 
-function ProviderDailyCostChartCard({
-  providerType,
+function CostDailyBreakdownChartCard({
+  title,
   chartMonthLabel,
   daily,
   totalUsd,
-  totalTokens
+  totalTokens,
+  emptyLabel
 }: {
-  providerType: string;
+  title: string;
   chartMonthLabel: string;
-  daily: ProviderDailyCostRow[];
+  daily: CostDailyChartRow[];
   totalUsd: number;
   totalTokens: number;
+  emptyLabel: string;
 }) {
   const [metric, setMetric] = useState<"usd" | "tokens">("usd");
   const gradientBaseId = useId().replace(/:/g, "");
@@ -598,14 +617,14 @@ function ProviderDailyCostChartCard({
     usd: { label: "Spend (USD)", color: "var(--chart-2)" },
     tokens: { label: "Tokens", color: "var(--chart-4)" }
   } satisfies ChartConfig;
-  const usdGradientId = `pd-usd-${gradientBaseId}`;
-  const tokensGradientId = `pd-tok-${gradientBaseId}`;
+  const usdGradientId = `cd-usd-${gradientBaseId}`;
+  const tokensGradientId = `cd-tok-${gradientBaseId}`;
   const hasAnyActivity = daily.some((row) => row.usd > 0 || row.tokens > 0);
 
   return (
     <Card className={styles.costProviderDailyCard}>
       <CardHeader className={styles.costProviderDailyCardHeader}>
-        <CardTitle className={styles.costProviderDailyCardTitle}>{formatCostProviderTitle(providerType)}</CardTitle>
+        <CardTitle className={styles.costProviderDailyCardTitle}>{title}</CardTitle>
         <CardDescription>Day-by-day usage for {chartMonthLabel}.</CardDescription>
         <CardAction className={styles.costProviderDailyCardAction}>
           <div role="group" aria-label="Chart unit" className={styles.costProviderDailyMetricGroup}>
@@ -674,7 +693,7 @@ function ProviderDailyCostChartCard({
             </BarChart>
           </ChartContainer>
         ) : (
-          <div className={styles.emptyStateContainer}>No usage for this provider in this month.</div>
+          <div className={styles.emptyStateContainer}>{emptyLabel}</div>
         )}
       </CardContent>
     </Card>
@@ -1797,7 +1816,7 @@ export function WorkspaceClient({
         current.outputTokens += entry.tokenOutput;
       }
       const agg = totals.get(providerType)!;
-      const daily: ProviderDailyCostRow[] = [];
+      const daily: CostDailyChartRow[] = [];
       for (let day = 1; day <= daysInMonth; day += 1) {
         const v = byDay.get(day)!;
         const d = new Date(year, month - 1, day);
@@ -1813,6 +1832,73 @@ export function WorkspaceClient({
       }
       return {
         providerType,
+        daily,
+        totalUsd: agg.usd,
+        totalTokens: agg.tokens
+      };
+    });
+  }, [costDailyTargetMonthKey, costEntries, includeCostAggregations]);
+  const modelDailyCostBreakdown = useMemo(() => {
+    if (!includeCostAggregations || !costDailyTargetMonthKey) {
+      return [];
+    }
+    const match = costDailyTargetMonthKey.match(/^(\d{4})-(\d{2})$/);
+    if (!match) {
+      return [];
+    }
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const totals = new Map<string, { usd: number; tokens: number }>();
+    for (const entry of costEntries) {
+      if (monthKeyFromDate(entry.createdAt) !== costDailyTargetMonthKey) {
+        continue;
+      }
+      const modelKey = costEntryModelKey(entry);
+      const t = totals.get(modelKey) ?? { usd: 0, tokens: 0 };
+      t.usd += entry.usdCost;
+      t.tokens += entry.tokenInput + entry.tokenOutput;
+      totals.set(modelKey, t);
+    }
+    const modelKeys = Array.from(totals.entries()).sort((a, b) => b[1].usd - a[1].usd || a[0].localeCompare(b[0]));
+    return modelKeys.map(([modelKey]) => {
+      const byDay = new Map<number, { usd: number; inputTokens: number; outputTokens: number }>();
+      for (let day = 1; day <= daysInMonth; day += 1) {
+        byDay.set(day, { usd: 0, inputTokens: 0, outputTokens: 0 });
+      }
+      for (const entry of costEntries) {
+        if (monthKeyFromDate(entry.createdAt) !== costDailyTargetMonthKey) {
+          continue;
+        }
+        if (costEntryModelKey(entry) !== modelKey) {
+          continue;
+        }
+        const day = new Date(entry.createdAt).getDate();
+        const current = byDay.get(day);
+        if (!current) {
+          continue;
+        }
+        current.usd += entry.usdCost;
+        current.inputTokens += entry.tokenInput;
+        current.outputTokens += entry.tokenOutput;
+      }
+      const agg = totals.get(modelKey)!;
+      const daily: CostDailyChartRow[] = [];
+      for (let day = 1; day <= daysInMonth; day += 1) {
+        const v = byDay.get(day)!;
+        const d = new Date(year, month - 1, day);
+        daily.push({
+          day,
+          label: String(day).padStart(2, "0"),
+          dateLabel: d.toLocaleString(undefined, { month: "short", day: "numeric" }),
+          usd: v.usd,
+          inputTokens: v.inputTokens,
+          outputTokens: v.outputTokens,
+          tokens: v.inputTokens + v.outputTokens
+        });
+      }
+      return {
+        modelKey,
         daily,
         totalUsd: agg.usd,
         totalTokens: agg.tokens
@@ -5121,6 +5207,7 @@ export function WorkspaceClient({
               <TabsList>
                 <TabsTrigger value="overview">Overview</TabsTrigger>
                 <TabsTrigger value="by-provider">By provider</TabsTrigger>
+                <TabsTrigger value="by-model">By model</TabsTrigger>
               </TabsList>
               <TabsContent value="overview" className={styles.costTabsOverviewContent}>
             <div className="ui-stats">
@@ -5383,13 +5470,43 @@ export function WorkspaceClient({
                 ) : (
                   <div className={styles.costProviderDailyGrid}>
                     {providerDailyCostBreakdown.map((row) => (
-                      <ProviderDailyCostChartCard
+                      <CostDailyBreakdownChartCard
                         key={row.providerType}
-                        providerType={row.providerType}
+                        title={formatCostProviderTitle(row.providerType)}
                         chartMonthLabel={providerDailyChartMonthLabel}
                         daily={row.daily}
                         totalUsd={row.totalUsd}
                         totalTokens={row.totalTokens}
+                        emptyLabel="No usage for this provider in this month."
+                      />
+                    ))}
+                  </div>
+                )}
+              </TabsContent>
+              <TabsContent value="by-model" className={styles.costTabsByProviderContent}>
+                {activeCostMonth === "all" ? (
+                  <p className={styles.costProviderDailyAllTimeHint}>
+                    Daily charts use {providerDailyChartMonthLabel} — the same calendar month as the Overview &quot;Daily spend
+                    trend&quot; when &quot;All time&quot; is selected.
+                  </p>
+                ) : null}
+                {!costDailyTargetMonthKey ? (
+                  <div className={styles.emptyStateContainer}>No months with cost data yet.</div>
+                ) : modelDailyCostBreakdown.length === 0 ? (
+                  <div className={styles.emptyStateContainer}>
+                    No spend was recorded for {providerDailyChartMonthLabel}, or all amounts are zero.
+                  </div>
+                ) : (
+                  <div className={styles.costProviderDailyGrid}>
+                    {modelDailyCostBreakdown.map((row) => (
+                      <CostDailyBreakdownChartCard
+                        key={row.modelKey}
+                        title={formatCostModelTitle(row.modelKey)}
+                        chartMonthLabel={providerDailyChartMonthLabel}
+                        daily={row.daily}
+                        totalUsd={row.totalUsd}
+                        totalTokens={row.totalTokens}
+                        emptyLabel="No usage for this model in this month."
                       />
                     ))}
                   </div>
