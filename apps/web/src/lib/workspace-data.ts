@@ -383,7 +383,7 @@ export async function loadWorkspaceData(
     goals: true,
     approvals: false,
     governanceInbox: false,
-    attentionItems: false,
+    attentionItems: true,
     auditEvents: true,
     costEntries: true,
     projects: true,

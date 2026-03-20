@@ -21,6 +21,7 @@ export default async function IssuePage({
       projects: true,
       goals: false,
       governanceInbox: false,
+      attentionItems: false,
       auditEvents: false
     }
   });

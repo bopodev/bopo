@@ -21,7 +21,8 @@ export default async function AgentPage({
       projects: false,
       goals: false,
       approvals: false,
-      governanceInbox: false
+      governanceInbox: false,
+      attentionItems: false
     }
   });
   const agent = workspaceData.agents.find((entry) => entry.id === agentId);

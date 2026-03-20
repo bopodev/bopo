@@ -21,6 +21,7 @@ export default async function ProjectPage({
       heartbeatRuns: false,
       approvals: false,
       governanceInbox: false,
+      attentionItems: false,
       auditEvents: false
     }
   });

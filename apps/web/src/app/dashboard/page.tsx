@@ -10,7 +10,6 @@ export default async function DashboardPage({
   const workspaceData = await loadWorkspaceData(companyId, {
     include: {
       approvals: true,
-      attentionItems: true,
       governanceInbox: true
     }
   });

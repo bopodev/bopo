@@ -24,6 +24,7 @@ export default async function RunDetailPage({
       goals: false,
       approvals: false,
       governanceInbox: false,
+      attentionItems: false,
       auditEvents: false,
       costEntries: false,
       projects: false,

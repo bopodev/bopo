@@ -39,6 +39,7 @@ export default async function SettingsPluginsPage({
       goals={workspaceData.goals}
       approvals={workspaceData.approvals}
       governanceInbox={workspaceData.governanceInbox}
+      attentionItems={workspaceData.attentionItems}
       auditEvents={workspaceData.auditEvents}
       costEntries={workspaceData.costEntries}
       projects={workspaceData.projects}

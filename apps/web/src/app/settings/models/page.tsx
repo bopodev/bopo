@@ -31,6 +31,7 @@ export default async function SettingsModelsPage({
       goals={workspaceData.goals}
       approvals={workspaceData.approvals}
       governanceInbox={workspaceData.governanceInbox}
+      attentionItems={workspaceData.attentionItems}
       auditEvents={workspaceData.auditEvents}
       costEntries={workspaceData.costEntries}
       projects={workspaceData.projects}

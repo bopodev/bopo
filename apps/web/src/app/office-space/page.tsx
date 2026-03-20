@@ -15,6 +15,7 @@ export default async function OfficeSpacePage({
       goals: false,
       approvals: false,
       governanceInbox: false,
+      attentionItems: false,
       auditEvents: false,
       costEntries: false,
       projects: false,

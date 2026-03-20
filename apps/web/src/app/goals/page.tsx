@@ -19,6 +19,7 @@ export default async function GoalsPage({
       heartbeatRuns={workspaceData.heartbeatRuns}
       goals={workspaceData.goals}
       approvals={workspaceData.approvals}
+      attentionItems={workspaceData.attentionItems}
       auditEvents={workspaceData.auditEvents}
       costEntries={workspaceData.costEntries}
       projects={workspaceData.projects}
