@@ -4383,7 +4383,9 @@ function buildHeartbeatRuntimeEnv(input: {
   const agentHome = resolveAgentFallbackWorkspace(input.companyId, input.agentId);
   const agentOperatingDir = join(agentHome, "operating");
   const apiBaseUrl = resolveControlPlaneApiBaseUrl();
-  const actorPermissions = ["issues:write", ...(input.canHireAgents ? ["agents:write"] : [])].join(",");
+  // agents:write is required for PUT /agents/:self (bootstrapPrompt, runtimeConfig). Route handlers
+  // still forbid agents from updating other agents' rows and from POST /agents unless canHireAgents.
+  const actorPermissions = ["issues:write", "agents:write"].join(",");
   const actorHeaders = JSON.stringify({
     "x-company-id": input.companyId,
     "x-actor-type": "agent",
