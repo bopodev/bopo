@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ApiError, apiPut } from "@/lib/api";
 import { getStatusBadgeClassName } from "@/lib/status-presentation";
+import { formatSmartDateTime } from "@/lib/smart-date";
 import styles from "./project-detail-page-client.module.scss";
 import { MetricCard, SectionHeading } from "./workspace/shared";
 
@@ -94,10 +95,6 @@ function PropertyRow({ label, value }: { label: string; value: React.ReactNode }
       <div className={styles.projectPropertyValue}>{value}</div>
     </div>
   );
-}
-
-function formatDateTime(value: string) {
-  return new Date(value).toLocaleString();
 }
 
 function formatDate(value: string | null) {
@@ -248,7 +245,9 @@ export function ProjectDetailPageClient({
       {
         accessorKey: "updatedAt",
         header: ({ column }) => <DataTableColumnHeader column={column} title="Updated" />,
-        cell: ({ row }) => <div className={styles.projectDetailContainer1}>{formatDateTime(row.original.updatedAt)}</div>
+        cell: ({ row }) => (
+          <div className={styles.projectDetailContainer1}>{formatSmartDateTime(row.original.updatedAt)}</div>
+        )
       }
     ],
     [agentNameById, companyId]

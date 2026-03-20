@@ -1,27 +1,31 @@
 @reference "../../app/globals.css";
 
 .mdxEditorRoot {
-  @apply min-h-[320px] bg-card border border-input rounded-md  px-5 py-4;
+  @apply min-h-[320px] bg-card border border-input rounded-md px-3 py-2;
   h1 {
-    @apply text-2xl mb-2 font-bold text-foreground;
+    @apply text-2xl mb-4 font-bold text-foreground;
   }
   h2 {
-    @apply text-xl mb-2 font-bold text-foreground;
+    @apply text-xl mb-4 font-bold text-foreground;
   }
   h3 {
-    @apply text-lg mb-2 font-bold text-foreground;
+    @apply text-lg mb-4 font-bold text-foreground;
   }
   h4 {
-    @apply text-base mb-2 font-bold text-foreground;
+    @apply text-base mb-4 font-bold text-foreground;
   }
   h5 {
-    @apply text-sm mb-2 font-bold text-foreground;
+    @apply text-sm mb-4 font-bold text-foreground;
   }
   h6 {
-    @apply text-xs mb-2 font-bold text-foreground;
+    @apply text-xs mb-4 font-bold text-foreground;
   }
   p {
     @apply text-base mb-6 text-foreground;
+  }
+  /* MDXEditor empty state is div[class*="placeholder_"] > p — same tone as .ui-input placeholder */
+  :global([class*="placeholder_"]) p {
+    @apply mb-0 text-base text-sidebar-foreground/60;
   }
   a {
     @apply text-foreground underline hover:text-primary;

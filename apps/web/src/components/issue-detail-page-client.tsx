@@ -1063,7 +1063,7 @@ export function IssueDetailPageClient({
                           )}
                         </ItemTitle>
                         <ItemDescription>
-                          {attachmentDescriptionLine(attachment, formatDate(attachment.createdAt))}
+                          {attachmentDescriptionLine(attachment, formatSmartDateTime(attachment.createdAt))}
                         </ItemDescription>
                       </ItemContent>
                       <ItemActions>
