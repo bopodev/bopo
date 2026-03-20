@@ -1,4 +1,3 @@
-import { and, eq } from "drizzle-orm";
 import { mkdir } from "node:fs/promises";
 import { z } from "zod";
 import {
@@ -10,6 +9,7 @@ import {
 } from "bopodev-contracts";
 import type { BopoDb } from "bopodev-db";
 import {
+  and,
   approvalRequests,
   agents,
   appendAuditEvent,
@@ -26,6 +26,7 @@ import {
   listProjectWorkspaces,
   listProjects,
   projects,
+  eq,
   updateProjectWorkspace,
   updatePluginConfig
 } from "bopodev-db";

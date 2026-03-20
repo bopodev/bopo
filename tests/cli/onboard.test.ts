@@ -358,6 +358,42 @@ describe("bopo onboard flow", () => {
     expect(logs.output).toContain("Template-only (strict)");
   });
 
+  test("rewrites legacy BOPO_DB_PATH entries to the Postgres data directory", async () => {
+    const workspace = await createWorkspace();
+    await writeFile(
+      join(workspace, ".env"),
+      'NEXT_PUBLIC_API_URL=http://localhost:4020\nBOPO_DEFAULT_COMPANY_NAME="Legacy Co"\nBOPO_DEFAULT_AGENT_PROVIDER=codex\nBOPO_DB_PATH=/tmp/legacy-bopo/bopodev.db\n',
+      "utf8"
+    );
+    const initializeDatabase = vi.fn(async () => {});
+
+    await runOnboardFlow(
+      { cwd: workspace, yes: true, start: false, forceInstall: false },
+      {
+        installDependencies: async () => {},
+        initializeDatabase,
+        seedOnboardingDatabase: async () => ({
+          companyId: "company-legacy",
+          companyName: "Legacy Co",
+          companyCreated: false,
+          ceoCreated: false,
+          ceoProviderType: "codex" as const,
+          ceoRuntimeModel: "gpt-5",
+          ceoMigrated: false
+        }),
+        startServices: async () => 0,
+        runDoctor: async () => [],
+        promptForCompanyName: async () => "Legacy Co",
+        promptForAgentProvider: async () => "codex" as const,
+        promptForAgentModel: async () => "gpt-5"
+      }
+    );
+
+    expect(initializeDatabase).toHaveBeenCalledWith(workspace, "/tmp/legacy-bopo/postgres");
+    const envContent = await readFile(join(workspace, ".env"), "utf8");
+    expect(envContent).toContain("BOPO_DB_PATH=/tmp/legacy-bopo/postgres");
+  });
+
   test("fails fast when selected onboarding template cannot be applied", async () => {
     const workspace = await createWorkspace();
     await expect(

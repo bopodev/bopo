@@ -43,5 +43,5 @@ export function resolveBopoInstanceRoot() {
 }
 
 export function resolveDefaultDbPath() {
-  return join(resolveBopoInstanceRoot(), "db", "bopodev.db");
+  return join(resolveBopoInstanceRoot(), "db", "postgres");
 }

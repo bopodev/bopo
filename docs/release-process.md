@@ -25,6 +25,7 @@ Gate reference: [`docs/release-gate-checklist.md`](./release-gate-checklist.md)
    - Ensure no pending migration or contract break is undocumented.
 2. **Run release gates**
    - Execute full gate commands in checklist.
+   - If the release includes schema changes, verify `pnpm db:migrate` succeeds locally.
 3. **Finalize release notes**
    - Summarize user-facing and operator-impacting changes.
    - Highlight breaking or config-affecting changes.
@@ -37,6 +38,7 @@ Gate reference: [`docs/release-gate-checklist.md`](./release-gate-checklist.md)
    - Publish packages/artifacts: `pnpm publish:all`.
 6. **Post-release validation**
    - Verify install/start flow.
+   - Run `pnpm upgrade:local -- --no-start` against a local instance to confirm migrations verify cleanly.
    - Verify critical routes and heartbeat behavior.
 7. **Announce and follow up**
    - Share release summary and known caveats.

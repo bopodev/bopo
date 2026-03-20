@@ -4,6 +4,7 @@ import { cancel, outro } from "@clack/prompts";
 import { runDoctorCommand } from "./commands/doctor";
 import { runOnboardFlow } from "./commands/onboard";
 import { runStartCommand } from "./commands/start";
+import { runUpgradeCommand } from "./commands/upgrade";
 
 const program = new Command();
 
@@ -54,6 +55,26 @@ program
     try {
       await runDoctorCommand(process.cwd());
       outro("Doctor finished.");
+    } catch (error) {
+      cancel(String(error));
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command("upgrade")
+  .description("Stop local services, apply migrations, verify schema, and optionally restart")
+  .option("--no-start", "Only migrate and verify without restarting services")
+  .option("--full-logs", "Use full startup logs instead of quiet mode when restarting", false)
+  .action(async (options: { start: boolean; fullLogs: boolean }) => {
+    try {
+      await runUpgradeCommand(process.cwd(), {
+        start: options.start,
+        quiet: !options.fullLogs
+      });
+      if (!options.start) {
+        outro("Upgrade finished.");
+      }
     } catch (error) {
       cancel(String(error));
       process.exitCode = 1;

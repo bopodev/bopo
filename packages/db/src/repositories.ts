@@ -215,7 +215,7 @@ export async function updateProject(
   }
   if (input.workspaceLocalPath !== undefined || input.workspaceGithubRepo !== undefined) {
     const existingWorkspaces = await listProjectWorkspaces(db, input.companyId, input.id);
-    const primaryWorkspace = existingWorkspaces.find((workspace) => workspace.isPrimary) ?? existingWorkspaces[0] ?? null;
+    const primaryWorkspace = existingWorkspaces.find((workspace: any) => workspace.isPrimary) ?? existingWorkspaces[0] ?? null;
     const hasAnyWorkspaceField =
       (input.workspaceLocalPath?.trim() ?? "").length > 0 || (input.workspaceGithubRepo?.trim() ?? "").length > 0;
     if (!hasAnyWorkspaceField) {
@@ -272,7 +272,7 @@ export async function createProjectWorkspace(
   }
 ) {
   const id = nanoid(12);
-  return db.transaction(async (tx) => {
+  return db.transaction(async (tx: any) => {
     const existingWorkspaces = await tx
       .select({ id: projectWorkspaces.id })
       .from(projectWorkspaces)
@@ -315,7 +315,7 @@ export async function updateProjectWorkspace(
     isPrimary?: boolean;
   }
 ) {
-  return db.transaction(async (tx) => {
+  return db.transaction(async (tx: any) => {
     if (input.isPrimary === true) {
       await tx
         .update(projectWorkspaces)
@@ -385,7 +385,7 @@ export async function deleteProjectWorkspace(
   db: BopoDb,
   input: { companyId: string; projectId: string; id: string }
 ) {
-  return db.transaction(async (tx) => {
+  return db.transaction(async (tx: any) => {
     const [workspace] = await tx
       .delete(projectWorkspaces)
       .where(
@@ -763,7 +763,7 @@ export async function listIssueComments(db: BopoDb, companyId: string, issueId: 
     .from(issueComments)
     .where(and(eq(issueComments.companyId, companyId), eq(issueComments.issueId, issueId)))
     .orderBy(asc(issueComments.createdAt));
-  return comments.map((comment) => normalizeIssueComment(comment));
+  return comments.map((comment: any) => normalizeIssueComment(comment));
 }
 
 export async function listIssueActivity(db: BopoDb, companyId: string, issueId: string, limit = 100) {
@@ -1674,7 +1674,7 @@ export async function claimNextHeartbeatJob(db: BopoDb, companyId: string) {
     WHERE q.id = c.id
     RETURNING q.*;
   `);
-  const row = (result.rows ?? [])[0] as Record<string, unknown> | undefined;
+  const row = result[0] as Record<string, unknown> | undefined;
   return row ? normalizeHeartbeatQueueJob(row) : null;
 }
 
@@ -1804,7 +1804,7 @@ export async function listHeartbeatQueueJobs(
     .where(and(...conditions))
     .orderBy(asc(heartbeatRunQueue.priority), asc(heartbeatRunQueue.availableAt), asc(heartbeatRunQueue.createdAt))
     .limit(limit);
-  return rows.map((row) => normalizeHeartbeatQueueJob(row));
+  return rows.map((row: any) => normalizeHeartbeatQueueJob(row));
 }
 
 export async function getHeartbeatRun(db: BopoDb, companyId: string, runId: string) {
@@ -1935,7 +1935,7 @@ export async function listHeartbeatRunMessagesForRuns(
     WHERE rn <= ${perRunLimit}
     ORDER BY run_id ASC, sequence ASC
   `);
-  const rows = (rankedRows.rows ?? []) as Array<{
+  const rows = rankedRows as unknown as Array<{
     id: string;
     company_id: string;
     run_id: string;

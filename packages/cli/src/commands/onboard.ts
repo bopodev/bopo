@@ -1,6 +1,6 @@
 import { access, copyFile, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { confirm, isCancel, log, select, spinner, text } from "@clack/prompts";
 import dotenv from "dotenv";
 import { runDoctorChecks, type DoctorCheck } from "../lib/checks";
@@ -68,6 +68,8 @@ const DEFAULT_AGENT_MODEL_ENV = "BOPO_DEFAULT_AGENT_MODEL";
 const DEFAULT_TEMPLATE_ENV = "BOPO_DEFAULT_TEMPLATE_ID";
 const DEFAULT_DEPLOYMENT_MODE_ENV = "BOPO_DEPLOYMENT_MODE";
 const DEFAULT_ENV_TEMPLATE = "NEXT_PUBLIC_API_URL=http://localhost:4020\n";
+const DB_INIT_TIMEOUT_MS = 120_000;
+const ONBOARD_SEED_TIMEOUT_MS = 60_000;
 const CLI_ONBOARD_VISIBLE_PROVIDERS: Array<{ value: AgentProvider; label: string }> = [
   { value: "codex", label: "Codex" },
   { value: "claude_code", label: "Claude Code" },
@@ -92,6 +94,7 @@ const defaultDeps: OnboardDeps = {
   initializeDatabase: async (workspaceRoot, dbPath) => {
     const result = await runCommandCapture("pnpm", ["--filter", "bopodev-api", "db:init"], {
       cwd: workspaceRoot,
+      timeoutMs: DB_INIT_TIMEOUT_MS,
       env: {
         ...process.env,
         ...(dbPath ? { BOPO_DB_PATH: dbPath } : {})
@@ -105,6 +108,7 @@ const defaultDeps: OnboardDeps = {
   seedOnboardingDatabase: async (workspaceRoot, input) => {
     const result = await runCommandCapture("pnpm", ["--filter", "bopodev-api", "onboard:seed"], {
       cwd: workspaceRoot,
+      timeoutMs: ONBOARD_SEED_TIMEOUT_MS,
       env: {
         ...process.env,
         [DEFAULT_COMPANY_NAME_ENV]: input.companyName,
@@ -245,21 +249,9 @@ export async function runOnboardFlow(options: OnboardOptions, deps: OnboardDeps 
   const envPath = join(workspaceRoot, ".env");
   const preEnvValues = (await fileExists(envPath)) ? await readEnvValues(envPath) : {};
 
-  const doctorSpin = spinner();
-  doctorSpin.start("Running doctor checks");
-  const checks = await deps.runDoctor(workspaceRoot);
-  doctorSpin.stop("Doctor checks complete");
-  const runtimeAvailability = deriveAvailableAgentProviders(checks);
-  const passed = checks.filter((check) => check.ok).length;
-  const warnings = checks.length - passed;
-  printCheck("ok", "Doctor", "checks complete");
-  printCheck("ok", "Doctor summary", `${passed} passed, ${warnings} warning${warnings === 1 ? "" : "s"}`);
-  if (warnings === 0) {
-    printCheck("ok", "Doctor status", "All checks passed");
-  }
-  for (const check of checks) {
-    printCheck(check.ok ? "ok" : "warn", check.label, check.details);
-  }
+  let checks: DoctorCheck[] = [];
+  let passed = 0;
+  let warnings = 0;
 
   let companyName = preEnvValues[DEFAULT_COMPANY_NAME_ENV]?.trim() ?? "";
   if (companyName.length > 0) {
@@ -268,7 +260,7 @@ export async function runOnboardFlow(options: OnboardOptions, deps: OnboardDeps 
     companyName = await deps.promptForCompanyName();
     printCheck("ok", "Default company", companyName);
   }
-  const selectableProviders = runtimeAvailability.length > 0 ? runtimeAvailability : CLI_ONBOARD_VISIBLE_PROVIDERS.map((entry) => entry.value);
+  const selectableProviders = CLI_ONBOARD_VISIBLE_PROVIDERS.map((entry) => entry.value);
   const configuredProvider = parseAgentProvider(preEnvValues[DEFAULT_AGENT_PROVIDER_ENV]);
   let agentProvider: AgentProvider = configuredProvider ?? selectableProviders[0] ?? "codex";
   const canReuseProvider = Boolean(configuredProvider && selectableProviders.includes(configuredProvider));
@@ -332,7 +324,14 @@ export async function runOnboardFlow(options: OnboardOptions, deps: OnboardDeps 
   }
   dotenv.config({ path: envPath, quiet: true });
   const envValues = await readEnvValues(envPath);
-  const configuredDbPath = normalizeOptionalEnvValue(envValues.BOPO_DB_PATH);
+  const configuredDbPathInfo = await normalizeConfiguredDbPathForOnboarding(normalizeOptionalEnvValue(envValues.BOPO_DB_PATH));
+  const configuredDbPath = configuredDbPathInfo.path;
+  if (configuredDbPathInfo.rewrittenFrom && configuredDbPath) {
+    await updateEnvFile(envPath, {
+      BOPO_DB_PATH: configuredDbPath
+    });
+    printCheck("warn", "Database path", `Updated legacy local DB path to ${configuredDbPath}`);
+  }
   if (configuredDbPath) {
     process.env.BOPO_DB_PATH = configuredDbPath;
   } else {
@@ -412,11 +411,30 @@ export async function runOnboardFlow(options: OnboardOptions, deps: OnboardDeps 
     );
   }
 
+  if (!options.start) {
+    const doctorSpin = spinner();
+    doctorSpin.start("Running doctor checks");
+    checks = await deps.runDoctor(workspaceRoot);
+    doctorSpin.stop("Doctor checks complete");
+    passed = checks.filter((check) => check.ok).length;
+    warnings = checks.length - passed;
+    printCheck("ok", "Doctor", "checks complete");
+    printCheck("ok", "Doctor summary", `${passed} passed, ${warnings} warning${warnings === 1 ? "" : "s"}`);
+    if (warnings === 0) {
+      printCheck("ok", "Doctor status", "All checks passed");
+    }
+    for (const check of checks) {
+      printCheck(check.ok ? "ok" : "warn", check.label, check.details);
+    }
+  } else {
+    printCheck("warn", "Doctor", "Deferred to keep onboarding fast. Run `pnpm doctor` after startup.");
+  }
+
   const dbPathSummary = resolveDbPathSummary(configuredDbPath);
   printSummaryCard([
     `Mode    ${padSummaryValue("local")}`,
     `Deploy  ${padSummaryValue("local_mac")}`,
-    `Doctor  ${padSummaryValue(`${passed} passed, ${warnings} warning${warnings === 1 ? "" : "s"}`)}`,
+    `Doctor  ${padSummaryValue(options.start ? "Deferred" : `${passed} passed, ${warnings} warning${warnings === 1 ? "" : "s"}`)}`,
     `Company ${padSummaryValue(`${seedResult.companyName} (${seedResult.companyId})`)}`,
     `Agent   ${padSummaryValue(formatAgentProvider(seedResult.ceoProviderType))}`,
     `Model   ${padSummaryValue(seedResult.ceoRuntimeModel ?? selectedAgentModel ?? "provider default")}`,
@@ -512,6 +530,29 @@ async function sanitizeBlankDbPathEnvEntry(envPath: string) {
   await writeFile(envPath, nextContent.endsWith("\n") ? nextContent : `${nextContent}\n`, "utf8");
 }
 
+async function normalizeConfiguredDbPathForOnboarding(rawValue: string | undefined) {
+  const configuredPath = normalizeOptionalEnvValue(rawValue);
+  if (!configuredPath || !looksLikeLegacyDbFilePath(configuredPath)) {
+    return {
+      path: configuredPath,
+      rewrittenFrom: undefined
+    };
+  }
+  const resolvedPath = resolve(expandHomePrefix(configuredPath));
+  const postgresMarker = join(resolvedPath, "PG_VERSION");
+  if (await fileExists(postgresMarker)) {
+    return {
+      path: resolvedPath,
+      rewrittenFrom: undefined
+    };
+  }
+  const normalizedPath = join(dirname(resolvedPath), "postgres");
+  return {
+    path: normalizedPath,
+    rewrittenFrom: configuredPath
+  };
+}
+
 async function removeEnvKeys(envPath: string, keys: string[]) {
   if (keys.length === 0) {
     return;
@@ -561,7 +602,7 @@ function resolveDbPathSummary(configuredDbPath: string | undefined) {
   }
   const home = process.env.BOPO_HOME?.trim() ? expandHomePrefix(process.env.BOPO_HOME.trim()) : join(homedir(), ".bopodev");
   const instanceId = process.env.BOPO_INSTANCE_ID?.trim() || "default";
-  return resolve(home, "instances", instanceId, "db", "bopodev.db");
+  return resolve(home, "instances", instanceId, "db", "postgres");
 }
 
 function expandHomePrefix(value: string) {
@@ -572,6 +613,11 @@ function expandHomePrefix(value: string) {
     return resolve(homedir(), value.slice(2));
   }
   return value;
+}
+
+function looksLikeLegacyDbFilePath(value: string) {
+  const name = basename(value).toLowerCase();
+  return name.endsWith(".db");
 }
 
 function padSummaryValue(value: string) {

@@ -11,7 +11,7 @@ For the full docs map, start at [`docs/index.md`](./index.md).
 - `apps/web`: Next.js 16 web client ([`apps/web/README.md`](../apps/web/README.md)).
 - `apps/api`: Express API and realtime websocket hub ([`apps/api/README.md`](../apps/api/README.md)).
 - `packages/contracts`: shared schemas and realtime contracts ([`packages/contracts/README.md`](../packages/contracts/README.md)).
-- `packages/db`: PGlite/Drizzle schema and repositories ([`packages/db/README.md`](../packages/db/README.md)).
+- `packages/db`: embedded-Postgres/Drizzle schema and repositories ([`packages/db/README.md`](../packages/db/README.md)).
 - `packages/agent-sdk`: runtime adapters and execution plumbing ([`packages/agent-sdk/README.md`](../packages/agent-sdk/README.md)).
 - `packages/adapters`: provider implementations ([`packages/adapters/README.md`](../packages/adapters/README.md)).
 - `packages/ui` and `packages/config`: shared UI/config.
@@ -32,7 +32,7 @@ Use [`docs/developer/workspace-resolution-reference.md`](./developer/workspace-r
 - Monorepo: pnpm workspaces and Turbo
 - API: Express and TypeScript
 - Web: Next.js 16 and Turbopack with shadcn/ui patterns
-- Database: embedded Postgres via PGlite and Drizzle ORM
+- Database: embedded Postgres and Drizzle ORM
 - Tests: Vitest, Supertest, and Playwright
 
 ## Setup Paths
@@ -87,7 +87,7 @@ For full VPS guidance, see [`operations/deployment.md`](./operations/deployment.
 - Deployment profile is controlled by `BOPO_DEPLOYMENT_MODE` (`local`, `authenticated_private`, `authenticated_public`).
 - Agent runtime working directories are resolved from each project's primary workspace `cwd` when available.
 - `NEXT_PUBLIC_DEFAULT_RUNTIME_CWD` is an optional fallback.
-- Embedded DB defaults to `~/.bopodev/instances/default/db/bopodev.db`; set `BOPO_DB_PATH` only to override.
+- Embedded Postgres defaults to `~/.bopodev/instances/default/db/postgres`; set `BOPO_DB_PATH` only to override.
 - Projects can hold multiple workspaces; exactly one workspace should be marked primary for deterministic runtime path selection.
 - If no primary workspace `cwd` exists, runtime falls back to the agent runtime cwd or an agent fallback workspace path.
 - If a primary workspace defines `repoUrl`, heartbeat bootstraps the local repo path (clone/fetch/checkout) before adapter execution.
@@ -104,6 +104,7 @@ For full VPS guidance, see [`operations/deployment.md`](./operations/deployment.
 - `pnpm start:quiet` - run production apps with quieter Turbo log output
 - `pnpm onboard` - run local onboarding flow with defaults plus required company naming on first run
 - `pnpm doctor` - run local environment checks
+- `pnpm upgrade:local` - stop local runtime, apply and verify Drizzle migrations, then optionally restart
 - `pnpm typecheck` - run TypeScript checks
 - `pnpm lint` - run lint/type lint tasks
 - `pnpm test` - run unit/integration suite
@@ -142,16 +143,16 @@ For full VPS guidance, see [`operations/deployment.md`](./operations/deployment.
 
 ## Back up your local instance (onboarding costs time and API spend)
 
-Your companies, agents, and issues live in PGlite under the instance **`db`** directory (default: `~/.bopodev/instances/default/db/bopodev.db`). If that store is deleted or corrupted, you must **onboard again**.
+Your companies, agents, and issues live in the embedded Postgres data directory under the instance **`db`** folder (default: `~/.bopodev/instances/default/db/postgres`). If that store is deleted or corrupted, you must **onboard again**.
 
 After a successful `pnpm onboard`, keep a copy you can restore without paying again:
 
 ```bash
-# Example: timestamped backup of the whole db folder
-cp -R ~/.bopodev/instances/default/db ~/Desktop/bopodev-db-backup-$(date +%Y%m%d)
+# Example: timestamped backup of the embedded Postgres data dir
+cp -R ~/.bopodev/instances/default/db/postgres ~/Desktop/bopodev-db-backup-$(date +%Y%m%d)
 ```
 
-To restore: stop the API (`Ctrl+C`), replace `db/` with your backup, start the API again. For a broken store, recovery steps are in [`docs/operations/troubleshooting.md`](./operations/troubleshooting.md) (PGlite).
+To restore: stop the API (`Ctrl+C`) or run `pnpm unstick`, replace the Postgres data directory with your backup, then start the runtime again. For release updates, prefer `pnpm upgrade:local` so migrations are applied and verified before restart.
 
 ## First-Run Notes
 
@@ -163,13 +164,14 @@ Issue creation requires a real project in the selected company:
 ## Wrapper Script Behavior
 
 - `pnpm dev` (`scripts/dev-runner.mjs`):
-  - finds open ports near `WEB_PORT` (`4010`) and `API_PORT` (`4020`),
+  - uses fixed `WEB_PORT` (`4010`) and `API_PORT` (`4020`) by default and fails fast if those ports are already occupied,
   - injects `NEXT_PUBLIC_API_URL=http://127.0.0.1:<apiPort>`,
+  - waits for API `/health` and the web app to become ready before reporting startup success,
   - sets `BOPO_SKIP_CODEX_PREFLIGHT=1` for local dev startup ergonomics.
 - `pnpm start` (`scripts/start-runner.mjs`):
-  - also auto-selects open ports near `WEB_PORT`/`API_PORT`,
+  - uses fixed ports and fails fast with a clear remediation when they are busy,
   - injects `NEXT_PUBLIC_API_URL` for web runtime,
-  - optionally auto-opens browser unless disabled (`BOPO_OPEN_BROWSER=0`).
+  - waits for API and web readiness before optionally auto-opening the browser (`BOPO_OPEN_BROWSER=0` to disable).
 - `pnpm unstick` (`scripts/unstick.mjs` + `unstickBopoRuntime` in `scripts/clear.mjs`):
   - walks up to the directory that contains `pnpm-workspace.yaml`, loads that root’s `.env`, then applies the same port + process scan as the first phase of `pnpm clear` (no file or DB deletion).
 - `pnpm clear` (`scripts/clear.mjs`):
@@ -200,9 +202,9 @@ Release/tag workflow is documented in [`docs/release-process.md`](./release-proc
 
 ## Troubleshooting
 
-- **`pnpm start` then `pnpm dev` “loses” the DB or data:** The API uses embedded PGlite on disk (`~/.bopodev/instances/default/db/…` by default). If the API process is **force-killed** (IDE stop, closing the terminal tab without Ctrl+C, etc.), the DB file can stay **locked** or corrupted and the next run may abort on startup or look empty. **Use Ctrl+C** to stop `pnpm start` or `pnpm dev` so the API can close PGlite cleanly. If it still breaks, run `pnpm unstick` to stop stray Node processes, then retry. Worst case, follow PGlite recovery in [`docs/operations/troubleshooting.md`](./operations/troubleshooting.md).
-- **Production `pnpm start` UI can’t reach the API:** `next build` **bakes** `NEXT_PUBLIC_API_URL` at build time (often `http://localhost:4020`). If `start-runner` shifts the API to another port because `4020` is busy, the **built** web app still calls `4020` until you rebuild with the matching URL or free `4020`. The `pnpm start` banner warns when the API port is non-default.
-- **Dev saves do not appear in the browser:** `pnpm dev` prints the exact **Web** and **API** URLs at startup. If default ports `4010` / `4020` are already in use, the dev runner binds the next free ports (`4011`, etc.). An old tab on `:4010` will show a stale or different server—open the URL from the terminal banner instead. Run `pnpm unstick` from the monorepo root and restart `pnpm dev` if ports or stray processes are confused.
+- **`pnpm start` or `pnpm dev` fails immediately:** The runtime now expects fixed local ports (`4010`/`4020` by default) and a single local embedded-Postgres owner. If startup says a port or the local DB is already in use, run `pnpm unstick`, then retry.
+- **Production `pnpm start` UI can’t reach the API:** `next build` still bakes `NEXT_PUBLIC_API_URL` at build time (usually `http://localhost:4020`). Keep the API on the default port for local production checks, or rebuild after intentionally changing the port.
+- **Dev saves do not appear in the browser:** Open the exact URL printed by `pnpm dev`, and if startup failed because the normal ports were occupied, free them with `pnpm unstick` before retrying.
 - API health endpoint: `GET /health` includes DB readiness and runtime command readiness.
 - Codex troubleshooting runbook: `docs/codex-connection-debugging.md`.
 - Agent runtime execution supports local CLI commands for Claude Code and Codex.

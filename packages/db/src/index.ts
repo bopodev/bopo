@@ -1,3 +1,4 @@
+export { and, asc, desc, eq, gt, inArray, like, notInArray, sql } from "drizzle-orm";
 export * from "./bootstrap";
 export * from "./client";
 export { resolveDefaultDbPath, resolveBopoInstanceRoot } from "./default-paths";

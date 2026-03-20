@@ -1,8 +1,7 @@
 import cors from "cors";
 import express from "express";
 import type { NextFunction, Request, Response } from "express";
-import { sql } from "drizzle-orm";
-import { RepositoryValidationError } from "bopodev-db";
+import { RepositoryValidationError, sql } from "bopodev-db";
 import { nanoid } from "nanoid";
 import type { AppContext } from "./context";
 import { createAgentsRouter } from "./routes/agents";

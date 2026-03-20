@@ -1,6 +1,5 @@
-import { and, eq, inArray } from "drizzle-orm";
 import type { BopoDb } from "bopodev-db";
-import { projectWorkspaces, projects } from "bopodev-db";
+import { and, eq, inArray, projectWorkspaces, projects } from "bopodev-db";
 import {
   assertPathInsideCompanyWorkspaceRoot,
   isInsidePath,

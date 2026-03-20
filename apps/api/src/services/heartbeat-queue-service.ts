@@ -1,6 +1,7 @@
-import { and, eq } from "drizzle-orm";
 import {
+  and,
   cancelHeartbeatJob,
+  eq,
   getHeartbeatRun,
   claimNextHeartbeatJob,
   enqueueHeartbeatJob,
@@ -11,6 +12,7 @@ import {
   updateIssueCommentRecipients,
   type BopoDb
 } from "bopodev-db";
+import { createDrainableWorkTracker } from "../lib/drainable-work";
 import { parseIssueCommentRecipients } from "../lib/comment-recipients";
 import type { RealtimeHub } from "../realtime/hub";
 import { runHeartbeatForAgent } from "./heartbeat-service";
@@ -30,6 +32,7 @@ type QueueJobPayload = {
 };
 
 const activeCompanyQueueWorkers = new Set<string>();
+const queueWorkTracker = createDrainableWorkTracker();
 
 export async function enqueueHeartbeatQueueJob(
   db: BopoDb,
@@ -61,11 +64,15 @@ export function triggerHeartbeatQueueWorker(
   companyId: string,
   options?: { requestId?: string; realtimeHub?: RealtimeHub; maxJobsPerSweep?: number }
 ) {
-  if (activeCompanyQueueWorkers.has(companyId)) {
+  if (queueWorkTracker.isShuttingDown() || activeCompanyQueueWorkers.has(companyId)) {
     return;
   }
   activeCompanyQueueWorkers.add(companyId);
   queueMicrotask(() => {
+    if (queueWorkTracker.isShuttingDown()) {
+      activeCompanyQueueWorkers.delete(companyId);
+      return;
+    }
     void runHeartbeatQueueSweep(db, companyId, options)
       .catch((error) => {
         // eslint-disable-next-line no-console
@@ -82,9 +89,20 @@ export async function runHeartbeatQueueSweep(
   companyId: string,
   options?: { requestId?: string; realtimeHub?: RealtimeHub; maxJobsPerSweep?: number }
 ) {
+  if (queueWorkTracker.isShuttingDown()) {
+    return { processed: 0 };
+  }
+  return queueWorkTracker.track(runHeartbeatQueueSweepInternal(db, companyId, options));
+}
+
+async function runHeartbeatQueueSweepInternal(
+  db: BopoDb,
+  companyId: string,
+  options?: { requestId?: string; realtimeHub?: RealtimeHub; maxJobsPerSweep?: number }
+) {
   const maxJobs = Math.max(1, Math.min(options?.maxJobsPerSweep ?? 50, 500));
   let processed = 0;
-  while (processed < maxJobs) {
+  while (processed < maxJobs && !queueWorkTracker.isShuttingDown()) {
     const job = await claimNextHeartbeatJob(db, companyId);
     if (!job) {
       break;
@@ -115,6 +133,19 @@ export async function runHeartbeatQueueSweep(
     }
   }
   return { processed };
+}
+
+export function beginHeartbeatQueueShutdown() {
+  queueWorkTracker.beginShutdown();
+}
+
+export async function waitForHeartbeatQueueDrain() {
+  await queueWorkTracker.drain();
+}
+
+export function resetHeartbeatQueueShutdownForTests() {
+  activeCompanyQueueWorkers.clear();
+  queueWorkTracker.resetForTests();
 }
 
 async function processHeartbeatQueueJob(

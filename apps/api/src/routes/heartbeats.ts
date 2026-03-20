@@ -1,7 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { and, eq } from "drizzle-orm";
-import { agents, heartbeatRuns, listHeartbeatQueueJobs } from "bopodev-db";
+import { agents, and, eq, heartbeatRuns, listHeartbeatQueueJobs } from "bopodev-db";
 import type { AppContext } from "../context";
 import { sendError, sendOk } from "../http";
 import { requireCompanyScope } from "../middleware/company-scope";

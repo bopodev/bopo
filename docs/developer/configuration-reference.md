@@ -32,7 +32,7 @@ Give contributors and operators one reference for key environment variables and 
 
 | Variable | Default | Notes |
 | --- | --- | --- |
-| `BOPO_DB_PATH` | `~/.bopodev/instances/default/db/bopodev.db` | Explicit DB file override. |
+| `BOPO_DB_PATH` | `~/.bopodev/instances/default/db/postgres` | Explicit embedded Postgres data-directory override. |
 | `BOPO_HOME` | `~/.bopodev` | Root home for instance defaults. |
 | `BOPO_INSTANCE_ID` | `default` | Instance namespace in local paths. |
 | `BOPO_INSTANCE_ROOT` | derived from `BOPO_HOME` + `BOPO_INSTANCE_ID` | Root for auto-created workspaces/storage. |

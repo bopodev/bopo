@@ -1,9 +1,8 @@
 import { createServer } from "node:http";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { sql } from "drizzle-orm";
 import { config as loadDotenv } from "dotenv";
-import { bootstrapDatabase, listCompanies, resolveDefaultDbPath } from "bopodev-db";
+import { bootstrapDatabase, listCompanies, resolveDefaultDbPath, sql } from "bopodev-db";
 import { checkRuntimeCommandHealth } from "bopodev-agent-sdk";
 import type { RuntimeCommandHealth } from "bopodev-agent-sdk";
 import { createApp } from "./app";
@@ -21,6 +20,8 @@ import {
 } from "./security/deployment-mode";
 import { ensureBuiltinPluginsRegistered } from "./services/plugin-runtime";
 import { ensureBuiltinTemplatesRegistered } from "./services/template-catalog";
+import { beginIssueCommentDispatchShutdown, waitForIssueCommentDispatchDrain } from "./services/comment-recipient-dispatch-service";
+import { beginHeartbeatQueueShutdown, waitForHeartbeatQueueDrain } from "./services/heartbeat-queue-service";
 import { createHeartbeatScheduler } from "./worker/scheduler";
 
 loadApiEnv();
@@ -32,6 +33,7 @@ async function main() {
   const publicBaseUrl = resolvePublicBaseUrl();
   validateDeploymentConfiguration(deploymentMode, allowedOrigins, allowedHostnames, publicBaseUrl);
   const dbPath = normalizeOptionalDbPath(process.env.BOPO_DB_PATH);
+  const usingExternalDatabase = Boolean(process.env.DATABASE_URL?.trim());
   const port = Number(process.env.PORT ?? 4020);
   const effectiveDbPath = dbPath ?? resolveDefaultDbPath();
   let db: Awaited<ReturnType<typeof bootstrapDatabase>>["db"];
@@ -41,17 +43,20 @@ async function main() {
     db = boot.db;
     dbClient = boot.client;
   } catch (error) {
-    if (isProbablyPgliteWasmAbort(error)) {
+    if (isProbablyDatabaseStartupError(error)) {
       // eslint-disable-next-line no-console
-      console.error(
-        "[startup] PGlite (embedded Postgres) failed during database bootstrap. This is unrelated to Codex or heartbeat prompt settings."
-      );
-      // eslint-disable-next-line no-console
-      console.error(`[startup] Data path in use: ${effectiveDbPath}`);
-      // eslint-disable-next-line no-console
-      console.error(
-        "[startup] Recovery: stop all API/node processes using this DB, back up the path above, delete the file/dir, then restart (schema will be recreated). Or set BOPO_DB_PATH to a fresh path. See docs/operations/troubleshooting.md (PGlite)."
-      );
+      console.error("[startup] Database bootstrap failed before the API could start.");
+      if (usingExternalDatabase) {
+        // eslint-disable-next-line no-console
+        console.error("[startup] Check DATABASE_URL connectivity, permissions, and migration state.");
+      } else {
+        // eslint-disable-next-line no-console
+        console.error(`[startup] Embedded Postgres data path: ${effectiveDbPath}`);
+        // eslint-disable-next-line no-console
+        console.error(
+          "[startup] Recovery: stop all API/node processes using this DB, back up the path above, delete the directory if it is corrupted, then restart. Or set BOPO_DB_PATH to a fresh path."
+        );
+      }
     }
     throw error;
   }
@@ -141,9 +146,9 @@ async function main() {
 
   const defaultCompanyId = process.env.BOPO_DEFAULT_COMPANY_ID;
   const schedulerCompanyId = await resolveSchedulerCompanyId(db, defaultCompanyId ?? null);
-  let stopScheduler: (() => void) | undefined;
+  let scheduler: ReturnType<typeof createHeartbeatScheduler> | undefined;
   if (schedulerCompanyId && shouldStartScheduler()) {
-    stopScheduler = createHeartbeatScheduler(db, schedulerCompanyId, realtimeHub);
+    scheduler = createHeartbeatScheduler(db, schedulerCompanyId, realtimeHub);
   } else if (schedulerCompanyId) {
     // eslint-disable-next-line no-console
     console.log("[startup] Scheduler disabled for this instance (BOPO_SCHEDULER_ROLE is follower/off).");
@@ -151,38 +156,50 @@ async function main() {
 
   let shutdownInFlight: Promise<void> | null = null;
   function shutdown(signal: string) {
+    const shutdownTimeoutMs = Number(process.env.BOPO_SHUTDOWN_TIMEOUT_MS ?? 15_000);
+    const forcedExit = setTimeout(() => {
+      // eslint-disable-next-line no-console
+      console.error(`[shutdown] timed out after ${shutdownTimeoutMs}ms; forcing exit.`);
+      process.exit(process.exitCode ?? 1);
+    }, shutdownTimeoutMs);
+    forcedExit.unref();
     shutdownInFlight ??= (async () => {
       // eslint-disable-next-line no-console
-      console.log(`[shutdown] ${signal} — closing realtime, HTTP server, and embedded DB…`);
-      stopScheduler?.();
+      console.log(`[shutdown] ${signal} — draining HTTP/background work before closing the embedded database…`);
+      beginHeartbeatQueueShutdown();
+      beginIssueCommentDispatchShutdown();
+      await Promise.allSettled([
+        scheduler?.stop() ?? Promise.resolve(),
+        new Promise<void>((resolve, reject) => {
+          server.close((err) => {
+            if (err) {
+              reject(err);
+              return;
+            }
+            resolve();
+          });
+        })
+      ]);
+      await Promise.allSettled([waitForHeartbeatQueueDrain(), waitForIssueCommentDispatchDrain()]);
       try {
         await realtimeHub.close();
       } catch (closeError) {
         // eslint-disable-next-line no-console
         console.error("[shutdown] realtime hub close error", closeError);
       }
-      await new Promise<void>((resolve, reject) => {
-        server.close((err) => {
-          if (err) {
-            reject(err);
-            return;
-          }
-          resolve();
-        });
-      });
       try {
-        await closePgliteClient(dbClient);
+        await closeDatabaseClient(dbClient);
       } catch (closeDbError) {
         // eslint-disable-next-line no-console
-        console.error("[shutdown] PGlite close error", closeDbError);
+        console.error("[shutdown] database close error", closeDbError);
       }
       // eslint-disable-next-line no-console
       console.log("[shutdown] clean exit");
-      process.exit(0);
+      process.exitCode = 0;
     })().catch((error) => {
       // eslint-disable-next-line no-console
       console.error("[shutdown] failed", error);
-      process.exit(1);
+      process.exitCode = 1;
     });
     return shutdownInFlight;
   }
@@ -193,7 +210,7 @@ async function main() {
 
 void main();
 
-async function closePgliteClient(client: unknown) {
+async function closeDatabaseClient(client: unknown) {
   if (!client || typeof client !== "object") {
     return;
   }
@@ -211,7 +228,7 @@ async function hasCodexAgentsConfigured(db: Awaited<ReturnType<typeof bootstrapD
     WHERE provider_type = 'codex'
     LIMIT 1
   `);
-  return (result.rows ?? []).length > 0;
+  return result.length > 0;
 }
 
 async function hasOpenCodeAgentsConfigured(db: Awaited<ReturnType<typeof bootstrapDatabase>>["db"]) {
@@ -221,7 +238,7 @@ async function hasOpenCodeAgentsConfigured(db: Awaited<ReturnType<typeof bootstr
     WHERE provider_type = 'opencode'
     LIMIT 1
   `);
-  return (result.rows ?? []).length > 0;
+  return result.length > 0;
 }
 
 async function resolveSchedulerCompanyId(
@@ -235,7 +252,7 @@ async function resolveSchedulerCompanyId(
       WHERE id = ${configuredCompanyId}
       LIMIT 1
     `);
-    if ((configured.rows ?? []).length > 0) {
+    if (configured.length > 0) {
       return configuredCompanyId;
     }
     // eslint-disable-next-line no-console
@@ -248,7 +265,7 @@ async function resolveSchedulerCompanyId(
     ORDER BY created_at ASC
     LIMIT 1
   `);
-  const id = fallback.rows?.[0]?.id;
+  const id = fallback[0]?.id;
   return typeof id === "string" && id.length > 0 ? id : null;
 }
 
@@ -337,14 +354,15 @@ function normalizeOptionalDbPath(value: string | undefined) {
   return normalized && normalized.length > 0 ? normalized : undefined;
 }
 
-function isProbablyPgliteWasmAbort(error: unknown): boolean {
+function isProbablyDatabaseStartupError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   const cause = error instanceof Error ? error.cause : undefined;
   const causeMessage = cause instanceof Error ? cause.message : String(cause ?? "");
   return (
-    message.includes("Aborted") ||
-    causeMessage.includes("Aborted") ||
-    message.includes("pglite") ||
-    causeMessage.includes("RuntimeError")
+    message.includes("database") ||
+    message.includes("postgres") ||
+    message.includes("migration") ||
+    causeMessage.includes("postgres") ||
+    causeMessage.includes("connection")
   );
 }

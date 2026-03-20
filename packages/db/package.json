@@ -7,13 +7,20 @@
   "types": "src/index.ts",
   "scripts": {
     "build": "tsc -p tsconfig.json --emitDeclarationOnly",
+    "generate": "drizzle-kit generate",
     "lint": "tsc -p tsconfig.json --noEmit",
+    "migrate": "node --import tsx src/migrate.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@electric-sql/pglite": "^0.3.7",
+    "drizzle-kit": "^0.31.10",
     "drizzle-orm": "^0.44.5",
     "drizzle-zod": "^0.8.2",
-    "nanoid": "^5.1.5"
+    "embedded-postgres": "18.3.0-beta.16",
+    "nanoid": "^5.1.5",
+    "postgres": "^3.4.8"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.5"
   }
 }

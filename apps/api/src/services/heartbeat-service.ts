@@ -1,6 +1,5 @@
 import { mkdir, stat } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { resolveAdapter } from "bopodev-agent-sdk";
 import type { AdapterExecutionResult, AgentState, HeartbeatContext } from "bopodev-agent-sdk";
@@ -19,6 +18,7 @@ import {
 import type { BopoDb } from "bopodev-db";
 import {
   addIssueComment,
+  and,
   approvalRequests,
   agents,
   appendActivity,
@@ -26,12 +26,16 @@ import {
   auditEvents,
   companies,
   createApprovalRequest,
+  desc,
+  eq,
   goals,
   heartbeatRuns,
+  inArray,
   issueComments,
   issueAttachments,
   issues,
-  projects
+  projects,
+  sql
 } from "bopodev-db";
 import { appendAuditEvent, appendCost } from "bopodev-db";
 import { parseRuntimeConfigFromAgentRow } from "../lib/agent-config";
@@ -159,7 +163,7 @@ export async function claimIssuesForAgent(
     RETURNING i.id, i.project_id, i.parent_issue_id, i.title, i.body, i.status, i.priority, i.labels_json, i.tags_json;
   `);
 
-  return (result.rows ?? []) as Array<{
+  return result as unknown as Array<{
     id: string;
     project_id: string;
     parent_issue_id: string | null;
@@ -2022,7 +2026,7 @@ async function insertStartedRunAtomic(
     ON CONFLICT DO NOTHING
     RETURNING id
   `);
-  return (result.rows ?? []).length > 0;
+  return result.length > 0;
 }
 
 async function recoverStaleHeartbeatRuns(
@@ -2166,7 +2170,7 @@ async function listLatestRunByAgent(db: BopoDb, companyId: string) {
     GROUP BY agent_id
   `);
   const latestRunByAgent = new Map<string, Date>();
-  for (const row of result.rows ?? []) {
+  for (const row of result as Array<Record<string, unknown>>) {
     const agentId = typeof row.agent_id === "string" ? row.agent_id : null;
     if (!agentId) {
       continue;

@@ -1,18 +1,35 @@
-import { and, desc, eq, inArray, like } from "drizzle-orm";
 import {
+  and,
   agents,
+  desc,
+  eq,
+  inArray,
   issueComments,
+  like,
   updateIssueCommentRecipients,
   type BopoDb
 } from "bopodev-db";
+import { createDrainableWorkTracker } from "../lib/drainable-work";
 import { parseIssueCommentRecipients, type PersistedCommentRecipient } from "../lib/comment-recipients";
 import type { RealtimeHub } from "../realtime/hub";
 import { enqueueHeartbeatQueueJob, triggerHeartbeatQueueWorker } from "./heartbeat-queue-service";
 
 const COMMENT_DISPATCH_SWEEP_LIMIT = 100;
 const activeCompanyDispatchRuns = new Set<string>();
+const commentDispatchTracker = createDrainableWorkTracker();
 
 export async function runIssueCommentDispatchSweep(
+  db: BopoDb,
+  companyId: string,
+  options?: { requestId?: string; realtimeHub?: RealtimeHub; limit?: number }
+) {
+  if (commentDispatchTracker.isShuttingDown()) {
+    return;
+  }
+  return commentDispatchTracker.track(runIssueCommentDispatchSweepInternal(db, companyId, options));
+}
+
+async function runIssueCommentDispatchSweepInternal(
   db: BopoDb,
   companyId: string,
   options?: { requestId?: string; realtimeHub?: RealtimeHub; limit?: number }
@@ -34,6 +51,9 @@ export async function runIssueCommentDispatchSweep(
     .limit(options?.limit ?? COMMENT_DISPATCH_SWEEP_LIMIT);
 
   for (const row of rows) {
+    if (commentDispatchTracker.isShuttingDown()) {
+      return;
+    }
     const recipients = parseIssueCommentRecipients(row.recipientsJson);
     if (!recipients.some((recipient) => recipient.deliveryStatus === "pending")) {
       continue;
@@ -60,11 +80,15 @@ export function triggerIssueCommentDispatchWorker(
   companyId: string,
   options?: { requestId?: string; realtimeHub?: RealtimeHub; limit?: number }
 ) {
-  if (activeCompanyDispatchRuns.has(companyId)) {
+  if (commentDispatchTracker.isShuttingDown() || activeCompanyDispatchRuns.has(companyId)) {
     return;
   }
   activeCompanyDispatchRuns.add(companyId);
   queueMicrotask(() => {
+    if (commentDispatchTracker.isShuttingDown()) {
+      activeCompanyDispatchRuns.delete(companyId);
+      return;
+    }
     void runIssueCommentDispatchSweep(db, companyId, options)
       .catch((error) => {
         // eslint-disable-next-line no-console
@@ -154,5 +178,18 @@ async function dispatchCommentRecipients(
     }
   }
   return dispatchedRecipients;
+}
+
+export function beginIssueCommentDispatchShutdown() {
+  commentDispatchTracker.beginShutdown();
+}
+
+export async function waitForIssueCommentDispatchDrain() {
+  await commentDispatchTracker.drain();
+}
+
+export function resetIssueCommentDispatchShutdownForTests() {
+  activeCompanyDispatchRuns.clear();
+  commentDispatchTracker.resetForTests();
 }
 

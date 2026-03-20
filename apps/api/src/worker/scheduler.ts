@@ -4,6 +4,10 @@ import { runHeartbeatSweep } from "../services/heartbeat-service";
 import { runHeartbeatQueueSweep } from "../services/heartbeat-queue-service";
 import { runIssueCommentDispatchSweep } from "../services/comment-recipient-dispatch-service";
 
+export type HeartbeatSchedulerHandle = {
+  stop: () => Promise<void>;
+};
+
 export function createHeartbeatScheduler(db: BopoDb, companyId: string, realtimeHub?: RealtimeHub) {
   const heartbeatIntervalMs = Number(process.env.BOPO_HEARTBEAT_SWEEP_MS ?? 60_000);
   const queueIntervalMs = Number(process.env.BOPO_HEARTBEAT_QUEUE_SWEEP_MS ?? 2_000);
@@ -11,18 +15,22 @@ export function createHeartbeatScheduler(db: BopoDb, companyId: string, realtime
   let heartbeatRunning = false;
   let queueRunning = false;
   let commentDispatchRunning = false;
+  let heartbeatPromise: Promise<unknown> | null = null;
+  let queuePromise: Promise<unknown> | null = null;
+  let commentDispatchPromise: Promise<unknown> | null = null;
   const heartbeatTimer = setInterval(() => {
     if (heartbeatRunning) {
       return;
     }
     heartbeatRunning = true;
-    void runHeartbeatSweep(db, companyId, { realtimeHub })
+    heartbeatPromise = runHeartbeatSweep(db, companyId, { realtimeHub })
       .catch((error) => {
         // eslint-disable-next-line no-console
         console.error("[scheduler] heartbeat sweep failed", error);
       })
       .finally(() => {
         heartbeatRunning = false;
+        heartbeatPromise = null;
       });
   }, heartbeatIntervalMs);
   const queueTimer = setInterval(() => {
@@ -30,13 +38,14 @@ export function createHeartbeatScheduler(db: BopoDb, companyId: string, realtime
       return;
     }
     queueRunning = true;
-    void runHeartbeatQueueSweep(db, companyId, { realtimeHub })
+    queuePromise = runHeartbeatQueueSweep(db, companyId, { realtimeHub })
       .catch((error) => {
         // eslint-disable-next-line no-console
         console.error("[scheduler] queue sweep failed", error);
       })
       .finally(() => {
         queueRunning = false;
+        queuePromise = null;
       });
   }, queueIntervalMs);
   const commentDispatchTimer = setInterval(() => {
@@ -44,18 +53,25 @@ export function createHeartbeatScheduler(db: BopoDb, companyId: string, realtime
       return;
     }
     commentDispatchRunning = true;
-    void runIssueCommentDispatchSweep(db, companyId, { realtimeHub })
+    commentDispatchPromise = runIssueCommentDispatchSweep(db, companyId, { realtimeHub })
       .catch((error) => {
         // eslint-disable-next-line no-console
         console.error("[scheduler] comment dispatch sweep failed", error);
       })
       .finally(() => {
         commentDispatchRunning = false;
+        commentDispatchPromise = null;
       });
   }, commentDispatchIntervalMs);
-  return () => {
+  const stop = async () => {
     clearInterval(heartbeatTimer);
     clearInterval(queueTimer);
     clearInterval(commentDispatchTimer);
+    await Promise.allSettled(
+      [heartbeatPromise, queuePromise, commentDispatchPromise].filter(
+        (promise): promise is Promise<unknown> => promise !== null
+      )
+    );
   };
+  return { stop } satisfies HeartbeatSchedulerHandle;
 }

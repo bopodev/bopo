@@ -1,7 +1,6 @@
 import { Router } from "express";
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { basename, extname, join, resolve } from "node:path";
-import { and, desc, eq, inArray } from "drizzle-orm";
 import multer from "multer";
 import { z } from "zod";
 import { IssueDetailSchema, IssueSchema } from "bopodev-contracts";
@@ -9,15 +8,19 @@ import {
   addIssueAttachment,
   addIssueComment,
   agents,
+  and,
   appendActivity,
   appendAuditEvent,
   createIssue,
   deleteIssueAttachment,
   deleteIssueComment,
   deleteIssue,
+  desc,
+  eq,
   getIssue,
   heartbeatRuns,
   getIssueAttachment,
+  inArray,
   issues,
   listIssueAttachments,
   listIssueActivity,

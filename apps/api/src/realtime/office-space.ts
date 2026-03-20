@@ -1,9 +1,11 @@
-import { and, desc, eq } from "drizzle-orm";
 import type { OfficeOccupant, RealtimeEventEnvelope, RealtimeMessage } from "bopodev-contracts";
 import { AGENT_ROLE_LABELS, AgentRoleKeySchema } from "bopodev-contracts";
 import {
+  and,
   agents,
   approvalRequests,
+  desc,
+  eq,
   getApprovalRequest,
   heartbeatRuns,
   issues,

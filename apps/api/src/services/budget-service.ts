@@ -1,6 +1,5 @@
-import { and, eq, sql } from "drizzle-orm";
 import type { BopoDb } from "bopodev-db";
-import { agents, projects } from "bopodev-db";
+import { agents, and, eq, projects, sql } from "bopodev-db";
 
 export interface BudgetCheckResult {
   allowed: boolean;

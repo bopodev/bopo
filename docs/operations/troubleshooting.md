@@ -27,19 +27,20 @@ Reduce mean time to diagnose failures across API, runtime, and UI surfaces.
 4. Inspect latest `runs`, `trace-logs`, and governance inbox.
 5. Verify environment config did not regress.
 
-## API fails on startup: `RuntimeError: Aborted()` (PGlite / Drizzle)
+## API fails on startup: embedded Postgres / migration startup error
 
-**Symptom:** Node crashes while running `CREATE TABLE` during `bootstrapDatabase`, with `cause: RuntimeError: Aborted()` from `@electric-sql/pglite` (WASM).
+**Symptom:** startup fails before the API is ready, often with a message about the embedded Postgres data path, local DB port ownership, or schema verification.
 
-**Likely cause:** Corrupted or locked PGlite data on disk, another process still holding the DB, incompatible Node/WASM edge case, or a bad `BOPO_DB_PATH`. **This is not caused by Codex CLI flags or heartbeat prompt mode** (those run only after the API has a working database).
+**Likely cause:** another local Bopo runtime still owns the embedded Postgres directory or port, a stale local `BOPO_DB_PATH` points to an old location, or migrations were not applied for the current release.
 
 **Recovery (local dev):**
 
-1. Stop every `pnpm dev` / API / test process that might use the same instance.
-2. Note your data path: default is `~/.bopodev/instances/default/db/bopodev.db` unless `BOPO_DB_PATH` / `BOPO_INSTANCE_*` overrides it.
-3. **Back up** that path (file or directory, depending on PGlite version), then **delete** it so bootstrap can recreate an empty database.
-4. Restart the API. You will need to re-seed or onboard if you had no external backup.
-5. If it still aborts, try **Node 20 LTS** (some WASM builds are sensitive to very new Node versions) and run `pnpm install` cleanly.
+1. Stop local runtime processes with `pnpm unstick`.
+2. Apply and verify migrations with `pnpm upgrade:local -- --no-start` or run `pnpm db:migrate` if you only need the low-level migration primitive.
+3. Note your data path: default is `~/.bopodev/instances/default/db/postgres` unless `BOPO_DB_PATH` / `BOPO_INSTANCE_*` overrides it.
+4. **Back up** that directory before deleting or replacing it.
+5. If the store is corrupted and you do not need the local data, remove the Postgres data directory and rerun `pnpm onboard`.
+6. If startup still fails, check whether port `55432` is already occupied by another process or intentionally override it with `BOPO_DB_PORT`.
 
 ## Symptom -> Likely Cause
 
