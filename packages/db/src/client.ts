@@ -1,8 +1,16 @@
 import { existsSync, readFileSync, rmSync } from "node:fs";
-import { mkdir, open, readFile, rm, writeFile, type FileHandle } from "node:fs/promises";
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { createServer } from "node:net";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
+const require = createRequire(import.meta.url);
+/** Default export is `lock()` — see proper-lockfile `index.js`. */
+const acquireProperLockfile = require("proper-lockfile") as (
+  path: string,
+  options?: Record<string, unknown>
+) => Promise<() => Promise<void>>;
 import EmbeddedPostgresModule from "embedded-postgres";
 import { drizzle, type PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
@@ -21,7 +29,11 @@ const DEFAULT_DB_NAME = "bopodev";
 const DEFAULT_DB_USER = "bopodev";
 const DEFAULT_DB_PASSWORD = "bopodev";
 const DEFAULT_DB_PORT = Number(process.env.BOPO_DB_PORT ?? "55432");
-const EMBEDDED_DB_START_TIMEOUT_MS = Number(process.env.BOPO_DB_START_TIMEOUT_MS ?? "15000");
+const EMBEDDED_DB_START_TIMEOUT_MS = Number(process.env.BOPO_DB_START_TIMEOUT_MS ?? "120000");
+const EMBEDDED_DB_LOCK_STALE_MS = Math.max(
+  5000,
+  Number(process.env.BOPO_DB_LOCK_STALE_MS ?? "60000")
+);
 const LOCAL_DB_STATE_VERSION = 1;
 type EmbeddedPostgresInstance = {
   initialise(): Promise<void>;
@@ -62,8 +74,7 @@ type LocalDbState = {
 };
 
 type LocalDbLock = {
-  path: string;
-  handle: FileHandle;
+  release: () => Promise<void>;
 };
 
 type MigrationVersion = {
@@ -374,54 +385,75 @@ function normalizeOptionalEnvValue(value: string | undefined) {
 }
 
 async function acquireLocalDbLock(dataPath: string, timeoutMs: number): Promise<LocalDbLock> {
-  const lockPath = resolveLocalDbLockPath(dataPath);
-  const startedAt = Date.now();
-  while (Date.now() - startedAt < timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  await waitForLegacyLockFileReleased(dataPath, deadline);
+  const lockDirPath = resolveEmbeddedPostgresLockDirPath(dataPath);
+  let lastError: Error | null = null;
+  while (Date.now() < deadline) {
     try {
-      const handle = await open(lockPath, "wx");
-      await handle.writeFile(
-        JSON.stringify(
-          {
-            pid: process.pid,
-            acquiredAt: new Date().toISOString(),
-            dataPath
-          },
-          null,
-          2
-        ),
-        "utf8"
-      );
-      return {
-        path: lockPath,
-        handle
-      };
+      const release = await acquireProperLockfile(dataPath, {
+        lockfilePath: lockDirPath,
+        stale: EMBEDDED_DB_LOCK_STALE_MS,
+        realpath: true
+      });
+      return { release };
     } catch (error) {
-      if (!isAlreadyExistsError(error)) {
-        throw error;
-      }
-      const owner = await readLockOwner(lockPath);
-      if (!owner || !isPidAlive(owner.pid)) {
-        await rm(lockPath, { force: true }).catch(() => {});
+      lastError = error instanceof Error ? error : new Error(String(error));
+      const code = error && typeof error === "object" && "code" in error ? String(error.code) : "";
+      if (code === "ELOCKED" || lastError.message.includes("already being held")) {
+        await sleep(200);
         continue;
       }
-      await sleep(200);
+      throw lastError;
     }
   }
-  const owner = await readLockOwner(lockPath);
-  if (owner?.pid) {
-    throw new Error(
-      `Timed out waiting for embedded Postgres lock at '${lockPath}'. Another process (pid ${owner.pid}) is starting or stopping the local database.`
-    );
-  }
-  throw new Error(`Timed out waiting for embedded Postgres lock at '${lockPath}'.`);
+  throw new Error(
+    `Timed out waiting for embedded Postgres lock at '${lockDirPath}' (${timeoutMs}ms). ` +
+      `Stop other API processes using this data path, or wait for them to finish. ` +
+      `If a process crashed, the lock becomes stale after ${EMBEDDED_DB_LOCK_STALE_MS}ms without updates; ` +
+      `you can lower BOPO_DB_LOCK_STALE_MS temporarily or remove '${lockDirPath}' if it is orphaned. ` +
+      (lastError ? `Last error: ${lastError.message}` : "")
+  );
 }
 
 async function releaseLocalDbLock(lock: LocalDbLock) {
-  await lock.handle.close().catch(() => {});
-  await rm(lock.path, { force: true }).catch(() => {});
+  await lock.release().catch(() => {});
 }
 
-async function readLockOwner(lockPath: string) {
+/**
+ * Older builds used a JSON file lock; wait until it is gone or clearly stale so we never
+ * run two embedded Postgres instances against the same data path during version skew.
+ */
+async function waitForLegacyLockFileReleased(dataPath: string, deadline: number) {
+  const legacyPath = resolveLegacyLocalDbLockFilePath(dataPath);
+  while (Date.now() < deadline) {
+    let st;
+    try {
+      st = await stat(legacyPath);
+    } catch (error) {
+      if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+        return;
+      }
+      throw error;
+    }
+    if (!st.isFile()) {
+      return;
+    }
+    const owner = await readLegacyLockOwner(legacyPath);
+    if (!owner || !isPidAlive(owner.pid)) {
+      await rm(legacyPath, { force: true }).catch(() => {});
+      return;
+    }
+    await sleep(200);
+  }
+  const owner = await readLegacyLockOwner(legacyPath);
+  throw new Error(
+    `Timed out waiting for legacy embedded Postgres lock at '${legacyPath}'.` +
+      (owner ? ` Another process (pid ${owner.pid}) is using the old lock format; stop it or upgrade it.` : "")
+  );
+}
+
+async function readLegacyLockOwner(lockPath: string) {
   try {
     const raw = await readFile(lockPath, "utf8");
     const parsed = JSON.parse(raw) as { pid?: unknown };
@@ -481,10 +513,6 @@ function readExpectedMigrationVersion(): MigrationVersion {
   }
 }
 
-function isAlreadyExistsError(error: unknown) {
-  return Boolean(error && typeof error === "object" && "code" in error && error.code === "EEXIST");
-}
-
 function isPidAlive(pid: number) {
   try {
     process.kill(pid, 0);
@@ -494,7 +522,13 @@ function isPidAlive(pid: number) {
   }
 }
 
-function resolveLocalDbLockPath(dataPath: string) {
+/** Directory lock used by proper-lockfile (mkdir + mtime heartbeat; stale locks self-heal). */
+function resolveEmbeddedPostgresLockDirPath(dataPath: string) {
+  return `${join(dirname(dataPath), basename(dataPath))}.embed.lock`;
+}
+
+/** Legacy JSON file lock path (pre proper-lockfile). */
+function resolveLegacyLocalDbLockFilePath(dataPath: string) {
   return `${join(dirname(dataPath), basename(dataPath))}.lock`;
 }
 
