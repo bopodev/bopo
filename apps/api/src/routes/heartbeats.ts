@@ -4,7 +4,7 @@ import { agents, and, eq, heartbeatRuns, listHeartbeatQueueJobs } from "bopodev-
 import type { AppContext } from "../context";
 import { sendError, sendOk } from "../http";
 import { requireCompanyScope } from "../middleware/company-scope";
-import { requirePermission } from "../middleware/request-actor";
+import { enforcePermission } from "../middleware/request-actor";
 import {
   findPendingProjectBudgetOverrideBlocksForAgent,
   runHeartbeatSweep,
@@ -30,10 +30,7 @@ export function createHeartbeatRouter(ctx: AppContext) {
   router.use(requireCompanyScope);
 
   router.post("/run-agent", async (req, res) => {
-    requirePermission("heartbeats:run")(req, res, () => {});
-    if (res.headersSent) {
-      return;
-    }
+    if (!enforcePermission(req, res, "heartbeats:run")) return;
     const parsed = runAgentSchema.safeParse(req.body);
     if (!parsed.success) {
       return sendError(res, parsed.error.message, 422);
@@ -84,10 +81,7 @@ export function createHeartbeatRouter(ctx: AppContext) {
   });
 
   router.post("/:runId/stop", async (req, res) => {
-    requirePermission("heartbeats:run")(req, res, () => {});
-    if (res.headersSent) {
-      return;
-    }
+    if (!enforcePermission(req, res, "heartbeats:run")) return;
     const parsed = runIdParamsSchema.safeParse(req.params);
     if (!parsed.success) {
       return sendError(res, parsed.error.message, 422);
@@ -173,10 +167,7 @@ export function createHeartbeatRouter(ctx: AppContext) {
   }
 
   router.post("/:runId/resume", async (req, res) => {
-    requirePermission("heartbeats:run")(req, res, () => {});
-    if (res.headersSent) {
-      return;
-    }
+    if (!enforcePermission(req, res, "heartbeats:run")) return;
     const parsed = runIdParamsSchema.safeParse(req.params);
     if (!parsed.success) {
       return sendError(res, parsed.error.message, 422);
@@ -200,10 +191,7 @@ export function createHeartbeatRouter(ctx: AppContext) {
   });
 
   router.post("/:runId/redo", async (req, res) => {
-    requirePermission("heartbeats:run")(req, res, () => {});
-    if (res.headersSent) {
-      return;
-    }
+    if (!enforcePermission(req, res, "heartbeats:run")) return;
     const parsed = runIdParamsSchema.safeParse(req.params);
     if (!parsed.success) {
       return sendError(res, parsed.error.message, 422);
@@ -227,10 +215,7 @@ export function createHeartbeatRouter(ctx: AppContext) {
   });
 
   router.post("/sweep", async (req, res) => {
-    requirePermission("heartbeats:sweep")(req, res, () => {});
-    if (res.headersSent) {
-      return;
-    }
+    if (!enforcePermission(req, res, "heartbeats:sweep")) return;
     const runIds = await runHeartbeatSweep(ctx.db, req.companyId!, {
       requestId: req.requestId,
       realtimeHub: ctx.realtimeHub
@@ -239,10 +224,7 @@ export function createHeartbeatRouter(ctx: AppContext) {
   });
 
   router.get("/queue", async (req, res) => {
-    requirePermission("heartbeats:run")(req, res, () => {});
-    if (res.headersSent) {
-      return;
-    }
+    if (!enforcePermission(req, res, "heartbeats:run")) return;
     const parsed = queueQuerySchema.safeParse(req.query);
     if (!parsed.success) {
       return sendError(res, parsed.error.message, 422);

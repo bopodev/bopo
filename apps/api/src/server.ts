@@ -1,10 +1,5 @@
 import { createServer } from "node:http";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-import { config as loadDotenv } from "dotenv";
-import { bootstrapDatabase, listCompanies, resolveDefaultDbPath, sql } from "bopodev-db";
-import { checkRuntimeCommandHealth } from "bopodev-agent-sdk";
-import type { RuntimeCommandHealth } from "bopodev-agent-sdk";
+import { listCompanies } from "bopodev-db";
 import { createApp } from "./app";
 import { loadGovernanceRealtimeSnapshot } from "./realtime/governance";
 import { loadOfficeSpaceRealtimeSnapshot } from "./realtime/office-space";
@@ -12,7 +7,6 @@ import { loadHeartbeatRunsRealtimeSnapshot } from "./realtime/heartbeat-runs";
 import { loadAttentionRealtimeSnapshot } from "./realtime/attention";
 import { attachRealtimeHub } from "./realtime/hub";
 import {
-  isAuthenticatedMode,
   resolveAllowedHostnames,
   resolveAllowedOrigins,
   resolveDeploymentMode,
@@ -20,9 +14,18 @@ import {
 } from "./security/deployment-mode";
 import { ensureBuiltinPluginsRegistered } from "./services/plugin-runtime";
 import { ensureBuiltinTemplatesRegistered } from "./services/template-catalog";
-import { beginIssueCommentDispatchShutdown, waitForIssueCommentDispatchDrain } from "./services/comment-recipient-dispatch-service";
-import { beginHeartbeatQueueShutdown, waitForHeartbeatQueueDrain } from "./services/heartbeat-queue-service";
 import { createHeartbeatScheduler } from "./worker/scheduler";
+import { bootstrapDatabaseWithStartupLogging } from "./startup/database";
+import { validateDeploymentConfiguration } from "./startup/deployment-validation";
+import { loadApiEnv, normalizeOptionalDbPath } from "./startup/env";
+import {
+  buildGetRuntimeHealth,
+  hasCodexAgentsConfigured,
+  hasOpenCodeAgentsConfigured,
+  runStartupRuntimePreflights
+} from "./startup/runtime-health";
+import { resolveSchedulerCompanyId, shouldStartScheduler } from "./startup/scheduler-config";
+import { attachGracefulShutdownHandlers } from "./shutdown/graceful-shutdown";
 
 loadApiEnv();
 
@@ -33,33 +36,8 @@ async function main() {
   const publicBaseUrl = resolvePublicBaseUrl();
   validateDeploymentConfiguration(deploymentMode, allowedOrigins, allowedHostnames, publicBaseUrl);
   const dbPath = normalizeOptionalDbPath(process.env.BOPO_DB_PATH);
-  const usingExternalDatabase = Boolean(process.env.DATABASE_URL?.trim());
   const port = Number(process.env.PORT ?? 4020);
-  const effectiveDbPath = dbPath ?? resolveDefaultDbPath();
-  let db: Awaited<ReturnType<typeof bootstrapDatabase>>["db"];
-  let dbClient: Awaited<ReturnType<typeof bootstrapDatabase>>["client"];
-  try {
-    const boot = await bootstrapDatabase(dbPath);
-    db = boot.db;
-    dbClient = boot.client;
-  } catch (error) {
-    if (isProbablyDatabaseStartupError(error)) {
-      // eslint-disable-next-line no-console
-      console.error("[startup] Database bootstrap failed before the API could start.");
-      if (usingExternalDatabase) {
-        // eslint-disable-next-line no-console
-        console.error("[startup] Check DATABASE_URL connectivity, permissions, and migration state.");
-      } else {
-        // eslint-disable-next-line no-console
-        console.error(`[startup] Embedded Postgres data path: ${effectiveDbPath}`);
-        // eslint-disable-next-line no-console
-        console.error(
-          "[startup] Recovery: stop all API/node processes using this DB, back up the path above, delete the directory if it is corrupted, then restart. Or set BOPO_DB_PATH to a fresh path."
-        );
-      }
-    }
-    throw error;
-  }
+  const { db, client: dbClient } = await bootstrapDatabaseWithStartupLogging(dbPath);
   const existingCompanies = await listCompanies(db);
   await ensureBuiltinPluginsRegistered(
     db,
@@ -79,54 +57,20 @@ async function main() {
   const openCodeHealthRequired =
     !skipOpenCodePreflight &&
     (process.env.BOPO_REQUIRE_OPENCODE_HEALTH === "1" || (await hasOpenCodeAgentsConfigured(db)));
-  const getRuntimeHealth = async () => {
-    const codex = codexHealthRequired
-      ? await checkRuntimeCommandHealth(codexCommand, {
-          timeoutMs: 5_000
-        })
-      : {
-          command: codexCommand,
-          available: skipCodexPreflight ? false : true,
-          exitCode: null,
-          elapsedMs: 0,
-          error: skipCodexPreflight
-            ? "Skipped by configuration: BOPO_SKIP_CODEX_PREFLIGHT=1."
-            : "Skipped: no Codex agents configured."
-        };
-    const opencode = openCodeHealthRequired
-      ? await checkRuntimeCommandHealth(openCodeCommand, {
-          timeoutMs: 5_000
-        })
-      : {
-          command: openCodeCommand,
-          available: skipOpenCodePreflight ? false : true,
-          exitCode: null,
-          elapsedMs: 0,
-          error: skipOpenCodePreflight
-            ? "Skipped by configuration: BOPO_SKIP_OPENCODE_PREFLIGHT=1."
-            : "Skipped: no OpenCode agents configured."
-        };
-    return {
-      codex,
-      opencode
-    };
-  };
-  if (codexHealthRequired) {
-    const startupCodexHealth = await checkRuntimeCommandHealth(codexCommand, {
-      timeoutMs: 5_000
-    });
-    if (!startupCodexHealth.available) {
-      emitCodexPreflightWarning(startupCodexHealth);
-    }
-  }
-  if (openCodeHealthRequired) {
-    const startupOpenCodeHealth = await checkRuntimeCommandHealth(openCodeCommand, {
-      timeoutMs: 5_000
-    });
-    if (!startupOpenCodeHealth.available) {
-      emitOpenCodePreflightWarning(startupOpenCodeHealth);
-    }
-  }
+  const getRuntimeHealth = buildGetRuntimeHealth({
+    codexCommand,
+    openCodeCommand,
+    skipCodexPreflight,
+    skipOpenCodePreflight,
+    codexHealthRequired,
+    openCodeHealthRequired
+  });
+  await runStartupRuntimePreflights({
+    codexHealthRequired,
+    openCodeHealthRequired,
+    codexCommand,
+    openCodeCommand
+  });
 
   const server = createServer();
   const realtimeHub = attachRealtimeHub(server, {
@@ -154,215 +98,12 @@ async function main() {
     console.log("[startup] Scheduler disabled for this instance (BOPO_SCHEDULER_ROLE is follower/off).");
   }
 
-  let shutdownInFlight: Promise<void> | null = null;
-  function shutdown(signal: string) {
-    const shutdownTimeoutMs = Number(process.env.BOPO_SHUTDOWN_TIMEOUT_MS ?? 15_000);
-    const forcedExit = setTimeout(() => {
-      // eslint-disable-next-line no-console
-      console.error(`[shutdown] timed out after ${shutdownTimeoutMs}ms; forcing exit.`);
-      process.exit(process.exitCode ?? 1);
-    }, shutdownTimeoutMs);
-    forcedExit.unref();
-    shutdownInFlight ??= (async () => {
-      // eslint-disable-next-line no-console
-      console.log(`[shutdown] ${signal} — draining HTTP/background work before closing the embedded database…`);
-      beginHeartbeatQueueShutdown();
-      beginIssueCommentDispatchShutdown();
-      await Promise.allSettled([
-        scheduler?.stop() ?? Promise.resolve(),
-        new Promise<void>((resolve, reject) => {
-          server.close((err) => {
-            if (err) {
-              reject(err);
-              return;
-            }
-            resolve();
-          });
-        })
-      ]);
-      await Promise.allSettled([waitForHeartbeatQueueDrain(), waitForIssueCommentDispatchDrain()]);
-      try {
-        await realtimeHub.close();
-      } catch (closeError) {
-        // eslint-disable-next-line no-console
-        console.error("[shutdown] realtime hub close error", closeError);
-      }
-      try {
-        await closeDatabaseClient(dbClient);
-      } catch (closeDbError) {
-        // eslint-disable-next-line no-console
-        console.error("[shutdown] database close error", closeDbError);
-      }
-      // eslint-disable-next-line no-console
-      console.log("[shutdown] clean exit");
-      process.exitCode = 0;
-    })().catch((error) => {
-      // eslint-disable-next-line no-console
-      console.error("[shutdown] failed", error);
-      process.exitCode = 1;
-    });
-    return shutdownInFlight;
-  }
-
-  process.once("SIGINT", () => void shutdown("SIGINT"));
-  process.once("SIGTERM", () => void shutdown("SIGTERM"));
+  attachGracefulShutdownHandlers({
+    server,
+    realtimeHub,
+    dbClient,
+    scheduler
+  });
 }
 
 void main();
-
-async function closeDatabaseClient(client: unknown) {
-  if (!client || typeof client !== "object") {
-    return;
-  }
-  const closeFn = (client as { close?: unknown }).close;
-  if (typeof closeFn !== "function") {
-    return;
-  }
-  await (closeFn as () => Promise<void>)();
-}
-
-async function hasCodexAgentsConfigured(db: Awaited<ReturnType<typeof bootstrapDatabase>>["db"]) {
-  const result = await db.execute(sql`
-    SELECT id
-    FROM agents
-    WHERE provider_type = 'codex'
-    LIMIT 1
-  `);
-  return result.length > 0;
-}
-
-async function hasOpenCodeAgentsConfigured(db: Awaited<ReturnType<typeof bootstrapDatabase>>["db"]) {
-  const result = await db.execute(sql`
-    SELECT id
-    FROM agents
-    WHERE provider_type = 'opencode'
-    LIMIT 1
-  `);
-  return result.length > 0;
-}
-
-async function resolveSchedulerCompanyId(
-  db: Awaited<ReturnType<typeof bootstrapDatabase>>["db"],
-  configuredCompanyId: string | null
-) {
-  if (configuredCompanyId) {
-    const configured = await db.execute(sql`
-      SELECT id
-      FROM companies
-      WHERE id = ${configuredCompanyId}
-      LIMIT 1
-    `);
-    if (configured.length > 0) {
-      return configuredCompanyId;
-    }
-    // eslint-disable-next-line no-console
-    console.warn(`[startup] BOPO_DEFAULT_COMPANY_ID='${configuredCompanyId}' was not found; using first available company.`);
-  }
-
-  const fallback = await db.execute(sql`
-    SELECT id
-    FROM companies
-    ORDER BY created_at ASC
-    LIMIT 1
-  `);
-  const id = fallback[0]?.id;
-  return typeof id === "string" && id.length > 0 ? id : null;
-}
-
-function emitCodexPreflightWarning(health: RuntimeCommandHealth) {
-  const red = process.stderr.isTTY ? "\x1b[31m" : "";
-  const yellow = process.stderr.isTTY ? "\x1b[33m" : "";
-  const reset = process.stderr.isTTY ? "\x1b[0m" : "";
-  const symbol = `${red}✖${reset}`;
-  process.stderr.write(
-    `${symbol} ${yellow}Codex preflight failed${reset}: command '${health.command}' is unavailable.\n`
-  );
-  process.stderr.write(`  Install Codex CLI or set BOPO_SKIP_CODEX_PREFLIGHT=1 for local dev.\n`);
-  if (process.env.BOPO_VERBOSE_STARTUP_WARNINGS === "1") {
-    process.stderr.write(`  Details: ${JSON.stringify(health)}\n`);
-  }
-}
-
-function emitOpenCodePreflightWarning(health: RuntimeCommandHealth) {
-  const red = process.stderr.isTTY ? "\x1b[31m" : "";
-  const yellow = process.stderr.isTTY ? "\x1b[33m" : "";
-  const reset = process.stderr.isTTY ? "\x1b[0m" : "";
-  const symbol = `${red}✖${reset}`;
-  process.stderr.write(
-    `${symbol} ${yellow}OpenCode preflight failed${reset}: command '${health.command}' is unavailable.\n`
-  );
-  process.stderr.write(`  Install OpenCode CLI or set BOPO_SKIP_OPENCODE_PREFLIGHT=1 for local dev.\n`);
-  if (process.env.BOPO_VERBOSE_STARTUP_WARNINGS === "1") {
-    process.stderr.write(`  Details: ${JSON.stringify(health)}\n`);
-  }
-}
-
-function validateDeploymentConfiguration(
-  deploymentMode: ReturnType<typeof resolveDeploymentMode>,
-  allowedOrigins: string[],
-  allowedHostnames: string[],
-  publicBaseUrl: URL | null
-) {
-  if (deploymentMode === "authenticated_public" && !publicBaseUrl) {
-    throw new Error("BOPO_PUBLIC_BASE_URL is required in authenticated_public mode.");
-  }
-  if (isAuthenticatedMode(deploymentMode) && process.env.BOPO_AUTH_TOKEN_SECRET?.trim() === "") {
-    throw new Error("BOPO_AUTH_TOKEN_SECRET must not be empty when set.");
-  }
-  if (isAuthenticatedMode(deploymentMode) && !process.env.BOPO_AUTH_TOKEN_SECRET?.trim()) {
-    // eslint-disable-next-line no-console
-    console.warn(
-      "[startup] BOPO_AUTH_TOKEN_SECRET is not set. Authenticated modes will require BOPO_TRUST_ACTOR_HEADERS=1 behind a trusted proxy."
-    );
-  }
-  if (isAuthenticatedMode(deploymentMode) && process.env.BOPO_TRUST_ACTOR_HEADERS !== "1" && !process.env.BOPO_AUTH_TOKEN_SECRET?.trim()) {
-    throw new Error(
-      "Authenticated mode requires either BOPO_AUTH_TOKEN_SECRET (token identity) or BOPO_TRUST_ACTOR_HEADERS=1 (trusted proxy headers)."
-    );
-  }
-  if (isAuthenticatedMode(deploymentMode) && process.env.BOPO_ALLOW_LOCAL_BOARD_FALLBACK === "1") {
-    throw new Error("BOPO_ALLOW_LOCAL_BOARD_FALLBACK cannot be enabled in authenticated modes.");
-  }
-  // eslint-disable-next-line no-console
-  console.log(
-    `[startup] Deployment config: mode=${deploymentMode} origins=${allowedOrigins.join(",")} hosts=${allowedHostnames.join(",")}`
-  );
-}
-
-function shouldStartScheduler() {
-  const rawRole = (process.env.BOPO_SCHEDULER_ROLE ?? "auto").trim().toLowerCase();
-  if (rawRole === "off" || rawRole === "follower") {
-    return false;
-  }
-  if (rawRole === "leader" || rawRole === "auto") {
-    return true;
-  }
-  throw new Error(`Invalid BOPO_SCHEDULER_ROLE '${rawRole}'. Expected one of: auto, leader, follower, off.`);
-}
-
-function loadApiEnv() {
-  const sourceDir = dirname(fileURLToPath(import.meta.url));
-  const repoRoot = resolve(sourceDir, "../../../");
-  const candidates = [resolve(repoRoot, ".env.local"), resolve(repoRoot, ".env")];
-  for (const path of candidates) {
-    loadDotenv({ path, override: false, quiet: true });
-  }
-}
-
-function normalizeOptionalDbPath(value: string | undefined) {
-  const normalized = value?.trim();
-  return normalized && normalized.length > 0 ? normalized : undefined;
-}
-
-function isProbablyDatabaseStartupError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
-  const cause = error instanceof Error ? error.cause : undefined;
-  const causeMessage = cause instanceof Error ? cause.message : String(cause ?? "");
-  return (
-    message.includes("database") ||
-    message.includes("postgres") ||
-    message.includes("migration") ||
-    causeMessage.includes("postgres") ||
-    causeMessage.includes("connection")
-  );
-}

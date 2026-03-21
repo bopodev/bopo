@@ -14,7 +14,7 @@ import {
 import type { AppContext } from "../context";
 import { sendError, sendOk } from "../http";
 import { requireCompanyScope } from "../middleware/company-scope";
-import { requirePermission } from "../middleware/request-actor";
+import { enforcePermission } from "../middleware/request-actor";
 import { createGovernanceRealtimeEvent, serializeStoredApproval } from "../realtime/governance";
 import { publishAttentionSnapshot } from "../realtime/attention";
 import {
@@ -146,10 +146,7 @@ export function createGovernanceRouter(ctx: AppContext) {
   });
 
   router.post("/resolve", async (req, res) => {
-    requirePermission("governance:resolve")(req, res, () => {});
-    if (res.headersSent) {
-      return;
-    }
+    if (!enforcePermission(req, res, "governance:resolve")) return;
     const parsed = resolveSchema.safeParse(req.body);
     if (!parsed.success) {
       return sendError(res, parsed.error.message, 422);

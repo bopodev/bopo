@@ -37,7 +37,7 @@ import { resolveHiringDelegate } from "../lib/hiring-delegate";
 import { resolveOpencodeRuntimeModel } from "../lib/opencode-model";
 import { assertRuntimeCwdForCompany, hasText, resolveDefaultRuntimeCwdForCompany } from "../lib/workspace-policy";
 import { requireCompanyScope } from "../middleware/company-scope";
-import { requireBoardRole, requirePermission } from "../middleware/request-actor";
+import { enforcePermission, requireBoardRole, requirePermission } from "../middleware/request-actor";
 import { createGovernanceRealtimeEvent, serializeStoredApproval } from "../realtime/governance";
 import { publishAttentionSnapshot } from "../realtime/attention";
 import {
@@ -629,10 +629,7 @@ export function createAgentsRouter(ctx: AppContext) {
   });
 
   router.post("/:agentId/pause", async (req, res) => {
-    requirePermission("agents:lifecycle")(req, res, () => {});
-    if (res.headersSent) {
-      return;
-    }
+    if (!enforcePermission(req, res, "agents:lifecycle")) return;
     const agent = await updateAgent(ctx.db, {
       companyId: req.companyId!,
       id: req.params.agentId,
@@ -656,10 +653,7 @@ export function createAgentsRouter(ctx: AppContext) {
   });
 
   router.post("/:agentId/resume", async (req, res) => {
-    requirePermission("agents:lifecycle")(req, res, () => {});
-    if (res.headersSent) {
-      return;
-    }
+    if (!enforcePermission(req, res, "agents:lifecycle")) return;
     const agent = await updateAgent(ctx.db, {
       companyId: req.companyId!,
       id: req.params.agentId,

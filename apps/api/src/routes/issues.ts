@@ -42,7 +42,7 @@ import {
 } from "../lib/comment-recipients";
 import { isInsidePath, normalizeCompanyWorkspacePath, resolveProjectWorkspacePath } from "../lib/instance-paths";
 import { requireCompanyScope } from "../middleware/company-scope";
-import { requirePermission } from "../middleware/request-actor";
+import { enforcePermission } from "../middleware/request-actor";
 import { triggerIssueCommentDispatchWorker } from "../services/comment-recipient-dispatch-service";
 import { publishAttentionSnapshot } from "../realtime/attention";
 
@@ -209,10 +209,7 @@ export function createIssuesRouter(ctx: AppContext) {
   });
 
   router.post("/", async (req, res) => {
-    requirePermission("issues:write")(req, res, () => {});
-    if (res.headersSent) {
-      return;
-    }
+    if (!enforcePermission(req, res, "issues:write")) return;
     const parsed = createIssueSchema.safeParse(req.body);
     if (!parsed.success) {
       return sendError(res, parsed.error.message, 422);
@@ -259,10 +256,7 @@ export function createIssuesRouter(ctx: AppContext) {
   });
 
   router.post("/:issueId/attachments", async (req, res) => {
-    requirePermission("issues:write")(req, res, () => {});
-    if (res.headersSent) {
-      return;
-    }
+    if (!enforcePermission(req, res, "issues:write")) return;
 
     upload.array("files", MAX_ATTACHMENTS_PER_REQUEST)(req, res, async (uploadError) => {
       if (uploadError) {
@@ -409,10 +403,7 @@ export function createIssuesRouter(ctx: AppContext) {
   });
 
   router.delete("/:issueId/attachments/:attachmentId", async (req, res) => {
-    requirePermission("issues:write")(req, res, () => {});
-    if (res.headersSent) {
-      return;
-    }
+    if (!enforcePermission(req, res, "issues:write")) return;
     const issueContext = await getIssueContextForAttachment(ctx, req.companyId!, req.params.issueId);
     if (!issueContext) {
       return sendError(res, "Issue not found.", 404);
@@ -468,10 +459,7 @@ export function createIssuesRouter(ctx: AppContext) {
   });
 
   router.post("/:issueId/comments", async (req, res) => {
-    requirePermission("issues:write")(req, res, () => {});
-    if (res.headersSent) {
-      return;
-    }
+    if (!enforcePermission(req, res, "issues:write")) return;
     const parsed = createIssueCommentSchema.safeParse(req.body);
     if (!parsed.success) {
       return sendError(res, parsed.error.message, 422);
@@ -487,10 +475,7 @@ export function createIssuesRouter(ctx: AppContext) {
 
   // Backward-compatible endpoint used by older clients.
   router.post("/comment", async (req, res) => {
-    requirePermission("issues:write")(req, res, () => {});
-    if (res.headersSent) {
-      return;
-    }
+    if (!enforcePermission(req, res, "issues:write")) return;
     const parsed = createIssueCommentLegacySchema.safeParse(req.body);
     if (!parsed.success) {
       return sendError(res, parsed.error.message, 422);
@@ -505,10 +490,7 @@ export function createIssuesRouter(ctx: AppContext) {
   });
 
   router.put("/:issueId/comments/:commentId", async (req, res) => {
-    requirePermission("issues:write")(req, res, () => {});
-    if (res.headersSent) {
-      return;
-    }
+    if (!enforcePermission(req, res, "issues:write")) return;
     const parsed = updateIssueCommentSchema.safeParse(req.body);
     if (!parsed.success) {
       return sendError(res, parsed.error.message, 422);
@@ -550,10 +532,7 @@ export function createIssuesRouter(ctx: AppContext) {
   });
 
   router.delete("/:issueId/comments/:commentId", async (req, res) => {
-    requirePermission("issues:write")(req, res, () => {});
-    if (res.headersSent) {
-      return;
-    }
+    if (!enforcePermission(req, res, "issues:write")) return;
     const deleted = await deleteIssueComment(ctx.db, req.companyId!, req.params.issueId, req.params.commentId);
     if (!deleted) {
       return sendError(res, "Comment not found.", 404);
@@ -580,10 +559,7 @@ export function createIssuesRouter(ctx: AppContext) {
   });
 
   router.put("/:issueId", async (req, res) => {
-    requirePermission("issues:write")(req, res, () => {});
-    if (res.headersSent) {
-      return;
-    }
+    if (!enforcePermission(req, res, "issues:write")) return;
     const parsed = updateIssueSchema.safeParse(req.body);
     if (!parsed.success) {
       return sendError(res, parsed.error.message, 422);
@@ -641,10 +617,7 @@ export function createIssuesRouter(ctx: AppContext) {
   });
 
   router.delete("/:issueId", async (req, res) => {
-    requirePermission("issues:write")(req, res, () => {});
-    if (res.headersSent) {
-      return;
-    }
+    if (!enforcePermission(req, res, "issues:write")) return;
     const deleted = await deleteIssue(ctx.db, req.companyId!, req.params.issueId);
     if (!deleted) {
       return sendError(res, "Issue not found.", 404);

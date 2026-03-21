@@ -24,7 +24,7 @@ import {
 import type { AppContext } from "../context";
 import { sendError, sendOk } from "../http";
 import { requireCompanyScope } from "../middleware/company-scope";
-import { requirePermission } from "../middleware/request-actor";
+import { enforcePermission } from "../middleware/request-actor";
 import { applyTemplateManifest } from "../services/template-apply-service";
 import { buildTemplatePreview } from "../services/template-preview-service";
 
@@ -39,10 +39,7 @@ export function createTemplatesRouter(ctx: AppContext) {
   });
 
   router.post("/", async (req, res) => {
-    requirePermission("templates:write")(req, res, () => {});
-    if (res.headersSent) {
-      return;
-    }
+    if (!enforcePermission(req, res, "templates:write")) return;
     const parsed = TemplateCreateRequestSchema.safeParse(req.body);
     if (!parsed.success) {
       return sendError(res, parsed.error.message, 422);
@@ -83,10 +80,7 @@ export function createTemplatesRouter(ctx: AppContext) {
   });
 
   router.put("/:templateId", async (req, res) => {
-    requirePermission("templates:write")(req, res, () => {});
-    if (res.headersSent) {
-      return;
-    }
+    if (!enforcePermission(req, res, "templates:write")) return;
     const parsed = TemplateUpdateRequestSchema.safeParse(req.body);
     if (!parsed.success) {
       return sendError(res, parsed.error.message, 422);
@@ -138,10 +132,7 @@ export function createTemplatesRouter(ctx: AppContext) {
   });
 
   router.delete("/:templateId", async (req, res) => {
-    requirePermission("templates:write")(req, res, () => {});
-    if (res.headersSent) {
-      return;
-    }
+    if (!enforcePermission(req, res, "templates:write")) return;
     const deleted = await deleteTemplate(ctx.db, req.companyId!, req.params.templateId);
     if (!deleted) {
       return sendError(res, "Template not found.", 404);
@@ -188,10 +179,7 @@ export function createTemplatesRouter(ctx: AppContext) {
   });
 
   router.post("/:templateId/apply", async (req, res) => {
-    requirePermission("templates:write")(req, res, () => {});
-    if (res.headersSent) {
-      return;
-    }
+    if (!enforcePermission(req, res, "templates:write")) return;
     const parsed = TemplateApplyRequestSchema.safeParse(req.body);
     if (!parsed.success) {
       return sendError(res, parsed.error.message, 422);
@@ -261,10 +249,7 @@ export function createTemplatesRouter(ctx: AppContext) {
   });
 
   router.post("/import", async (req, res) => {
-    requirePermission("templates:write")(req, res, () => {});
-    if (res.headersSent) {
-      return;
-    }
+    if (!enforcePermission(req, res, "templates:write")) return;
     const parsed = TemplateImportRequestSchema.safeParse(req.body);
     if (!parsed.success) {
       return sendError(res, parsed.error.message, 422);

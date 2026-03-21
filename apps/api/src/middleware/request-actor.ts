@@ -3,23 +3,9 @@ import { RequestActorHeadersSchema } from "bopodev-contracts";
 import { sendError } from "../http";
 import { verifyActorToken } from "../security/actor-token";
 import { isAuthenticatedMode, resolveDeploymentMode } from "../security/deployment-mode";
+import type { RequestActor } from "../types/request-actor";
 
-export type RequestActor = {
-  type: "board" | "member" | "agent";
-  id: string;
-  companyIds: string[] | null;
-  permissions: string[];
-};
-
-declare global {
-  namespace Express {
-    interface Request {
-      actor?: RequestActor;
-      companyId?: string;
-      requestId?: string;
-    }
-  }
-}
+export type { RequestActor };
 
 export function attachRequestActor(req: Request, res: Response, next: NextFunction) {
   const deploymentMode = resolveDeploymentMode();
@@ -134,6 +120,14 @@ export function requirePermission(permission: string) {
     }
     next();
   };
+}
+
+export function enforcePermission(req: Request, res: Response, permission: string): boolean {
+  let allowed = false;
+  requirePermission(permission)(req, res, () => {
+    allowed = true;
+  });
+  return allowed;
 }
 
 export function requireBoardRole(req: Request, res: Response, next: NextFunction) {

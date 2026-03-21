@@ -5,7 +5,7 @@ import { appendAuditEvent, createApprovalRequest, createGoal, deleteGoal, getApp
 import type { AppContext } from "../context";
 import { sendError, sendOk, sendOkValidated } from "../http";
 import { requireCompanyScope } from "../middleware/company-scope";
-import { requirePermission } from "../middleware/request-actor";
+import { enforcePermission } from "../middleware/request-actor";
 import { createGovernanceRealtimeEvent, serializeStoredApproval } from "../realtime/governance";
 import { publishAttentionSnapshot } from "../realtime/attention";
 import { isApprovalRequired } from "../services/governance-service";
@@ -44,10 +44,7 @@ export function createGoalsRouter(ctx: AppContext) {
   });
 
   router.post("/", async (req, res) => {
-    requirePermission("goals:write")(req, res, () => {});
-    if (res.headersSent) {
-      return;
-    }
+    if (!enforcePermission(req, res, "goals:write")) return;
     const parsed = createGoalSchema.safeParse(req.body);
     if (!parsed.success) {
       return sendError(res, parsed.error.message, 422);
@@ -92,10 +89,7 @@ export function createGoalsRouter(ctx: AppContext) {
   });
 
   router.put("/:goalId", async (req, res) => {
-    requirePermission("goals:write")(req, res, () => {});
-    if (res.headersSent) {
-      return;
-    }
+    if (!enforcePermission(req, res, "goals:write")) return;
     const parsed = updateGoalSchema.safeParse(req.body);
     if (!parsed.success) {
       return sendError(res, parsed.error.message, 422);
@@ -118,10 +112,7 @@ export function createGoalsRouter(ctx: AppContext) {
   });
 
   router.delete("/:goalId", async (req, res) => {
-    requirePermission("goals:write")(req, res, () => {});
-    if (res.headersSent) {
-      return;
-    }
+    if (!enforcePermission(req, res, "goals:write")) return;
     const deleted = await deleteGoal(ctx.db, req.companyId!, req.params.goalId);
     if (!deleted) {
       return sendError(res, "Goal not found.", 404);

@@ -19,7 +19,7 @@ import type { AppContext } from "../context";
 import { sendError, sendOk, sendOkValidated } from "../http";
 import { normalizeCompanyWorkspacePath, resolveProjectWorkspacePath } from "../lib/instance-paths";
 import { requireCompanyScope } from "../middleware/company-scope";
-import { requirePermission } from "../middleware/request-actor";
+import { enforcePermission } from "../middleware/request-actor";
 
 const projectStatusSchema = z.enum(["planned", "active", "paused", "blocked", "completed", "archived"]);
 const executionWorkspacePolicySchema = z
@@ -129,10 +129,7 @@ export function createProjectsRouter(ctx: AppContext) {
   });
 
   router.post("/", async (req, res) => {
-    requirePermission("projects:write")(req, res, () => {});
-    if (res.headersSent) {
-      return;
-    }
+    if (!enforcePermission(req, res, "projects:write")) return;
     const parsed = createProjectSchema.safeParse(req.body);
     if (!parsed.success) {
       return sendError(res, parsed.error.message, 422);
@@ -203,10 +200,7 @@ export function createProjectsRouter(ctx: AppContext) {
   });
 
   router.put("/:projectId", async (req, res) => {
-    requirePermission("projects:write")(req, res, () => {});
-    if (res.headersSent) {
-      return;
-    }
+    if (!enforcePermission(req, res, "projects:write")) return;
     const parsed = updateProjectSchema.safeParse(req.body);
     if (!parsed.success) {
       return sendError(res, parsed.error.message, 422);
@@ -257,10 +251,7 @@ export function createProjectsRouter(ctx: AppContext) {
   });
 
   router.post("/:projectId/workspaces", async (req, res) => {
-    requirePermission("projects:write")(req, res, () => {});
-    if (res.headersSent) {
-      return;
-    }
+    if (!enforcePermission(req, res, "projects:write")) return;
     const parsed = createProjectWorkspaceSchema.safeParse(req.body);
     if (!parsed.success) {
       return sendError(res, parsed.error.message, 422);
@@ -306,10 +297,7 @@ export function createProjectsRouter(ctx: AppContext) {
   });
 
   router.put("/:projectId/workspaces/:workspaceId", async (req, res) => {
-    requirePermission("projects:write")(req, res, () => {});
-    if (res.headersSent) {
-      return;
-    }
+    if (!enforcePermission(req, res, "projects:write")) return;
     const parsed = updateProjectWorkspaceSchema.safeParse(req.body);
     if (!parsed.success) {
       return sendError(res, parsed.error.message, 422);
@@ -356,10 +344,7 @@ export function createProjectsRouter(ctx: AppContext) {
   });
 
   router.delete("/:projectId/workspaces/:workspaceId", async (req, res) => {
-    requirePermission("projects:write")(req, res, () => {});
-    if (res.headersSent) {
-      return;
-    }
+    if (!enforcePermission(req, res, "projects:write")) return;
     const deleted = await deleteProjectWorkspace(ctx.db, {
       companyId: req.companyId!,
       projectId: req.params.projectId,
@@ -380,10 +365,7 @@ export function createProjectsRouter(ctx: AppContext) {
   });
 
   router.delete("/:projectId", async (req, res) => {
-    requirePermission("projects:write")(req, res, () => {});
-    if (res.headersSent) {
-      return;
-    }
+    if (!enforcePermission(req, res, "projects:write")) return;
     const deleted = await deleteProject(ctx.db, req.companyId!, req.params.projectId);
     if (!deleted) {
       return sendError(res, "Project not found.", 404);
