@@ -54,6 +54,13 @@ import {
 import { AGENT_ROLE_LABELS, AGENT_ROLE_KEYS, type AgentRoleKey } from "bopodev-contracts";
 import styles from "./workspace-client.module.scss";
 import {
+  EmptyState,
+  MetricCard,
+  SectionHeading,
+  formatDateTime,
+  goalStatusOptions
+} from "@/components/workspace/shared";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -492,63 +499,6 @@ interface PluginRow {
   } | null;
 }
 
-const goalStatusOptions = [
-  { value: "draft", label: "Draft" },
-  { value: "active", label: "Active" },
-  { value: "completed", label: "Completed" },
-  { value: "archived", label: "Archived" }
-] as const;
-
-function MetricCard({
-  label,
-  value,
-  hint
-}: {
-  label: string;
-  value: string | number;
-  hint?: string;
-}) {
-  return (
-    <Card className={cn(styles.metricCard, "ui-card-stat")}>
-      <CardHeader className={styles.metricCardHeader}>
-        <CardDescription className={styles.metricCardDescription}>{label}</CardDescription>
-      </CardHeader>
-      <CardContent className={styles.metricCardContent}>
-        <div className={styles.metricCardContainer}>{value}</div>
-        {hint ? <p className={styles.metricCardText}>{hint}</p> : null}
-      </CardContent>
-    </Card>
-  );
-}
-
-function EmptyState({ children }: { children: React.ReactNode }) {
-  return <div className={styles.emptyStateContainer}>{children}</div>;
-}
-
-function SectionHeading({
-  title,
-  description,
-  actions
-}: {
-  title: string;
-  description: string;
-  actions?: React.ReactNode;
-}) {
-  return (
-    <div className="ui-feature-section-row">
-      <div>
-        <h2 className="ui-feature-section-title">{title}</h2>
-        <p className="ui-feature-section-description">{description}</p>
-      </div>
-      {actions ? <div className="ui-feature-section-actions">{actions}</div> : null}
-    </div>
-  );
-}
-
-function formatDateTime(value: string) {
-  return new Date(value).toLocaleString();
-}
-
 function formatUsdCost(value: number) {
   if (!Number.isFinite(value) || value <= 0) {
     return "$0.00";
@@ -708,7 +658,7 @@ function CostDailyBreakdownChartCard({
             </BarChart>
           </ChartContainer>
         ) : (
-          <div className={styles.emptyStateContainer}>{emptyLabel}</div>
+          <EmptyState>{emptyLabel}</EmptyState>
         )}
       </CardContent>
     </Card>
@@ -802,7 +752,7 @@ function AgentBudgetSpendCard({
                 </BarChart>
               </ChartContainer>
             ) : (
-              <div className={styles.emptyStateContainer}>No ledger spend for this agent in this month.</div>
+              <EmptyState>No ledger spend for this agent in this month.</EmptyState>
             )}
           </div>
         </div>
@@ -4575,18 +4525,18 @@ export function WorkspaceClient({
               data={filteredProjects}
               emptyMessage="No projects match current filters."
               toolbarActions={
-                <div className={styles.goalsFiltersCardContent}>
+                <div className="ui-toolbar-filters">
                   <Input
                     value={projectsQuery}
                     onChange={(event) => setProjectsQuery(event.target.value)}
                     placeholder="Search project name or description..."
-                    className={styles.goalsFiltersInput}
+                    className="ui-toolbar-filter-input"
                   />
                   <Select
                     value={projectsActivityFilter}
                     onValueChange={(value) => setProjectsActivityFilter(value as "all" | "active" | "no_open_issues" | "no_issues")}
                   >
-                    <SelectTrigger className={styles.goalsFiltersSelect}>
+                    <SelectTrigger className="ui-toolbar-filter-select">
                       <SelectValue placeholder="Activity" />
                     </SelectTrigger>
                     <SelectContent>
@@ -4628,15 +4578,15 @@ export function WorkspaceClient({
               data={filteredGoals}
               emptyMessage="No goals match current filters."
               toolbarActions={
-                <div className={styles.goalsFiltersCardContent}>
+                <div className="ui-toolbar-filters">
                   <Input
                     value={goalsQuery}
                     onChange={(event) => setGoalsQuery(event.target.value)}
                     placeholder="Search title, description, status, level, or project..."
-                    className={styles.goalsFiltersInput}
+                    className="ui-toolbar-filter-input"
                   />
                   <Select value={goalsStatusFilter} onValueChange={setGoalsStatusFilter}>
-                    <SelectTrigger className={styles.goalsFiltersSelect}>
+                    <SelectTrigger className="ui-toolbar-filter-select">
                       <SelectValue placeholder="Status" />
                     </SelectTrigger>
                     <SelectContent>
@@ -4649,7 +4599,7 @@ export function WorkspaceClient({
                     </SelectContent>
                   </Select>
                   <Select value={goalsLevelFilter} onValueChange={setGoalsLevelFilter}>
-                    <SelectTrigger className={styles.goalsFiltersSelect}>
+                    <SelectTrigger className="ui-toolbar-filter-select">
                       <SelectValue placeholder="Level" />
                     </SelectTrigger>
                     <SelectContent>
@@ -4691,15 +4641,15 @@ export function WorkspaceClient({
                 emptyMessage="No agents match current filters."
                 showHorizontalScrollbarOnHover
                 toolbarActions={
-                  <div className={styles.agentsFiltersCardContent}>
+                  <div className="ui-toolbar-filters">
                     <Input
                       value={agentsQuery}
                       onChange={(event) => setAgentsQuery(event.target.value)}
                       placeholder="Search name, role/title, status, or provider..."
-                      className={styles.agentsFiltersInput}
+                      className="ui-toolbar-filter-input"
                     />
                     <Select value={agentsStatusFilter} onValueChange={setAgentsStatusFilter}>
-                      <SelectTrigger className={styles.agentsFiltersSelect}>
+                      <SelectTrigger className="ui-toolbar-filter-select">
                         <SelectValue placeholder="Status" />
                       </SelectTrigger>
                       <SelectContent>
@@ -4712,7 +4662,7 @@ export function WorkspaceClient({
                       </SelectContent>
                     </Select>
                     <Select value={agentsProviderFilter} onValueChange={setAgentsProviderFilter}>
-                      <SelectTrigger className={styles.agentsFiltersSelect}>
+                      <SelectTrigger className="ui-toolbar-filter-select">
                         <SelectValue placeholder="Provider" />
                       </SelectTrigger>
                       <SelectContent>
@@ -4725,7 +4675,7 @@ export function WorkspaceClient({
                       </SelectContent>
                     </Select>
                     <Select value={agentsReportToFilter} onValueChange={setAgentsReportToFilter}>
-                      <SelectTrigger className={styles.agentsFiltersSelect}>
+                      <SelectTrigger className="ui-toolbar-filter-select">
                         <SelectValue placeholder="Report to" />
                       </SelectTrigger>
                       <SelectContent>
@@ -4739,7 +4689,7 @@ export function WorkspaceClient({
                       </SelectContent>
                     </Select>
                     <Select value={agentsModelFilter} onValueChange={setAgentsModelFilter}>
-                      <SelectTrigger className={styles.agentsFiltersSelect}>
+                      <SelectTrigger className="ui-toolbar-filter-select">
                         <SelectValue placeholder="Model" />
                       </SelectTrigger>
                       <SelectContent>
@@ -5219,15 +5169,15 @@ export function WorkspaceClient({
               data={filteredHeartbeatRuns}
               emptyMessage="No heartbeat runs match current filters."
               toolbarActions={
-                <div className={styles.runFiltersCardContent}>
+                <div className="ui-toolbar-filters">
                   <Input
                     value={runsQuery}
                     onChange={(event) => setRunsQuery(event.target.value)}
                     placeholder="Search run id, message, status, or agent..."
-                    className={styles.runFiltersInput}
+                    className="ui-toolbar-filter-input"
                   />
                   <Select value={runsStatusFilter} onValueChange={setRunsStatusFilter}>
-                    <SelectTrigger className={styles.runFiltersSelect}>
+                    <SelectTrigger className="ui-toolbar-filter-select">
                       <SelectValue placeholder="Status" />
                     </SelectTrigger>
                     <SelectContent>
@@ -5240,7 +5190,7 @@ export function WorkspaceClient({
                     </SelectContent>
                   </Select>
                   <Select value={runsAgentFilter} onValueChange={setRunsAgentFilter}>
-                    <SelectTrigger className={styles.runFiltersSelect}>
+                    <SelectTrigger className="ui-toolbar-filter-select">
                       <SelectValue placeholder="Agent" />
                     </SelectTrigger>
                     <SelectContent>
@@ -5258,7 +5208,7 @@ export function WorkspaceClient({
                       setRunsTypeFilter(value as "all" | "exclude_no_assigned_work" | HeartbeatRunRow["runType"])
                     }
                   >
-                    <SelectTrigger className={styles.runFiltersSelect}>
+                    <SelectTrigger className="ui-toolbar-filter-select">
                       <SelectValue placeholder="Run type" />
                     </SelectTrigger>
                     <SelectContent>
@@ -5277,7 +5227,7 @@ export function WorkspaceClient({
                     value={runsWindowFilter}
                     onValueChange={(value) => setRunsWindowFilter(value as "today" | "7d" | "30d" | "90d" | "all")}
                   >
-                    <SelectTrigger className={styles.runFiltersSelect}>
+                    <SelectTrigger className="ui-toolbar-filter-select">
                       <SelectValue placeholder="Window" />
                     </SelectTrigger>
                     <SelectContent>
@@ -5383,9 +5333,7 @@ export function WorkspaceClient({
                         </BarChart>
                       </ChartContainer>
                     ) : (
-                      <div className={styles.emptyStateContainer}>
-                        No input or output token usage was reported for this month.
-                      </div>
+                      <EmptyState>No input or output token usage was reported for this month.</EmptyState>
                     )}
                   </CardContent>
                 </Card>
@@ -5431,9 +5379,7 @@ export function WorkspaceClient({
                         </BarChart>
                       </ChartContainer>
                     ) : (
-                      <div className={styles.emptyStateContainer}>
-                        No input or output token usage was reported for this month.
-                      </div>
+                      <EmptyState>No input or output token usage was reported for this month.</EmptyState>
                     )}
                   </CardContent>
                 </Card>
@@ -5467,9 +5413,7 @@ export function WorkspaceClient({
                         </AreaChart>
                       </ChartContainer>
                     ) : (
-                      <div className={styles.emptyStateContainer}>
-                        No input or output token usage was reported for this month.
-                      </div>
+                      <EmptyState>No input or output token usage was reported for this month.</EmptyState>
                     )}
                   </CardContent>
                 </Card>
@@ -5506,7 +5450,7 @@ export function WorkspaceClient({
                         </BarChart>
                       </ChartContainer>
                     ) : (
-                      <div className={styles.emptyStateContainer}>No spend has been recorded yet for the available months.</div>
+                      <EmptyState>No spend has been recorded yet for the available months.</EmptyState>
                     )}
                   </CardContent>
                 </Card>
@@ -5517,15 +5461,15 @@ export function WorkspaceClient({
               data={costTableFilteredEntries}
               emptyMessage="No entries match the current filters."
               toolbarActions={
-                <div className={styles.runFiltersCardContent}>
+                <div className="ui-toolbar-filters">
                   <Input
                     value={costEntriesSearchQuery}
                     onChange={(event) => setCostEntriesSearchQuery(event.target.value)}
                     placeholder="Search provider, model, agent or issue id…"
-                    className={styles.runFiltersInput}
+                    className="ui-toolbar-filter-input"
                   />
                   <Select value={costEntriesProviderFilter} onValueChange={setCostEntriesProviderFilter}>
-                    <SelectTrigger className={styles.runFiltersSelect}>
+                    <SelectTrigger className="ui-toolbar-filter-select">
                       <SelectValue placeholder="Provider" />
                     </SelectTrigger>
                     <SelectContent>
@@ -5538,7 +5482,7 @@ export function WorkspaceClient({
                     </SelectContent>
                   </Select>
                   <Select value={costEntriesAgentFilter} onValueChange={setCostEntriesAgentFilter}>
-                    <SelectTrigger className={styles.runFiltersSelect}>
+                    <SelectTrigger className="ui-toolbar-filter-select">
                       <SelectValue placeholder="Agent" />
                     </SelectTrigger>
                     <SelectContent>
@@ -5554,7 +5498,7 @@ export function WorkspaceClient({
                     value={costEntriesScopeFilter}
                     onValueChange={(value) => setCostEntriesScopeFilter(value as "all" | "agent" | "issue")}
                   >
-                    <SelectTrigger className={styles.runFiltersSelect}>
+                    <SelectTrigger className="ui-toolbar-filter-select">
                       <SelectValue placeholder="Scope" />
                     </SelectTrigger>
                     <SelectContent>
@@ -5569,11 +5513,11 @@ export function WorkspaceClient({
               </TabsContent>
               <TabsContent value="by-provider" className={styles.costTabsByProviderContent}>
                 {!costDailyTargetMonthKey ? (
-                  <div className={styles.emptyStateContainer}>No months with cost data yet.</div>
+                  <EmptyState>No months with cost data yet.</EmptyState>
                 ) : providerDailyCostBreakdown.length === 0 ? (
-                  <div className={styles.emptyStateContainer}>
+                  <EmptyState>
                     No spend was recorded for {providerDailyChartMonthLabel}, or all amounts are zero.
-                  </div>
+                  </EmptyState>
                 ) : (
                   <div className={styles.costProviderDailyGrid}>
                     {providerDailyCostBreakdown.map((row) => (
@@ -5598,11 +5542,11 @@ export function WorkspaceClient({
                   </p>
                 ) : null}
                 {!costDailyTargetMonthKey ? (
-                  <div className={styles.emptyStateContainer}>No months with cost data yet.</div>
+                  <EmptyState>No months with cost data yet.</EmptyState>
                 ) : modelDailyCostBreakdown.length === 0 ? (
-                  <div className={styles.emptyStateContainer}>
+                  <EmptyState>
                     No spend was recorded for {providerDailyChartMonthLabel}, or all amounts are zero.
-                  </div>
+                  </EmptyState>
                 ) : (
                   <div className={styles.costProviderDailyGrid}>
                     {modelDailyCostBreakdown.map((row) => (
@@ -5627,11 +5571,11 @@ export function WorkspaceClient({
                   </p>
                 ) : null}
                 {!costDailyTargetMonthKey ? (
-                  <div className={styles.emptyStateContainer}>No months with cost data yet.</div>
+                  <EmptyState>No months with cost data yet.</EmptyState>
                 ) : agentCostBudgetBreakdown.length === 0 ? (
-                  <div className={styles.emptyStateContainer}>
+                  <EmptyState>
                     No agents with budget, usage, or ledger spend for {providerDailyChartMonthLabel}.
-                  </div>
+                  </EmptyState>
                 ) : (
                   <div className={styles.costProviderDailyGrid}>
                     {agentCostBudgetBreakdown.map((row) => (

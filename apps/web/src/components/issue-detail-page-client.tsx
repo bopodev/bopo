@@ -41,7 +41,7 @@ import { formatIssueActivityActorLabel, formatIssueActivityTitle } from "@/lib/e
 import { formatSmartDateTime } from "@/lib/smart-date";
 import { agentAvatarSeed } from "@/lib/agent-avatar";
 import { getStatusBadgeClassName } from "@/lib/status-presentation";
-import styles from "./issue-detail-page-client.module.scss";
+import { cn } from "@/lib/utils";
 import { MetricCard, SectionHeading } from "./workspace/shared";
 
 interface IssueRow {
@@ -178,14 +178,14 @@ function toRecipientPayload(selectedRecipientKey: string | null) {
 }
 
 function EmptyState({ children }: { children: React.ReactNode }) {
-  return <div className={styles.issueEmptyStateContainer}>{children}</div>;
+  return <div className={cn("ui-feature-empty-state", "mb-8")}>{children}</div>;
 }
 
 function PropertyRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className={styles.propertyRowContainer1}>
-      <div className={styles.propertyRowContainer2}>{label}</div>
-      <div className={styles.propertyRowValue}>{value}</div>
+    <div className="ui-property-field">
+      <div className="ui-property-label">{label}</div>
+      <div className="ui-property-value">{value}</div>
     </div>
   );
 }
@@ -232,22 +232,22 @@ function CollapsibleMarkdown({
   }, [content, maxHeightPx]);
 
   const isCollapsed = isOverflowing && !isExpanded;
-  const markdownClassName = isCollapsed ? `${className} ${styles.collapsibleMarkdownContent}` : className;
+  const markdownClassName = isCollapsed ? `${className} ui-markdown-collapsible-content` : className;
 
   return (
     <div>
-      <div className={styles.collapsibleMarkdownFrame}>
+      <div className="ui-markdown-collapsible-frame">
         <div ref={contentRef} className={markdownClassName} style={isCollapsed ? { maxHeight: `${maxHeightPx}px` } : undefined}>
           <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
         </div>
-        {isCollapsed ? <div className={styles.collapsibleMarkdownCurtain} aria-hidden /> : null}
+        {isCollapsed ? <div className="ui-markdown-collapsible-curtain" aria-hidden /> : null}
       </div>
       {isOverflowing ? (
         <Button
           type="button"
           variant="ghost"
           size="sm"
-          className={styles.collapsibleMarkdownShowMoreButton}
+          className="ui-markdown-collapsible-toggle"
           onClick={() => setIsExpanded((current) => !current)}
         >
           {isExpanded ? "Show less" : "Show more"}
@@ -836,16 +836,16 @@ export function IssueDetailPageClient({
   }
 
   const leftPane = (
-    <div className={styles.issueDetailContainer1}>
-      <div className={styles.issueDetailContainer2}>
-        <div className={styles.issueDetailContainer4}>
-          <div className={styles.issueDetailContainer5}>
+    <div className="ui-page-stack">
+      <div className="ui-page-section-gap-sm">
+        <div className="ui-page-header-row">
+          <div className="ui-page-header-intro">
             <SectionHeading
               title={issue.title}
               description="Issue details and controls."
             />
           </div>
-          <div className={styles.issueHeaderActionsContainer}>
+          <div className="ui-page-header-actions">
             <CreateIssueModal
               companyId={companyId}
               projects={projects}
@@ -868,7 +868,7 @@ export function IssueDetailPageClient({
       </div>
 
       <Card>
-        <CardContent className={styles.issueSidebarCardContent}>
+        <CardContent className="ui-detail-sidebar-section">
           {issue.body?.trim() ? (
             <CollapsibleMarkdown content={issue.body} className="ui-markdown" maxHeightPx={issueDescriptionMaxHeightPx} />
           ) : (
@@ -905,8 +905,8 @@ export function IssueDetailPageClient({
                 <div key={comment.id} className="ui-issue-comment-card">
                   <div className="ui-issue-comment-row">
                     <div className="ui-issue-comment-copy">
-                      <div className={styles.commentHeaderRow}>
-                        <div className={styles.commentAuthorRow}>
+                      <div className="ui-issue-comment-header-row">
+                        <div className="ui-issue-comment-author-row">
                           {comment.authorType === "agent" ? (
                             <AgentAvatar
                               seed={agentAvatarSeed(
@@ -916,16 +916,16 @@ export function IssueDetailPageClient({
                               )}
                               name={formatCommentAuthorLabel(comment, agents)}
                               size={32}
-                              className={styles.commentAuthorAvatar}
+                              className="ui-issue-comment-avatar"
                             />
                           ) : (
-                            <div className={styles.commentAuthorFallbackAvatar} aria-hidden>
+                            <div className="ui-issue-comment-avatar-fallback" aria-hidden>
                               {formatCommentAuthorBadgeLabel(comment)}
                             </div>
                           )}
                           <div className="ui-issue-comment-author">{formatCommentAuthorLabel(comment, agents)}</div>
                         </div>
-                        <span className={styles.commentTimestamp}>{formatSmartDateTime(comment.createdAt)}</span>
+                        <span className="ui-issue-comment-time">{formatSmartDateTime(comment.createdAt)}</span>
                       </div>
                       <CollapsibleMarkdown
                         content={comment.authorType === "agent" ? normalizeAgentCommentBodyForDisplay(comment.body) : comment.body}
@@ -933,7 +933,7 @@ export function IssueDetailPageClient({
                         maxHeightPx={issueCommentMaxHeightPx}
                       />
                       {(comment.recipients ?? []).length > 0 ? (
-                        <div className={styles.commentMetadataRow}>
+                        <div className="ui-issue-comment-meta-row">
                           {(comment.recipients ?? []).map((recipient) => (
                             <Badge key={`${comment.id}-${recipient.recipientType}-${recipient.recipientId ?? "all"}`} variant="outline">
                               {formatRecipientDisplay(recipient)}
@@ -945,7 +945,7 @@ export function IssueDetailPageClient({
                               <Link
                                 key={`${comment.id}-${recipient.recipientType}-${recipient.recipientId ?? "all"}-run`}
                                 href={{ pathname: `/runs/${recipient.dispatchedRunId}`, query: { companyId } }}
-                                className={styles.issueDetailLink2}
+                                className="ui-link-sidebar-nested"
                               >
                                 <Badge variant="outline">Run {recipient.dispatchedRunId}</Badge>
                               </Link>
@@ -953,8 +953,8 @@ export function IssueDetailPageClient({
                         </div>
                       ) : null}
                       {comment.runId ? (
-                        <div className={styles.commentMetadataRow}>
-                          <Link href={{ pathname: `/runs/${comment.runId}`, query: { companyId } }} className={styles.issueDetailLink2}>
+                        <div className="ui-issue-comment-meta-row">
+                          <Link href={{ pathname: `/runs/${comment.runId}`, query: { companyId } }} className="ui-link-sidebar-nested">
                             <Badge variant="outline">Run {comment.runId}</Badge>
                           </Link>
                         </div>
@@ -964,19 +964,19 @@ export function IssueDetailPageClient({
                 </div>
               ))}
               {!commentsLoading && visibleComments.length === 0 ? <EmptyState>No comments yet for this issue.</EmptyState> : null}
-              <form className={styles.issueDetailForm} onSubmit={submitComment}>
+              <form className="ui-panel-form" onSubmit={submitComment}>
                 <Textarea
                   value={draftComment}
                   onChange={(event) => setDraftComment(event.target.value)}
                   placeholder="Leave a comment..."
-                  className={styles.issueDetailTextarea}
+                  className="ui-textarea ui-textarea-min-h-24"
                   disabled={isSubmittingComment}
                 />
                 <div className="ui-issue-form-actions">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button type="button" variant="outline" disabled={isSubmittingComment}>
-                        {selectedRecipientLabel} <ChevronDownIcon className={styles.commentRecipientChevron} />
+                        {selectedRecipientLabel} <ChevronDownIcon className="ui-issue-comment-chevron" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="start">
@@ -1016,20 +1016,20 @@ export function IssueDetailPageClient({
                 <ItemGroup>
                   {attachments.map((attachment) => (
                     <Item key={attachment.id} variant="outline">
-                      <div className={styles.issueAttachmentMedia}>
+                      <div className="ui-issue-attachment-media">
                         {isImageAttachment(attachment) ? (
                           <img
                             src={buildAttachmentUrl(attachment.downloadPath, companyId)}
                             alt={attachment.fileName}
-                            className={styles.issueAttachmentPreviewImage}
+                            className="ui-issue-attachment-preview"
                             loading="lazy"
                           />
                         ) : isMarkdownDocument(attachment) ? (
-                          <div className={styles.issueAttachmentDocIcon} aria-hidden>
-                            <FileTextIcon className={styles.issueAttachmentDocIconSvg} />
+                          <div className="ui-issue-attachment-svg-wrap" aria-hidden>
+                            <FileTextIcon className="ui-issue-attachment-svg" />
                           </div>
                         ) : (
-                          <div className={styles.issueAttachmentPlaceholder} aria-hidden>
+                          <div className="ui-issue-attachment-placeholder" aria-hidden>
                             {attachment.fileName.slice(0, 1).toUpperCase()}
                           </div>
                         )}
@@ -1039,7 +1039,7 @@ export function IssueDetailPageClient({
                           {isMarkdownDocument(attachment) ? (
                             <button
                               type="button"
-                              className={styles.issueAttachmentDocTitle}
+                              className="ui-issue-attachment-title"
                               onClick={() => {
                                 setIssueDocumentEditTarget({
                                   id: attachment.id,
@@ -1056,7 +1056,7 @@ export function IssueDetailPageClient({
                               href={buildAttachmentUrl(attachment.downloadPath, companyId)}
                               target="_blank"
                               rel="noreferrer"
-                              className={styles.issueDetailLink2}
+                              className="ui-link-sidebar-nested"
                             >
                               {attachment.fileName}
                             </a>
@@ -1075,7 +1075,7 @@ export function IssueDetailPageClient({
                   ))}
                 </ItemGroup>
               ) : null}
-              <div className={styles.issueAttachmentActionsRow}>
+              <div className="ui-issue-attachment-actions">
                 <Button asChild variant="outline">
                   <label htmlFor="issue-detail-attachments-upload">
                     {isUploadingAttachments ? "Uploading..." : "Add attachments"}
@@ -1087,7 +1087,7 @@ export function IssueDetailPageClient({
                   multiple
                   onChange={(event) => void uploadAttachments(event)}
                   disabled={isUploadingAttachments}
-                  className={styles.issueAttachmentInput}
+                  className="ui-issue-attachment-input"
                 />
                 <Button
                   type="button"
@@ -1127,7 +1127,7 @@ export function IssueDetailPageClient({
                     <Item key={entry.id} variant="outline">
                       <ItemContent>
                         <ItemTitle>
-                          <Link href={`/issues/${entry.id}?companyId=${companyId}`} className={styles.issueDetailLink2}>
+                          <Link href={`/issues/${entry.id}?companyId=${companyId}`} className="ui-link-sidebar-nested">
                             {entry.title}
                           </Link>
                         </ItemTitle>
@@ -1145,7 +1145,7 @@ export function IssueDetailPageClient({
                 </ItemGroup>
               )}
 
-              <div className={styles.issueSubIssueActionsRow}>
+              <div className="ui-issue-subissue-actions">
                 <CreateIssueModal
                   companyId={companyId}
                   projects={projects}
@@ -1166,14 +1166,14 @@ export function IssueDetailPageClient({
                   {activityItems.map((item) => (
                     <Item key={item.id} variant="outline">
                       <ItemContent>
-                        <div className={styles.issueActivityHeaderRow}>
-                          <div className={styles.issueActivityTitleBlock}>
+                        <div className="ui-issue-activity-header">
+                          <div className="ui-issue-activity-title-block">
                             <Badge variant="outline">{formatIssueActivityActorLabel(item.actorType)}</Badge>
-                            <span className={styles.issueActivityMessage} title={item.eventType}>
+                            <span className="ui-issue-activity-message" title={item.eventType}>
                               {formatIssueActivityTitle(item, agents)}
                             </span>
                           </div>
-                          <time className={styles.issueActivityTimestamp} dateTime={item.createdAt}>
+                          <time className="ui-issue-activity-time" dateTime={item.createdAt}>
                             {formatSmartDateTime(item.createdAt)}
                           </time>
                         </div>
@@ -1191,13 +1191,13 @@ export function IssueDetailPageClient({
   );
 
   const rightPane = (
-    <div className={styles.issueSidebarContainer}>
+    <div className="ui-detail-sidebar">
       <Card>
-        <CardContent className={styles.issueSidebarCardContent}>
+        <CardContent className="ui-detail-sidebar-section">
           <Field>
             <FieldLabel>Status</FieldLabel>
             <Select value={issue.status} onValueChange={(value) => void updateIssue({ status: value as IssueStatus })}>
-              <SelectTrigger className={styles.issueDetailSelectTrigger}>
+              <SelectTrigger className="ui-select-trigger-full">
                 <SelectValue placeholder="Select a status" />
               </SelectTrigger>
               <SelectContent>
@@ -1216,7 +1216,7 @@ export function IssueDetailPageClient({
               value={normalizeIssuePriority(issue.priority)}
               onValueChange={(value) => void updateIssue({ priority: value as IssuePriority })}
             >
-              <SelectTrigger className={styles.issueDetailSelectTrigger}>
+              <SelectTrigger className="ui-select-trigger-full">
                 <SelectValue placeholder="Select a priority" />
               </SelectTrigger>
               <SelectContent>
@@ -1235,7 +1235,7 @@ export function IssueDetailPageClient({
               value={issue.assigneeAgentId ?? "unassigned"}
               onValueChange={(value) => void updateIssue({ assigneeAgentId: value === "unassigned" ? null : value })}
             >
-              <SelectTrigger className={styles.issueDetailSelectTrigger}>
+              <SelectTrigger className="ui-select-trigger-full">
                 <SelectValue placeholder="Select an agent" />
               </SelectTrigger>
               <SelectContent>
@@ -1252,14 +1252,14 @@ export function IssueDetailPageClient({
       </Card>
 
       <Card>
-        <CardContent className={styles.issueSidebarCardContent}>
+        <CardContent className="ui-detail-sidebar-section">
           <PropertyRow label="Labels" value={issue.labels.length > 0 ? issue.labels.join(", ") : "No labels"} />
           <PropertyRow label="Assignee" value={selectedAssignee ? `${selectedAssignee.name}` : "Unassigned"} />
           <PropertyRow
             label="Project"
             value={
               selectedProject ? (
-                <Link href={`/projects/${selectedProject.id}?companyId=${companyId}`} className={styles.issueDetailLink2}>
+                <Link href={`/projects/${selectedProject.id}?companyId=${companyId}`} className="ui-link-sidebar-nested">
                   {selectedProject.name}
                 </Link>
               ) : (
@@ -1273,7 +1273,7 @@ export function IssueDetailPageClient({
         </CardContent>
       </Card>
 
-      <div className={styles.issueSidebarStats}>
+      <div className="ui-detail-sidebar-metrics">
         <MetricCard label="Total cost" value={`$${issueCostSummary.usd.toFixed(2)}`} />
         <MetricCard label="Input" value={issueCostSummary.input.toLocaleString()} />
         <MetricCard label="Output" value={issueCostSummary.output.toLocaleString()} />

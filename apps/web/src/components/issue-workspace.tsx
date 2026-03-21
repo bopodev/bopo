@@ -368,7 +368,7 @@ export function IssueWorkspace({
   }
 
   const issueFilterControls = (
-    <div className={styles.issueFiltersCardContent}>
+    <div className='ui-toolbar-filters'>
       <Input
         value={query}
         onChange={(event) => setQuery(event.target.value)}

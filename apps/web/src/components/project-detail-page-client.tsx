@@ -19,7 +19,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ApiError, apiPut } from "@/lib/api";
 import { getStatusBadgeClassName } from "@/lib/status-presentation";
 import { formatSmartDateTime } from "@/lib/smart-date";
-import styles from "./project-detail-page-client.module.scss";
 import { MetricCard, SectionHeading } from "./workspace/shared";
 
 interface ProjectRow {
@@ -90,9 +89,9 @@ const projectStatusOptions = [
 
 function PropertyRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className={styles.projectPropertyRow}>
-      <div className={styles.projectPropertyLabel}>{label}</div>
-      <div className={styles.projectPropertyValue}>{value}</div>
+    <div className="ui-property-field ui-property-field--flush">
+      <div className="ui-property-label-strong">{label}</div>
+      <div className="ui-property-value-text">{value}</div>
     </div>
   );
 }
@@ -214,7 +213,7 @@ export function ProjectDetailPageClient({
         accessorKey: "title",
         header: ({ column }) => <DataTableColumnHeader column={column} title="Issue" />,
         cell: ({ row }) => (
-          <Link href={`/issues/${row.original.id}?companyId=${companyId}`} className={styles.projectDetailLink1}>
+          <Link href={`/issues/${row.original.id}?companyId=${companyId}`} className="ui-link-medium">
             {row.original.title}
           </Link>
         )
@@ -237,7 +236,7 @@ export function ProjectDetailPageClient({
         id: "assignee",
         header: "Assignee",
         cell: ({ row }) => (
-          <div className={styles.projectDetailContainer1}>
+          <div className="ui-text-muted-block">
             {row.original.assigneeAgentId ? agentNameById.get(row.original.assigneeAgentId) ?? shortId(row.original.assigneeAgentId) : "Unassigned"}
           </div>
         )
@@ -246,7 +245,7 @@ export function ProjectDetailPageClient({
         accessorKey: "updatedAt",
         header: ({ column }) => <DataTableColumnHeader column={column} title="Updated" />,
         cell: ({ row }) => (
-          <div className={styles.projectDetailContainer1}>{formatSmartDateTime(row.original.updatedAt)}</div>
+          <div className="ui-text-muted-block">{formatSmartDateTime(row.original.updatedAt)}</div>
         )
       }
     ],
@@ -287,12 +286,12 @@ export function ProjectDetailPageClient({
   }
 
   const leftPane = (
-    <div className={styles.projectDetailContainer2}>
+    <div className="ui-page-stack">
       <SectionHeading
         title={project.name}
         description={"Project details and timeline."}
         actions={
-          <div className={styles.projectHeaderActions}>
+          <div className="ui-page-toolbar-actions">
           <CreateIssueModal
             companyId={companyId}
             projects={[{ id: project.id, name: project.name }]}
@@ -336,15 +335,15 @@ export function ProjectDetailPageClient({
             data={filteredIssues}
             emptyMessage="No issues match current filters."
             toolbarActions={
-              <div className={styles.issueFiltersContainer}>
+              <div className="ui-toolbar-filters">
                 <Input
                   value={issuesQuery}
                   onChange={(event) => setIssuesQuery(event.target.value)}
                   placeholder="Search title, status, priority, or assignee..."
-                  className={styles.issueFiltersInput}
+                  className="ui-toolbar-filter-input"
                 />
                 <Select value={issuesStatusFilter} onValueChange={setIssuesStatusFilter}>
-                  <SelectTrigger className={styles.issueFiltersSelect}>
+                  <SelectTrigger className="ui-toolbar-filter-select">
                     <SelectValue placeholder="Status" />
                   </SelectTrigger>
                   <SelectContent>
@@ -357,7 +356,7 @@ export function ProjectDetailPageClient({
                   </SelectContent>
                 </Select>
                 <Select value={issuesAssigneeFilter} onValueChange={setIssuesAssigneeFilter}>
-                  <SelectTrigger className={styles.issueFiltersSelect}>
+                  <SelectTrigger className="ui-toolbar-filter-select">
                     <SelectValue placeholder="Assignee" />
                   </SelectTrigger>
                   <SelectContent>
@@ -377,13 +376,13 @@ export function ProjectDetailPageClient({
   );
 
   const rightPane = (
-    <div className={styles.projectDetailContainer6}>
+    <div className="ui-stack-y-6">
       <Card>
-        <CardContent className={styles.projectDetailCardContent2}>
+        <CardContent className="ui-card-body-stack">
           <Field>
             <FieldLabel>Status</FieldLabel>
             <Select value={project.status} onValueChange={(value) => void updateProjectStatus(value as ProjectRow["status"])}>
-              <SelectTrigger className={styles.projectDetailSelectTrigger}>
+              <SelectTrigger className="ui-select-trigger-full">
                 <SelectValue placeholder="Select project status" />
               </SelectTrigger>
               <SelectContent>
@@ -406,13 +405,13 @@ export function ProjectDetailPageClient({
                 void updateProjectPlannedStartAt(nextValue);
               }}
               disabled={isSavingPlannedStartAt}
-              className={styles.projectDetailSelectTrigger}
+              className="ui-select-trigger-full"
             />
           </Field>
         </CardContent>
       </Card>
       <Card>
-        <CardContent className={styles.projectDetailCardContent2}>
+        <CardContent className="ui-card-body-stack">
           <PropertyRow label="Description" value={projectDescription} />
           <PropertyRow label="Goals" value={linkedGoals.length ? linkedGoals.map((goal) => goal.title).join(", ") : "No linked goals"} />
           <PropertyRow label="Planned start" value={formatDate(project.plannedStartAt)} />

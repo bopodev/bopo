@@ -1,33 +1,5 @@
 @reference "../app/globals.css";
 
-.metricCard {
-  @apply gap-3 py-5;
-}
-
-.metricCardHeader {
-  @apply px-5;
-}
-
-.metricCardDescription {
-  @apply text-xs uppercase tracking-[0.12em] text-sidebar-foreground/50 font-semibold;
-}
-
-.metricCardContent {
-  @apply px-5;
-}
-
-.metricCardContainer {
-  @apply text-3xl font-semibold tracking-tight font-mono tabular-nums text-sidebar-foreground;
-}
-
-.metricCardText {
-  @apply mt-2 text-base text-muted-foreground;
-}
-
-.emptyStateContainer {
-  @apply rounded-lg border border-dashed bg-muted/20 px-4 py-6 text-base text-muted-foreground;
-}
-
 .formatDurationContainer1 {
   @apply font-medium;
 }
@@ -111,30 +83,6 @@
 
 .renderSectionActionsLink {
   @apply font-medium hover:underline;
-}
-
-.goalsFiltersCardContent {
-  @apply flex flex-wrap items-center gap-6;
-}
-
-.goalsFiltersInput {
-  @apply min-w-[220px] sm:w-[300px];
-}
-
-.goalsFiltersSelect {
-  @apply w-[170px];
-}
-
-.agentsFiltersCardContent {
-  @apply flex flex-wrap items-center gap-6;
-}
-
-.agentsFiltersInput {
-  @apply min-w-[220px] sm:w-[300px];
-}
-
-.agentsFiltersSelect {
-  @apply w-[170px];
 }
 
 .agentsInsightsChartsGrid {
@@ -294,19 +242,6 @@
   @apply h-64 w-full min-w-0 max-w-full;
 }
 
-.runFiltersCardContent {
-  @apply flex flex-wrap items-center gap-6;
-}
-
-.runFiltersInput {
-  @apply min-w-[220px] sm:w-[300px];
-}
-
-.runFiltersSelect {
-  @apply w-[170px];
-}
-
-
 .runTrendChartContainer {
   @apply h-44 w-full;
 }
@@ -398,7 +333,7 @@
 }
 
 .dashboardAgentSpotlightStats {
-  @apply grid gap-2 sm:grid-cols-2 xl:grid-cols-3;
+  @apply grid gap-6 sm:grid-cols-2 xl:grid-cols-3;
 }
 
 .dashboardAgentSpotlightMetric {

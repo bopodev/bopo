@@ -28,7 +28,6 @@ import { formatSmartDateTime } from "@/lib/smart-date";
 import { getStatusBadgeClassName } from "@/lib/status-presentation";
 import { isSkippedRun } from "@/lib/workspace-logic";
 import { MoreHorizontal } from "lucide-react";
-import styles from "./agent-detail-page-client.module.scss";
 import { MetricCard, SectionHeading } from "./workspace/shared";
 
 interface AgentRow {
@@ -345,11 +344,11 @@ function parseStateBlob(raw: string | undefined) {
 
 function ConfigRow({ label, value, detail }: { label: string; value: string; detail?: string }) {
   return (
-    <div className={styles.configRowContainer1}>
-      <div className={styles.configRowContainer2}>{label}</div>
-      <div className={styles.configRowContainer3}>
+    <div className="ui-config-kv-row">
+      <div className="ui-config-kv-label">{label}</div>
+      <div className="ui-config-kv-value">
         <div>{value}</div>
-        {detail ? <div className={styles.mutedTextContainer}>{detail}</div> : null}
+        {detail ? <div className="ui-muted-detail">{detail}</div> : null}
       </div>
     </div>
   );
@@ -505,7 +504,7 @@ export function AgentDetailPageClient({
         accessorKey: "title",
         header: ({ column }) => <DataTableColumnHeader column={column} title="Issue" />,
         cell: ({ row }) => (
-          <Link href={`/issues/${row.original.id}?companyId=${companyId}`} className={styles.runIdLink}>
+          <Link href={`/issues/${row.original.id}?companyId=${companyId}`} className="ui-run-table-link">
             {row.original.title}
           </Link>
         )
@@ -520,7 +519,7 @@ export function AgentDetailPageClient({
         header: ({ column }) => <DataTableColumnHeader column={column} title="Last updated" />,
         cell: ({ row }) => (
           <time
-            className={styles.runTableDateTime}
+            className="ui-run-table-datetime"
             dateTime={row.original.updatedAt}
             title={formatDateTime(row.original.updatedAt)}
           >
@@ -537,7 +536,7 @@ export function AgentDetailPageClient({
         accessorKey: "id",
         header: ({ column }) => <DataTableColumnHeader column={column} title="Run" />,
         cell: ({ row }) => (
-          <Link className={styles.runIdLink} href={`/runs/${row.original.id}?companyId=${companyId}&agentId=${agent.id}`}>
+          <Link className="ui-run-table-link" href={`/runs/${row.original.id}?companyId=${companyId}&agentId=${agent.id}`}>
             {shortId(row.original.id)}
           </Link>
         )
@@ -555,7 +554,7 @@ export function AgentDetailPageClient({
         id: "duration",
         header: "Duration",
         cell: ({ row }) => (
-          <div className={styles.runTableCellMuted}>{formatRunDuration(row.original.startedAt, row.original.finishedAt)}</div>
+          <div className="ui-run-table-cell-muted">{formatRunDuration(row.original.startedAt, row.original.finishedAt)}</div>
         )
       },
       {
@@ -563,7 +562,7 @@ export function AgentDetailPageClient({
         header: ({ column }) => <DataTableColumnHeader column={column} title="Started" />,
         cell: ({ row }) => (
           <time
-            className={styles.runTableDateTime}
+            className="ui-run-table-datetime"
             dateTime={row.original.startedAt}
             title={formatDateTime(row.original.startedAt)}
           >
@@ -578,7 +577,7 @@ export function AgentDetailPageClient({
           const displayMessage = formatRunMessage(row.original.message);
           const previewMessage = displayMessage.length > 120 ? `${displayMessage.slice(0, 117)}...` : displayMessage;
           return (
-            <div className={styles.runMessageCell} title={displayMessage}>
+            <div className="ui-run-table-message" title={displayMessage}>
               {previewMessage}
             </div>
           );
@@ -586,10 +585,10 @@ export function AgentDetailPageClient({
       },
       {
         id: "actions",
-        header: () => <div className={styles.tableHeaderAlignRight}>Actions</div>,
+        header: () => <div className="ui-table-head-right">Actions</div>,
         enableSorting: false,
         cell: ({ row }) => (
-          <div className={styles.runActionsCell}>
+          <div className="ui-run-table-actions">
             <Button
               size="sm"
               variant="outline"
@@ -913,13 +912,13 @@ export function AgentDetailPageClient({
   const invokeActionKey = `agent:${agent.id}:invoke`;
 
   const leftPane = (
-    <div className={styles.agentDetailLeftPaneContainer}>
-      <div className={styles.agentHeaderContainer1}>
-        <div className={styles.agentHeaderIdentity}>
+    <div className="ui-page-stack">
+      <div className="ui-agent-header-bar">
+        <div className="ui-agent-header-identity">
           <AgentAvatar
             seed={agentAvatarSeed(agent.id, agent.name, agent.avatarSeed)}
             name={agent.name}
-            className={styles.agentHeaderAvatar}
+            className="ui-agent-header-avatar"
             size={128}
           />
           <SectionHeading
@@ -927,7 +926,7 @@ export function AgentDetailPageClient({
             description="The active things your AI workforce is working on."
           />
         </div>
-        <div className={styles.agentHeaderContainer4}>
+        <div className="ui-agent-header-actions">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button size="sm" variant="outline" aria-label="Open more actions">
@@ -1005,8 +1004,8 @@ export function AgentDetailPageClient({
         </Alert>
       ) : null}
 
-      <div className={styles.costSectionContainer}>
-        <div className={styles.costGridCardContent}>
+      <div className="ui-cost-section">
+        <div className="ui-cost-metrics-grid">
           <MetricCard label="Open issues" value={openAssignedIssueCount.toLocaleString()} />
           <MetricCard label="Blocked issues" value={blockedIssueCount.toLocaleString()} />
           <MetricCard label="Run success rate" value={`${runHealth.successRate.toFixed(1)}%`} />
@@ -1033,9 +1032,9 @@ export function AgentDetailPageClient({
   );
 
   const rightPane = (
-    <div className={styles.agentSidebarContainer}>
+    <div className="ui-detail-sidebar">
       <Card>
-        <CardContent className={styles.agentSidebarControlsCardContent}>
+        <CardContent className="ui-sidebar-controls-stack">
           <Field>
             <FieldLabel>Provider</FieldLabel>
             <Select
@@ -1043,7 +1042,7 @@ export function AgentDetailPageClient({
               onValueChange={(value) => void handleProviderChange(value)}
               disabled={isActionPending(`agent:${agent.id}:provider`) || agent.status === "terminated"}
             >
-              <SelectTrigger className={styles.agentSidebarSelectTrigger}>
+              <SelectTrigger className="ui-select-trigger-full">
                 <SelectValue placeholder="Select a provider" />
               </SelectTrigger>
               <SelectContent>
@@ -1056,7 +1055,7 @@ export function AgentDetailPageClient({
             </Select>
           </Field>
 
-          <Field className={styles.agentSidebarField}>
+          <Field className="ui-sidebar-field-spaced">
             <FieldLabel>Model</FieldLabel>
             <Select
               value={selectedModelId}
@@ -1068,7 +1067,7 @@ export function AgentDetailPageClient({
                 agent.status === "terminated"
               }
             >
-              <SelectTrigger className={styles.agentSidebarSelectTrigger}>
+              <SelectTrigger className="ui-select-trigger-full">
                 <SelectValue placeholder={modelOptions.length === 0 ? "Not configurable for this provider" : "Select a model"} />
               </SelectTrigger>
               <SelectContent>
@@ -1082,14 +1081,14 @@ export function AgentDetailPageClient({
           </Field>
 
           {showThinkingEffortControlForProvider(selectedProviderType) ? (
-            <Field className={styles.agentSidebarField}>
+            <Field className="ui-sidebar-field-spaced">
               <FieldLabel>Thinking effort</FieldLabel>
               <Select
                 value={selectedThinkingEffort}
                 onValueChange={(value) => void handleThinkingEffortChange(value as "auto" | "low" | "medium" | "high")}
                 disabled={isActionPending(`agent:${agent.id}:runtime-thinking-effort`) || agent.status === "terminated"}
               >
-                <SelectTrigger className={styles.agentSidebarSelectTrigger}>
+                <SelectTrigger className="ui-select-trigger-full">
                   <SelectValue placeholder="Select thinking effort" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1102,14 +1101,14 @@ export function AgentDetailPageClient({
             </Field>
           ) : null}
 
-          <Field className={styles.agentSidebarField}>
+          <Field className="ui-sidebar-field-spaced">
             <FieldLabel>Reports to</FieldLabel>
             <Select
               value={selectedManagerAgentId}
               onValueChange={(value) => void handleManagerChange(value)}
               disabled={isActionPending(`agent:${agent.id}:manager`) || agent.status === "terminated"}
             >
-              <SelectTrigger className={styles.agentSidebarSelectTrigger}>
+              <SelectTrigger className="ui-select-trigger-full">
                 <SelectValue placeholder="No manager" />
               </SelectTrigger>
               <SelectContent>
@@ -1123,12 +1122,12 @@ export function AgentDetailPageClient({
             </Select>
           </Field>
 
-          {sidebarError ? <div className={styles.agentSidebarErrorText}>{sidebarError}</div> : null}
+          {sidebarError ? <div className="ui-sidebar-error-text">{sidebarError}</div> : null}
         </CardContent>
       </Card>
 
       <Card>
-        <CardContent className={styles.configCardContent}>
+        <CardContent className="ui-config-card-stack">
           <ConfigRow label="Agent ID" value={agent.id} />
           <ConfigRow label="Role" value={agent.role ?? "Not set"} />
           <ConfigRow label="Status" value={liveStatus} detail={liveStatusDetail} />
@@ -1137,7 +1136,7 @@ export function AgentDetailPageClient({
       </Card>
 
       <Card>
-        <CardContent className={styles.configCardContent}>
+        <CardContent className="ui-config-card-stack">
           <ConfigRow
             label="Monthly budget"
             value={typeof agent.monthlyBudgetUsd === "number" ? `$${agent.monthlyBudgetUsd.toFixed(2)}` : "Not set"}
@@ -1153,7 +1152,7 @@ export function AgentDetailPageClient({
   return (
     <>
       {actionError ? (
-        <Alert variant="destructive" className={styles.agentActionAlert}>
+        <Alert variant="destructive" className="ui-alert-margin">
           <AlertTitle>Action failed</AlertTitle>
           <AlertDescription>{actionError}</AlertDescription>
         </Alert>
@@ -1221,7 +1220,7 @@ export function AgentDetailPageClient({
             <DialogTitle>Memory Context</DialogTitle>
             <DialogDescription>Inspect durable notes and the effective context preview used for this agent.</DialogDescription>
           </DialogHeader>
-          <div className={styles.issueListCardContent}>
+          <div className="ui-issue-list-stack">
             {memoryError ? <Alert variant="destructive"><AlertDescription>{memoryError}</AlertDescription></Alert> : null}
             <Field>
               <FieldLabel>Memory file</FieldLabel>
@@ -1230,7 +1229,7 @@ export function AgentDetailPageClient({
                 onValueChange={(value) => setSelectedMemoryPath(value === "__none" ? "" : value)}
                 disabled={memoryLoading || memoryFiles.length === 0}
               >
-                <SelectTrigger className={styles.agentSidebarSelectTrigger}>
+                <SelectTrigger className="ui-select-trigger-full">
                   <SelectValue placeholder={memoryFiles.length > 0 ? "Select a memory file" : "No memory files yet"} />
                 </SelectTrigger>
                 <SelectContent>
@@ -1243,10 +1242,10 @@ export function AgentDetailPageClient({
                 </SelectContent>
               </Select>
             </Field>
-            <div className={styles.memoryPreviewLabel}>Selected file contents</div>
-            <pre className={styles.memoryPreviewBlock}>{selectedMemoryContent || "No file selected."}</pre>
-            <div className={styles.memoryPreviewLabel}>Effective context preview</div>
-            <pre className={styles.memoryPreviewBlock}>{compiledContextPreview || "No preview available."}</pre>
+            <div className="ui-memory-preview-label">Selected file contents</div>
+            <pre className="ui-memory-preview-block">{selectedMemoryContent || "No file selected."}</pre>
+            <div className="ui-memory-preview-label">Effective context preview</div>
+            <pre className="ui-memory-preview-block">{compiledContextPreview || "No preview available."}</pre>
           </div>
           <DialogFooter showCloseButton />
         </DialogContent>
