@@ -14,13 +14,8 @@ import {
   DialogTitle,
   DialogTrigger
 } from "@/components/ui/dialog";
-import {
-  Field,
-  FieldContent,
-  FieldDescription,
-  FieldGroup,
-  FieldLabel
-} from "@/components/ui/field";
+import { Field, FieldContent, FieldGroup } from "@/components/ui/field";
+import { FieldLabelWithHelp } from "@/components/ui/field-label-with-help";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -154,7 +149,9 @@ export function CreateGoalModal({
           <div className="ui-dialog-content-scrollable">
             <FieldGroup>
               <Field>
-                <FieldLabel>Goal scope</FieldLabel>
+                <FieldLabelWithHelp helpText="Who this goal applies to: whole company, a project, or a single agent. Scope affects where the goal appears in reporting.">
+                  Goal scope
+                </FieldLabelWithHelp>
                 <Select value={level} onValueChange={(value) => setLevel(value as "company" | "project" | "agent")}>
                   <SelectTrigger className={styles.createGoalModalSelectTrigger}>
                     <SelectValue placeholder="Select a scope" />
@@ -167,16 +164,26 @@ export function CreateGoalModal({
                 </Select>
               </Field>
               <Field>
-                <FieldLabel htmlFor="goal-title">Goal title</FieldLabel>
+                <FieldLabelWithHelp
+                  htmlFor="goal-title"
+                  helpText="Short headline for the goal. Use something measurable or outcome-oriented so teams can align on success.">
+                  Goal title
+                </FieldLabelWithHelp>
                 <Input id="goal-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Increase delivery throughput" required />
               </Field>
               <Field>
-                <FieldLabel htmlFor="goal-description">Details</FieldLabel>
+                <FieldLabelWithHelp
+                  htmlFor="goal-description"
+                  helpText="Context, metrics, time horizon, and links. Helps approvers and agents understand intent beyond the title.">
+                  Details
+                </FieldLabelWithHelp>
                 <Textarea id="goal-description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Goal details" />
               </Field>
               {isEditing ? (
                 <Field>
-                  <FieldLabel>Status</FieldLabel>
+                  <FieldLabelWithHelp helpText="Lifecycle of the goal: draft while refining, active when in pursuit, completed when done, archived to retain history without noise.">
+                    Status
+                  </FieldLabelWithHelp>
                   <Select value={status} onValueChange={setStatus}>
                     <SelectTrigger className={styles.createGoalModalSelectTrigger}>
                       <SelectValue placeholder="Select a status" />
@@ -197,7 +204,11 @@ export function CreateGoalModal({
                     onCheckedChange={(checked) => setActivateNow(Boolean(checked))}
                   />
                   <FieldContent>
-                    <FieldLabel htmlFor="goal-activate-now">Request activation approval</FieldLabel>
+                    <FieldLabelWithHelp
+                      htmlFor="goal-activate-now"
+                      helpText="When checked, creating the goal starts a governance request to move it from draft to active instead of leaving it in draft.">
+                      Request activation approval
+                    </FieldLabelWithHelp>
                   </FieldContent>
                 </Field>
               )}

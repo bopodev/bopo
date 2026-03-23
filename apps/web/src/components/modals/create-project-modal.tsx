@@ -15,7 +15,8 @@ import {
   DialogTitle,
   DialogTrigger
 } from "@/components/ui/dialog";
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldGroup } from "@/components/ui/field";
+import { FieldLabelWithHelp } from "@/components/ui/field-label-with-help";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import {
@@ -324,11 +325,19 @@ export function CreateProjectModal({
           <div className="ui-dialog-content-scrollable">
             <FieldGroup>
               <Field>
-                <FieldLabel htmlFor="project-name">Project name</FieldLabel>
+                <FieldLabelWithHelp
+                  htmlFor="project-name"
+                  helpText="Display name in lists, navigation, and reports. Pick something recognizable across the company.">
+                  Project name
+                </FieldLabelWithHelp>
                 <Input id="project-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Growth website" required autoComplete="off" />
               </Field>
               <Field>
-                <FieldLabel htmlFor="project-description">Description</FieldLabel>
+                <FieldLabelWithHelp
+                  htmlFor="project-description"
+                  helpText="What this project delivers, who it’s for, and how success is measured. Helps agents and humans align on scope.">
+                  Description
+                </FieldLabelWithHelp>
                 <Textarea
                   id="project-description"
                   value={description}
@@ -374,7 +383,11 @@ export function CreateProjectModal({
                 </Button>
               </div>
               <Field>
-                <FieldLabel htmlFor="project-workspace-name">Workspace name</FieldLabel>
+                <FieldLabelWithHelp
+                  htmlFor="project-workspace-name"
+                  helpText="Label for this workspace when a project has multiple environments or checkouts later. Defaults are fine for a single primary workspace.">
+                  Workspace name
+                </FieldLabelWithHelp>
                 <Input
                   id="project-workspace-name"
                   value={workspaceName}
@@ -385,7 +398,11 @@ export function CreateProjectModal({
               </Field>
               {workspaceMode !== "github" ? (
                 <Field>
-                  <FieldLabel htmlFor="project-workspace-local-path">Local folder</FieldLabel>
+                  <FieldLabelWithHelp
+                    htmlFor="project-workspace-local-path"
+                    helpText="Absolute path on the machine that runs agents (or your dev box). Used as the default working directory for runs tied to this project.">
+                    Local folder
+                  </FieldLabelWithHelp>
                   <Input
                     id="project-workspace-local-path"
                     value={workspaceCwd}
@@ -397,7 +414,11 @@ export function CreateProjectModal({
               ) : null}
               {workspaceMode !== "local" ? (
                 <Field>
-                  <FieldLabel htmlFor="project-workspace-github-repo">GitHub repository</FieldLabel>
+                  <FieldLabelWithHelp
+                    htmlFor="project-workspace-github-repo"
+                    helpText="HTTPS URL to the Git remote (e.g. github.com/org/repo). Enables clone and sync flows when not using local-only mode.">
+                    GitHub repository
+                  </FieldLabelWithHelp>
                   <Input
                     id="project-workspace-github-repo"
                     type="url"
@@ -410,7 +431,11 @@ export function CreateProjectModal({
               ) : null}
               {workspaceMode !== "local" ? (
                 <Field>
-                  <FieldLabel htmlFor="project-workspace-github-ref">Repository ref</FieldLabel>
+                  <FieldLabelWithHelp
+                    htmlFor="project-workspace-github-ref"
+                    helpText="Branch, tag, or commit to track (often main or master). Agents and automation use this when checking out the repo.">
+                    Repository ref
+                  </FieldLabelWithHelp>
                   <Input
                     id="project-workspace-github-ref"
                     value={workspaceRepoRef}
@@ -427,7 +452,9 @@ export function CreateProjectModal({
 
             <FieldGroup className={styles.createProjectModalMetaRow}>
               <Field>
-                <FieldLabel>Status</FieldLabel>
+                <FieldLabelWithHelp helpText="Lifecycle: planned before kickoff, active while executing, paused/blocked when stalled, completed or archived when wrapped.">
+                  Status
+                </FieldLabelWithHelp>
                 <Select value={status} onValueChange={(value) => setStatus(value as ProjectStatus)}>
                   <SelectTrigger className={styles.createProjectModalFullWidth}>
                     <SelectValue placeholder="Select project status" />
@@ -442,7 +469,11 @@ export function CreateProjectModal({
                 </Select>
               </Field>
               <Field>
-                <FieldLabel htmlFor="project-planned-start-at">Planned start date</FieldLabel>
+                <FieldLabelWithHelp
+                  htmlFor="project-planned-start-at"
+                  helpText="Optional calendar hint for planning and roadmaps. Clear it if the start is unknown or already passed.">
+                  Planned start date
+                </FieldLabelWithHelp>
                 <DatePicker
                   id="project-planned-start-at"
                   date={parseLocalYmd(plannedStartAt)}
@@ -452,7 +483,11 @@ export function CreateProjectModal({
             </FieldGroup>
             <FieldGroup>
               <Field>
-                <FieldLabel htmlFor="project-monthly-budget-usd">Monthly project budget (USD)</FieldLabel>
+                <FieldLabelWithHelp
+                  htmlFor="project-monthly-budget-usd"
+                  helpText="Approximate monthly spend cap for this project in US dollars. Must be a positive number; enforcement depends on your billing setup.">
+                  Monthly project budget (USD)
+                </FieldLabelWithHelp>
                 <Input
                   id="project-monthly-budget-usd"
                   type="number"
@@ -468,7 +503,9 @@ export function CreateProjectModal({
 
             <FieldGroup>
               <Field>
-                <FieldLabel>Linked goals</FieldLabel>
+                <FieldLabelWithHelp helpText="Link goals to this project so execution and reporting stay aligned with stated outcomes. Toggle items in the menu; selection is saved with the project.">
+                  Linked goals
+                </FieldLabelWithHelp>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button type="button" variant="outline" className={styles.createProjectModalGoalsTrigger}>

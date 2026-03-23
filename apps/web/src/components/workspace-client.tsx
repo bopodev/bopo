@@ -33,7 +33,8 @@ import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } f
 import { DataTable } from "@/components/ui/data-table";
 import { DataTableColumnHeader } from "@/components/ui/data-table-column-header";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription, FieldGroup } from "@/components/ui/field";
+import { FieldLabelWithHelp } from "@/components/ui/field-label-with-help";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -5549,7 +5550,11 @@ export function WorkspaceClient({
                   <div className="ui-dialog-content-scrollable">
                     <FieldGroup>
                       <Field>
-                        <FieldLabel htmlFor="plugin-builder-id">Plugin ID</FieldLabel>
+                        <FieldLabelWithHelp
+                          htmlFor="plugin-builder-id"
+                          helpText="Stable slug for registration and on-disk layout (often lowercase, no spaces). Treat as permanent—changing it later usually means reinstalling.">
+                          Plugin ID
+                        </FieldLabelWithHelp>
                         <Input
                           id="plugin-builder-id"
                           value={pluginBuilderId}
@@ -5559,7 +5564,11 @@ export function WorkspaceClient({
                         <FieldDescription>Stable identifier used for file path and plugin registration.</FieldDescription>
                       </Field>
                       <Field>
-                        <FieldLabel htmlFor="plugin-builder-title">Title</FieldLabel>
+                        <FieldLabelWithHelp
+                          htmlFor="plugin-builder-title"
+                          helpText="Human-readable name in the plugin list, approvals, and admin surfaces. Can differ from the plugin ID.">
+                          Title
+                        </FieldLabelWithHelp>
                         <Input
                           id="plugin-builder-title"
                           value={pluginBuilderName}
@@ -5568,7 +5577,11 @@ export function WorkspaceClient({
                         />
                       </Field>
                       <Field>
-                        <FieldLabel htmlFor="plugin-builder-description">Description</FieldLabel>
+                        <FieldLabelWithHelp
+                          htmlFor="plugin-builder-description"
+                          helpText="What the plugin does and when it should run. Helps reviewers and operators judge risk and fit.">
+                          Description
+                        </FieldLabelWithHelp>
                         <Textarea
                           id="plugin-builder-description"
                           value={pluginBuilderDescription}
@@ -5578,7 +5591,9 @@ export function WorkspaceClient({
                         />
                       </Field>
                       <Field>
-                        <FieldLabel>Run hook</FieldLabel>
+                        <FieldLabelWithHelp helpText="Pipeline stage where this plugin’s prompt is evaluated (e.g. before or after the adapter runs, around persistence, or on errors).">
+                          Run hook
+                        </FieldLabelWithHelp>
                         <Select value={pluginBuilderHook} onValueChange={(value) => setPluginBuilderHook(value as (typeof pluginBuilderHooks)[number])}>
                           <SelectTrigger>
                             <SelectValue placeholder="Hook" />
@@ -5593,7 +5608,11 @@ export function WorkspaceClient({
                         </Select>
                       </Field>
                       <Field>
-                        <FieldLabel htmlFor="plugin-builder-capabilities">Capabilities</FieldLabel>
+                        <FieldLabelWithHelp
+                          htmlFor="plugin-builder-capabilities"
+                          helpText="Comma-separated powers this plugin declares (e.g. emit audit events, network). Install-time grants must cover what you list here.">
+                          Capabilities
+                        </FieldLabelWithHelp>
                         <Input
                           id="plugin-builder-capabilities"
                           value={pluginBuilderCapabilities}
@@ -5603,7 +5622,11 @@ export function WorkspaceClient({
                         <FieldDescription>Comma-separated capabilities the plugin declares.</FieldDescription>
                       </Field>
                       <Field>
-                        <FieldLabel htmlFor="plugin-builder-template">Prompt template</FieldLabel>
+                        <FieldLabelWithHelp
+                          htmlFor="plugin-builder-template"
+                          helpText="Prompt text merged at the chosen hook. Use placeholders for runtime context; trim secrets—this ships in the manifest.">
+                          Prompt template
+                        </FieldLabelWithHelp>
                         <Textarea
                           id="plugin-builder-template"
                           value={pluginBuilderPromptTemplate}

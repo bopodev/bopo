@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
-import { HelpCircle } from "lucide-react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { AGENT_ROLE_KEYS, AGENT_ROLE_LABELS, type AgentRoleKey } from "bopodev-contracts";
 import { ApiError, apiDelete, apiGet, apiPost, apiPut } from "@/lib/api";
@@ -41,7 +40,7 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { FieldLabelWithHelp } from "@/components/ui/field-label-with-help";
 
 type RuntimePreflightResponse = {
   status: "pass" | "warn" | "fail";
@@ -109,32 +108,6 @@ function normalizeRoleKey(roleKey: AgentRoleKey | null | undefined, legacyRole: 
     (key) => key === normalizedLegacy || AGENT_ROLE_LABELS[key].toLowerCase() === normalizedLegacy
   );
   return match ?? "general";
-}
-
-function CreateAgentFieldLabelWithHelp({
-  htmlFor,
-  children,
-  helpText
-}: {
-  htmlFor?: string;
-  children: ReactNode;
-  helpText: string;
-}) {
-  return (
-    <FieldLabel htmlFor={htmlFor} className={styles.createAgentModalLabelWithHelp}>
-      {children}
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button type="button" className="ui-label-help" aria-label="Field help">
-            <HelpCircle aria-hidden />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="top" className="ui-tooltip-content--label-help">
-          {helpText}
-        </TooltipContent>
-      </Tooltip>
-    </FieldLabel>
-  );
 }
 
 export function CreateAgentModal({
@@ -787,9 +760,9 @@ export function CreateAgentModal({
               <section className={styles.createAgentModalSection}>
                 <FieldGroup>
                   <Field>
-                    <CreateAgentFieldLabelWithHelp helpText="The project this delegation request is filed under. Approvers use it to route and track the work.">
+                    <FieldLabelWithHelp helpText="The project this delegation request is filed under. Approvers use it to route and track the work.">
                       Project
-                    </CreateAgentFieldLabelWithHelp>
+                    </FieldLabelWithHelp>
                     <Select value={delegateProjectId} onValueChange={setDelegateProjectId}>
                       <SelectTrigger className={styles.createAgentModalSelectTrigger}>
                         <SelectValue placeholder="Select a project" />
@@ -851,11 +824,11 @@ export function CreateAgentModal({
                     </Select>
                   </Field>
                   <Field>
-                    <CreateAgentFieldLabelWithHelp
+                    <FieldLabelWithHelp
                       htmlFor="delegate-request-notes"
                       helpText="Describe the agent you need, scope, tools, and any constraints. This text is sent with the governance request.">
                       Request details
-                    </CreateAgentFieldLabelWithHelp>
+                    </FieldLabelWithHelp>
                     <Textarea
                       id="delegate-request-notes"
                       value={delegateRequest}
@@ -871,17 +844,17 @@ export function CreateAgentModal({
             <section className={styles.createAgentModalSection}>
               <FieldGroup className={styles.createAgentModalFieldGroup}>
                 <Field>
-                  <CreateAgentFieldLabelWithHelp
+                  <FieldLabelWithHelp
                     htmlFor="agent-name"
                     helpText="How this agent appears in lists and the org chart. It does not change runtime behavior by itself.">
                     Name
-                  </CreateAgentFieldLabelWithHelp>
+                  </FieldLabelWithHelp>
                   <Input id="agent-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Ada" required />
                 </Field>
                 <Field>
-                  <CreateAgentFieldLabelWithHelp helpText="Default role used for labeling and expectations (e.g. engineering vs. operations). You can still customize the title separately.">
+                  <FieldLabelWithHelp helpText="Default role used for labeling and expectations (e.g. engineering vs. operations). You can still customize the title separately.">
                     Role
-                  </CreateAgentFieldLabelWithHelp>
+                  </FieldLabelWithHelp>
                   <Select value={roleKey} onValueChange={(value) => setRoleKey(value as AgentRoleKey)}>
                     <SelectTrigger className={styles.createAgentModalSelectTrigger}>
                       <SelectValue placeholder="Select a role" />
@@ -928,9 +901,9 @@ export function CreateAgentModal({
             <section className={styles.createAgentModalSection}>
               <FieldGroup className={styles.createAgentModalFieldGroup}>
                 <Field>
-                  <CreateAgentFieldLabelWithHelp helpText="Which CLI or API integration runs this agent’s heartbeats and tool use. Changing provider may reset command and model options.">
+                  <FieldLabelWithHelp helpText="Which CLI or API integration runs this agent’s heartbeats and tool use. Changing provider may reset command and model options.">
                     Provider
-                  </CreateAgentFieldLabelWithHelp>
+                  </FieldLabelWithHelp>
                   <Select
                     value={providerType}
                     onValueChange={(value) =>
@@ -950,11 +923,11 @@ export function CreateAgentModal({
                   </Select>
                 </Field>
                 <Field>
-                  <CreateAgentFieldLabelWithHelp
+                  <FieldLabelWithHelp
                     htmlFor="agent-runtime-model"
                     helpText="The language model the provider uses when it supports explicit model selection. Options depend on your registry and provider.">
                     Model
-                  </CreateAgentFieldLabelWithHelp>
+                  </FieldLabelWithHelp>
                   <Select
                     value={runtimeModel || undefined}
                     onValueChange={(value) => setRuntimeModel(value)}
@@ -975,9 +948,9 @@ export function CreateAgentModal({
               <FieldGroup className={styles.createAgentModalFieldGroup}>
                 {showThinkingEffortControlForProvider(providerType) ? (
                   <Field>
-                    <CreateAgentFieldLabelWithHelp helpText="Balances reasoning depth vs. speed and cost for providers that expose an extended-thinking control. Auto lets the runtime decide.">
+                    <FieldLabelWithHelp helpText="Balances reasoning depth vs. speed and cost for providers that expose an extended-thinking control. Auto lets the runtime decide.">
                       Thinking effort
-                    </CreateAgentFieldLabelWithHelp>
+                    </FieldLabelWithHelp>
                     <Select value={runtimeThinkingEffort} onValueChange={(value) => setRuntimeThinkingEffort(value as "auto" | "low" | "medium" | "high")}>
                       <SelectTrigger className={styles.createAgentModalSelectTrigger}>
                         <SelectValue placeholder="Select thinking effort" />
@@ -1048,11 +1021,11 @@ export function CreateAgentModal({
                   />
                 </Field>
                 <Field>
-                  <CreateAgentFieldLabelWithHelp
+                  <FieldLabelWithHelp
                     htmlFor="agent-heartbeat-interval"
                     helpText="How often the scheduler invokes this agent (minimum 60 seconds). Lower values react faster but use more runs and budget.">
                     Heartbeat interval (seconds)
-                  </CreateAgentFieldLabelWithHelp>
+                  </FieldLabelWithHelp>
                   <Input
                     id="agent-heartbeat-interval"
                     value={heartbeatIntervalSec}
@@ -1067,11 +1040,11 @@ export function CreateAgentModal({
               </FieldGroup>
               <FieldGroup className={styles.createAgentModalFieldGroupFull}>
                 <Field>
-                  <CreateAgentFieldLabelWithHelp
+                  <FieldLabelWithHelp
                     htmlFor="agent-budget"
                     helpText="Approximate spending cap for this agent per calendar month, in US dollars. Enforcement depends on your billing integration.">
                     Monthly budget (USD)
-                  </CreateAgentFieldLabelWithHelp>
+                  </FieldLabelWithHelp>
                   <Input id="agent-budget" value={budget} onChange={(e) => setBudget(e.target.value)} type="number" min={0} step="1" />
                 </Field>
               </FieldGroup>
@@ -1119,11 +1092,11 @@ export function CreateAgentModal({
             <section className={styles.createAgentModalSection}>
               <FieldGroup>
                 <Field>
-                  <CreateAgentFieldLabelWithHelp
+                  <FieldLabelWithHelp
                     htmlFor="agent-bootstrap-prompt"
                     helpText="System-style instructions injected when the agent starts or resumes. Use it for persona, guardrails, and default working style.">
                     Bootstrap prompt
-                  </CreateAgentFieldLabelWithHelp>
+                  </FieldLabelWithHelp>
                   <Textarea
                     id="agent-bootstrap-prompt"
                     value={bootstrapPrompt}
@@ -1132,11 +1105,11 @@ export function CreateAgentModal({
                   />
                 </Field>
                 <Field>
-                  <CreateAgentFieldLabelWithHelp
+                  <FieldLabelWithHelp
                     htmlFor="agent-runtime-env"
                     helpText="One KEY=value per line, passed into the agent process. Do not paste secrets into shared screenshots; use your secret store when possible.">
                     Environment variables
-                  </CreateAgentFieldLabelWithHelp>
+                  </FieldLabelWithHelp>
                   <Textarea
                     id="agent-runtime-env"
                     className={styles.createAgentModalEnvTextarea}

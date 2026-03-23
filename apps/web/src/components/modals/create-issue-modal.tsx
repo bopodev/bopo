@@ -14,7 +14,8 @@ import {
   DialogTitle,
   DialogTrigger
 } from "@/components/ui/dialog";
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription, FieldGroup } from "@/components/ui/field";
+import { FieldLabelWithHelp } from "@/components/ui/field-label-with-help";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -238,7 +239,9 @@ export function CreateIssueModal({
           <div className="ui-dialog-content-scrollable">
             <FieldGroup>
               <Field>
-                <FieldLabel>Project</FieldLabel>
+                <FieldLabelWithHelp helpText="Issues live under a project for grouping, permissions, and reporting. Pick where this work belongs.">
+                  Project
+                </FieldLabelWithHelp>
                 <Select value={projectId} onValueChange={setProjectId} disabled={projects.length === 0}>
                   <SelectTrigger className={styles.createIssueModalSelectTrigger}>
                     <SelectValue placeholder={projects.length === 0 ? "No projects available" : "Select a project"} />
@@ -254,15 +257,27 @@ export function CreateIssueModal({
                 {projects.length === 0 ? <FieldDescription>Create a project first so new issues have a home.</FieldDescription> : null}
               </Field>
               <Field>
-                <FieldLabel htmlFor="issue-title">Issue title</FieldLabel>
+                <FieldLabelWithHelp
+                  htmlFor="issue-title"
+                  helpText="A short, scannable summary. Shown in lists and links; keep it specific enough to recognize later.">
+                  Issue title
+                </FieldLabelWithHelp>
                 <Input id="issue-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Improve approval latency" required />
               </Field>
               <Field>
-                <FieldLabel htmlFor="issue-description">Description</FieldLabel>
+                <FieldLabelWithHelp
+                  htmlFor="issue-description"
+                  helpText="Context, acceptance criteria, and links agents need to execute the work. Markdown-style line breaks are preserved.">
+                  Description
+                </FieldLabelWithHelp>
                 <Textarea id="issue-description" value={body} onChange={(e) => setBody(e.target.value)} placeholder="Describe the work and expected outcome." />
               </Field>
               <Field>
-                <FieldLabel htmlFor="issue-external-link">PR / external link (optional)</FieldLabel>
+                <FieldLabelWithHelp
+                  htmlFor="issue-external-link"
+                  helpText="Optional URL for a pull request, ticket, or doc. Stored as metadata so people can jump straight to the source.">
+                  PR / external link (optional)
+                </FieldLabelWithHelp>
                 <Input
                   id="issue-external-link"
                   value={externalLink}
@@ -272,7 +287,9 @@ export function CreateIssueModal({
                 <FieldDescription>Link a GitHub/GitLab PR or any URL related to this issue.</FieldDescription>
               </Field>
               <Field>
-                <FieldLabel>Status</FieldLabel>
+                <FieldLabelWithHelp helpText="Workflow column for this issue (e.g. todo → in progress → done). Updates how it appears in boards and filters.">
+                  Status
+                </FieldLabelWithHelp>
                 <Select value={status} onValueChange={(value) => setStatus(value as IssueStatus)}>
                   <SelectTrigger className={styles.createIssueModalSelectTrigger}>
                     <SelectValue placeholder="Select a status" />
@@ -287,7 +304,9 @@ export function CreateIssueModal({
                 </Select>
               </Field>
               <Field>
-                <FieldLabel>Priority</FieldLabel>
+                <FieldLabelWithHelp helpText="Relative urgency for triage. None is fine for routine work; raise it when timelines or risk demand attention.">
+                  Priority
+                </FieldLabelWithHelp>
                 <Select value={priority} onValueChange={(value) => setPriority(value as IssuePriority)}>
                   <SelectTrigger className={styles.createIssueModalSelectTrigger}>
                     <SelectValue placeholder="Select a priority" />
@@ -302,7 +321,9 @@ export function CreateIssueModal({
                 </Select>
               </Field>
               <Field>
-                <FieldLabel>Assigned agent</FieldLabel>
+                <FieldLabelWithHelp helpText="Optional owner for execution. Unassigned issues stay in the pool until someone or an agent picks them up.">
+                  Assigned agent
+                </FieldLabelWithHelp>
                 <Select value={assigneeAgentId} onValueChange={setAssigneeAgentId}>
                   <SelectTrigger className={styles.createIssueModalSelectTrigger}>
                     <SelectValue placeholder="Select an agent" />
@@ -318,7 +339,11 @@ export function CreateIssueModal({
                 </Select>
               </Field>
               <Field>
-                <FieldLabel htmlFor="issue-labels">Labels</FieldLabel>
+                <FieldLabelWithHelp
+                  htmlFor="issue-labels"
+                  helpText="Comma-separated tags for filtering and reports (e.g. bug, backend). Extra spaces around commas are trimmed.">
+                  Labels
+                </FieldLabelWithHelp>
                 <Input
                   id="issue-labels"
                   value={labels}
@@ -327,7 +352,11 @@ export function CreateIssueModal({
                 />
               </Field>
               <Field>
-                <FieldLabel htmlFor="issue-attachments">Attachments</FieldLabel>
+                <FieldLabelWithHelp
+                  htmlFor="issue-attachments"
+                  helpText="Upload files after save on create, or add more when editing. Multiple files are supported in one batch.">
+                  Attachments
+                </FieldLabelWithHelp>
                 <Input id="issue-attachments" type="file" multiple onChange={onFilesSelected} />
               </Field>
             </FieldGroup>
