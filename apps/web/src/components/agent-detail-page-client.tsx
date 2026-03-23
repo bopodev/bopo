@@ -934,40 +934,6 @@ export function AgentDetailPageClient({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              {agent.status === "paused" ? (
-                <DropdownMenuItem
-                  disabled={isActionPending(`agent:${agent.id}:resume`)}
-                  onSelect={(event) => {
-                    event.preventDefault();
-                    if (window.confirm(`Resume "${agent.name}" so heartbeats can run again?`)) {
-                      void resumeAgent();
-                    }
-                  }}
-                >
-                  Resume
-                </DropdownMenuItem>
-              ) : (
-                <DropdownMenuItem
-                  disabled={isActionPending(`agent:${agent.id}:pause`)}
-                  onSelect={(event) => {
-                    event.preventDefault();
-                    if (window.confirm(`Pause "${agent.name}" and block new heartbeat runs?`)) {
-                      void pauseAgent();
-                    }
-                  }}
-                >
-                  Pause
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onSelect={(event) => {
-                  event.preventDefault();
-                  setEditDialogOpen(true);
-                }}
-              >
-                Edit
-              </DropdownMenuItem>
               <DropdownMenuItem
                 onSelect={(event) => {
                   event.preventDefault();
@@ -989,6 +955,36 @@ export function AgentDetailPageClient({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          <Button size="sm" variant="outline" onClick={() => setEditDialogOpen(true)}>
+            Edit
+          </Button>
+          {agent.status === "paused" ? (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={isActionPending(`agent:${agent.id}:resume`)}
+              onClick={() => {
+                if (window.confirm(`Resume "${agent.name}" so heartbeats can run again?`)) {
+                  void resumeAgent();
+                }
+              }}
+            >
+              Resume
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={agent.status === "terminated" || isActionPending(`agent:${agent.id}:pause`)}
+              onClick={() => {
+                if (window.confirm(`Pause "${agent.name}" and block new heartbeat runs?`)) {
+                  void pauseAgent();
+                }
+              }}
+            >
+              Pause
+            </Button>
+          )}
           <Button
             size="sm"
             onClick={() => void runHeartbeat()}

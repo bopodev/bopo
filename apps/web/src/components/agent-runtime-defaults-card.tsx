@@ -304,6 +304,7 @@ export function AgentRuntimeDefaultsCard({
                 id="defaults-bootstrap-prompt"
                 value={defaults.bootstrapPrompt}
                 onChange={(event) => update("bootstrapPrompt", event.target.value)}
+                placeholder="Optional extra instructions each run (operating folder is injected automatically)…"
               />
             </Field>
             <Field>

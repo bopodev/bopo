@@ -81,7 +81,8 @@ describe("onboarding seed bootstrap", { timeout: 20_000 }, () => {
       expect(startupBody).toContain(`${expectedOperatingFolder}/SOUL.md`);
       expect(startupBody).toContain(`${expectedOperatingFolder}/TOOLS.md`);
       expect(startupBody).toContain(`Keep operating/system files inside \`workspace/${first.companyId}/agents/${agents[0]?.id}/\` only.`);
-      expect(startupBody).toContain("runtimeConfig.bootstrapPrompt");
+      expect(startupBody).toContain("BOPODEV_AGENT_OPERATING_DIR");
+      expect(startupBody).toContain("do not need to save file paths into `bootstrapPrompt`");
       expect(startupBody).toContain("Do not call `GET /agents/:agentId`");
       expect(startupBody).toContain("Do not call a checkout endpoint");
       expect(startupBody).toContain("Do not use unsupported hire fields such as `adapterType`, `adapterConfig`, or `reportsTo`.");

@@ -734,9 +734,6 @@ export function CreateAgentModal({
           <div className="ui-dialog-content-scrollable">
             {!isEditing && creationMode === "intro" ? (
               <section className={styles.createAgentModalSection}>
-                <p className={styles.createAgentModalSectionDescription}>
-                  It's recommended to use {delegateAgentLabel ?? "your leadership agent"} to handle setup. They have the full context of the company and can create the agent with the correct configuration.
-                </p>
                 <Button
                   type="button"
                   onClick={() => {
@@ -748,13 +745,13 @@ export function CreateAgentModal({
                 </Button>
                 <Button
                   type="button"
-                  variant="ghost"
+                  variant="outline"
                   onClick={() => {
                     setCreationMode("advanced");
                     setError(null);
                   }}
                 >
-                  I'll configure the agent instead
+                  Configure agent manually
                 </Button>
               </section>
             ) : null}
@@ -799,7 +796,7 @@ export function CreateAgentModal({
                     </Select>
                   </Field>
                   <Field>
-                    <FieldLabel htmlFor="agent-title">Requested title (optional)</FieldLabel>
+                    <FieldLabel htmlFor="agent-title">Requested title</FieldLabel>
                     <Input
                       id="agent-title"
                       value={title}
@@ -840,7 +837,7 @@ export function CreateAgentModal({
             <section className={styles.createAgentModalSection}>
               <FieldGroup className={styles.createAgentModalFieldGroup}>
                 <Field>
-                  <FieldLabel htmlFor="agent-name">Agent name</FieldLabel>
+                  <FieldLabel htmlFor="agent-name">Name</FieldLabel>
                   <Input id="agent-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Ada" required />
                 </Field>
                 <Field>
@@ -859,7 +856,7 @@ export function CreateAgentModal({
                   </Select>
                 </Field>
                 <Field>
-                  <FieldLabel htmlFor="agent-title">Title (optional)</FieldLabel>
+                  <FieldLabel htmlFor="agent-title">Title</FieldLabel>
                   <Input
                     id="agent-title"
                     value={title}
@@ -964,7 +961,6 @@ export function CreateAgentModal({
                     value={runtimeCwd}
                     onChange={(e) => setRuntimeCwd(e.target.value)}
                     placeholder="/path/to/workspace"
-                    required={runtimeCwdRequired}
                   />
                 </Field>
               </FieldGroup>
@@ -1016,6 +1012,8 @@ export function CreateAgentModal({
                     required
                   />
                 </Field>
+              </FieldGroup>
+              <FieldGroup className={styles.createAgentModalFieldGroupFull}>
                 <Field>
                   <FieldLabel htmlFor="agent-budget">Monthly budget (USD)</FieldLabel>
                   <Input id="agent-budget" value={budget} onChange={(e) => setBudget(e.target.value)} type="number" min={0} step="1" />

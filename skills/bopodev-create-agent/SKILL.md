@@ -39,7 +39,7 @@ Before submission, ensure payload includes:
 - `monthlyBudgetUsd`
 - optional `managerAgentId`
 - optional `canHireAgents`
-- optional `bootstrapPrompt` or supported `runtimeConfig`
+- optional `bootstrapPrompt` (extra standing instructions only; operating docs are injected via heartbeat env) or supported `runtimeConfig`
 - `requestApproval` (defaults to `true`; keep `true` for routine hires)
 
 Do not use unsupported fields such as:
@@ -61,7 +61,7 @@ For a Codex hire, prefer this shape:
   "managerAgentId": "<manager-agent-id>",
   "heartbeatCron": "*/5 * * * *",
   "monthlyBudgetUsd": 100,
-  "bootstrapPrompt": "Primary operating reference: agents/founding-engineer/AGENTS.md",
+  "bootstrapPrompt": "Optional: prefer small PRs and note blockers in employee_comment.",
   "requestApproval": true
 }
 ```

@@ -97,4 +97,23 @@ describe("heartbeat prompt compact mode", () => {
     expect(prompt).not.toContain("Memory context:");
     expect(prompt).toContain('"employee_comment":"markdown update to the manager"');
   });
+
+  it("prepends operating directory context when BOPODEV_AGENT_OPERATING_DIR is set", () => {
+    const prompt = createPrompt(
+      minimalContext({
+        idleMicroPrompt: true,
+        workItems: [],
+        runtime: {
+          ...baseRuntime,
+          env: {
+            ...baseRuntime.env,
+            BOPODEV_AGENT_OPERATING_DIR: "/tmp/agents/agent-1/operating"
+          }
+        }
+      })
+    );
+    expect(prompt).toContain("Operating context:");
+    expect(prompt).toContain("/tmp/agents/agent-1/operating");
+    expect(prompt).toContain("Idle heartbeat (micro prompt)");
+  });
 });

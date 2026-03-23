@@ -6,7 +6,6 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { DndContext, DragOverlay, PointerSensor, closestCenter, useDroppable, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import type { IssueStatus } from "bopodev-contracts";
-import { CreateIssueModal } from "@/components/modals/create-issue-modal";
 import { ApiError, apiPut } from "@/lib/api";
 import { getStatusBadgeClassName } from "@/lib/status-presentation";
 import { selectedProjectNameFor } from "@/lib/workspace-logic";
@@ -252,30 +251,9 @@ export function IssueWorkspace({
             {row.original.status}
           </Badge>
         )
-      },
-      {
-        id: "actions",
-        header: () => <div className={styles.tableHeaderAlignRight}>Actions</div>,
-        enableSorting: false,
-        cell: ({ row }) => {
-          const issue = row.original;
-          return (
-            <div className={styles.savedViewContainer6} onClick={(event) => event.stopPropagation()}>
-              <CreateIssueModal
-                companyId={companyId}
-                projects={projects}
-                agents={agents}
-                issue={issue}
-                triggerLabel="Edit"
-                triggerVariant="outline"
-                triggerSize="sm"
-              />
-            </div>
-          );
-        }
       }
     ],
-    [agents, companyId, projects]
+    [agents]
   );
 
   function SortableIssueCard({ issue }: { issue: IssueRow }) {

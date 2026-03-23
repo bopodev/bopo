@@ -2678,9 +2678,31 @@ function clipPromptText(text: string, max: number | null): string {
 const HEARTBEAT_JSON_SCHEMA_FOOTER = `At the end of your response, output exactly one JSON object on a single line and nothing else. Use this exact schema:
 {"employee_comment":"markdown update to the manager","results":["short concrete outcome"],"errors":[],"artifacts":[{"kind":"file","path":"relative/path"}]}`;
 
+/** Injected every heartbeat when the runtime sets BOPODEV_AGENT_OPERATING_DIR (no need to store paths in bootstrapPrompt). */
+function buildOperatingDirectoryPromptPrefix(context: HeartbeatContext): string {
+  const dir = context.runtime?.env?.BOPODEV_AGENT_OPERATING_DIR?.trim();
+  if (!dir) {
+    return "";
+  }
+  return [
+    "Operating context:",
+    `- Your agent operating directory (read AGENTS.md, HEARTBEAT.md, SOUL.md, TOOLS.md here when they exist): ${dir}`,
+    ""
+  ].join("\n");
+}
+
+function composeBootstrapPreamble(context: HeartbeatContext): string {
+  const operating = buildOperatingDirectoryPromptPrefix(context);
+  const user = context.runtime?.bootstrapPrompt?.trim();
+  if (!user) {
+    return operating;
+  }
+  return operating ? `${operating}${user}\n\n` : `${user}\n\n`;
+}
+
 function buildIdleMicroPrompt(context: HeartbeatContext): string {
-  const bootstrapPrompt = context.runtime?.bootstrapPrompt?.trim();
-  return `${bootstrapPrompt ? `${bootstrapPrompt}\n\n` : ""}Idle heartbeat (micro prompt): agent ${context.agentId} (${context.agent.name}) has no assigned issues this run. Summarize readiness in \`employee_comment\`; leave \`results\` empty unless you completed verifiable work. Use \`BOPODEV_*\` for control-plane API calls when needed.
+  const preamble = composeBootstrapPreamble(context);
+  return `${preamble}Idle heartbeat (micro prompt): agent ${context.agentId} (${context.agent.name}) has no assigned issues this run. Summarize readiness in \`employee_comment\`; leave \`results\` empty unless you completed verifiable work. Use \`BOPODEV_*\` for control-plane API calls when needed.
 
 ${HEARTBEAT_JSON_SCHEMA_FOOTER}
 `;
@@ -2705,7 +2727,7 @@ export function createPrompt(context: HeartbeatContext) {
   if (context.idleMicroPrompt && context.workItems.length === 0 && !isCommentOrderRunEarly) {
     return buildIdleMicroPrompt(context);
   }
-  const bootstrapPrompt = context.runtime?.bootstrapPrompt?.trim();
+  const bootstrapPreamble = composeBootstrapPreamble(context);
   const promptMode = resolveHeartbeatPromptModeForPrompt(context);
   const isCompact = promptMode === "compact";
   const memoryCap = resolveMemorySectionMaxChars(promptMode);
@@ -2851,7 +2873,7 @@ export function createPrompt(context: HeartbeatContext) {
     "- Do not invent token or cost values; the runtime records usage separately."
   ].join("\n");
 
-  return `${bootstrapPrompt ? `${bootstrapPrompt}\n\n` : ""}You are ${context.agent.name} (${context.agent.role}), agent ${context.agentId}.
+  return `${bootstrapPreamble}You are ${context.agent.name} (${context.agent.role}), agent ${context.agentId}.
 Heartbeat run ${context.heartbeatRunId}.
 ${isCompact ? "Prompt profile: compact (issue bodies are not inlined—use GET /issues/:id to hydrate).\n" : ""}
 Company:

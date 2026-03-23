@@ -3293,29 +3293,9 @@ export function WorkspaceClient({
             {`${formatUsdCost(row.original.usedBudgetUsd ?? 0)} / ${formatUsdCost(row.original.monthlyBudgetUsd ?? 0)}`}
           </div>
         )
-      },
-      {
-        id: "actions",
-        header: () => <div className={styles.tableHeaderAlignRight}>Actions</div>,
-        enableSorting: false,
-        cell: ({ row }) => {
-          const project = row.original;
-          return (
-            <div className={styles.formatDurationContainer3}>
-              <CreateProjectModal
-                companyId={companyId!}
-                goals={goals}
-                project={project}
-                triggerLabel="Edit"
-                triggerVariant="outline"
-                triggerSize="sm"
-              />
-            </div>
-          );
-        }
       }
     ],
-    [companyId, goals]
+    [companyId]
   );
 
   const goalColumns = useMemo<ColumnDef<GoalRow>[]>(
@@ -3443,63 +3423,9 @@ export function WorkspaceClient({
             {row.original.status}
           </Badge>
         )
-      },
-      {
-        id: "actions",
-        header: () => <div className={styles.tableHeaderAlignRight}>Actions</div>,
-        enableSorting: false,
-        cell: ({ row }) => {
-          const agent = row.original;
-          return (
-            <div className={styles.formatDurationContainer3}>
-              <CreateAgentModal
-                companyId={companyId!}
-                availableAgents={agents.map((entry) => ({ id: entry.id, name: entry.name }))}
-                delegateAgentId={hiringDelegate?.agentId ?? ceoAgent?.id ?? null}
-                delegateAgentLabel={hiringDelegate?.name ?? ceoAgent?.name ?? undefined}
-                suggestedRuntimeCwd={suggestedAgentRuntimeCwd}
-                fallbackDefaults={onboardingRuntimeFallback}
-                agent={{
-                  id: agent.id,
-                  name: agent.name,
-                  role: agent.role,
-                    roleKey: agent.roleKey ?? null,
-                    title: agent.title ?? null,
-                  managerAgentId: agent.managerAgentId,
-                  providerType: agent.providerType as
-                    | "claude_code"
-                    | "codex"
-                    | "cursor"
-                    | "opencode"
-                    | "openai_api"
-                    | "anthropic_api"
-                    | "http"
-                    | "shell",
-                  heartbeatCron: agent.heartbeatCron,
-                  monthlyBudgetUsd: agent.monthlyBudgetUsd,
-                  canHireAgents: agent.canHireAgents,
-                  runtimeCommand: agent.runtimeCommand,
-                  runtimeArgsJson: agent.runtimeArgsJson,
-                  runtimeCwd: agent.runtimeCwd,
-                  runtimeEnvJson: agent.runtimeEnvJson,
-                  runtimeModel: agent.runtimeModel,
-                  runtimeThinkingEffort: agent.runtimeThinkingEffort,
-                  bootstrapPrompt: agent.bootstrapPrompt,
-                  runtimeTimeoutSec: agent.runtimeTimeoutSec,
-                  interruptGraceSec: agent.interruptGraceSec,
-                  runPolicyJson: agent.runPolicyJson,
-                  stateBlob: agent.stateBlob
-                }}
-                triggerLabel="Edit"
-                triggerVariant="outline"
-                triggerSize="sm"
-              />
-            </div>
-          );
-        }
       }
     ],
-    [agentNameById, agents, companyId, onboardingRuntimeFallback, suggestedAgentRuntimeCwd]
+    [agentNameById, companyId]
   );
 
   const approvalColumns = useMemo<ColumnDef<ApprovalRow>[]>(
