@@ -94,6 +94,7 @@ const hireAgentPayloadSchema = AgentCreateRequestSchema.extend({
 const activateGoalPayloadSchema = z.object({
   projectId: z.string().optional(),
   parentGoalId: z.string().optional(),
+  ownerAgentId: z.string().optional(),
   level: z.enum(["company", "project", "agent"]),
   title: z.string().min(1),
   description: z.string().optional()
@@ -372,6 +373,7 @@ async function applyApprovalAction(db: BopoDb, companyId: string, action: string
       companyId,
       projectId: parsed.data.projectId,
       parentGoalId: parsed.data.parentGoalId,
+      ownerAgentId: parsed.data.ownerAgentId,
       level: parsed.data.level,
       title: parsed.data.title,
       description: parsed.data.description

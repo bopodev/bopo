@@ -62,6 +62,7 @@ describe("response contract normalization", { timeout: 30_000 }, () => {
     expect(response.body.data[0]).toEqual(
       expect.objectContaining({
         companyId,
+        goalIds: [],
         createdAt: expect.any(String),
         updatedAt: expect.any(String)
       })

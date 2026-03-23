@@ -111,6 +111,8 @@ export const IssueSchema = z.object({
   companyId: EntityIdSchema,
   projectId: EntityIdSchema,
   parentIssueId: EntityIdSchema.nullable(),
+  /** Planning goals linked to this issue (company-wide or same project as the issue). */
+  goalIds: z.array(EntityIdSchema).default([]),
   title: z.string().min(1),
   body: z.string().nullable().optional(),
   /** PR URL, compare view, or other external link (optional). */
@@ -206,6 +208,8 @@ export const GoalSchema = z.object({
   companyId: EntityIdSchema,
   projectId: EntityIdSchema.nullable(),
   parentGoalId: EntityIdSchema.nullable(),
+  /** When set on an agent-level goal, only that agent sees it in heartbeats; null = all agents. */
+  ownerAgentId: EntityIdSchema.nullable(),
   level: GoalLevelSchema,
   title: z.string().min(1),
   description: z.string().nullable().optional(),

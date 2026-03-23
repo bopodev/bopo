@@ -486,7 +486,7 @@ export function CreateProjectModal({
                 <FieldLabelWithHelp
                   htmlFor="project-monthly-budget-usd"
                   helpText="Approximate monthly spend cap for this project in US dollars. Must be a positive number; enforcement depends on your billing setup.">
-                  Monthly project budget (USD)
+                  Monthly budget (USD)
                 </FieldLabelWithHelp>
                 <Input
                   id="project-monthly-budget-usd"
@@ -504,7 +504,7 @@ export function CreateProjectModal({
             <FieldGroup>
               <Field>
                 <FieldLabelWithHelp helpText="Link goals to this project so execution and reporting stay aligned with stated outcomes. Toggle items in the menu; selection is saved with the project.">
-                  Linked goals
+                  Goals
                 </FieldLabelWithHelp>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>

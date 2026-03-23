@@ -34,6 +34,7 @@ import {
   issueComments,
   issueAttachments,
   issues,
+  listIssueGoalIdsBatch,
   projects,
   sql
 } from "bopodev-db";
@@ -672,7 +673,11 @@ export async function runHeartbeatForAgent(
     const heartbeatIdlePolicy = resolveHeartbeatIdlePolicy();
     const workItems = isCommentOrderWake ? [] : await claimIssuesForAgent(db, companyId, agentId, runId);
     const wakeWorkItems = await loadWakeContextWorkItems(db, companyId, options?.wakeContext?.issueIds);
-    const contextWorkItems = resolveExecutionWorkItems(workItems, wakeWorkItems, options?.wakeContext);
+    const contextWorkItems = await hydrateIssueWorkItemsWithGoalIds(
+      db,
+      companyId,
+      resolveExecutionWorkItems(workItems, wakeWorkItems, options?.wakeContext)
+    );
     executionWorkItemsForBudget = contextWorkItems.map((item) => ({ issueId: item.id, projectId: item.project_id }));
     claimedIssueIds = workItems.map((item) => item.id);
     issueIds = contextWorkItems.map((item) => item.id);
@@ -1064,7 +1069,8 @@ export async function runHeartbeatForAgent(
       mission: context.company.mission ?? null,
       goalContext: {
         companyGoals: context.goalContext?.companyGoals ?? [],
-        projectGoals: context.goalContext?.projectGoals ?? []
+        projectGoals: context.goalContext?.projectGoals ?? [],
+        agentGoals: context.goalContext?.agentGoals ?? []
       }
     });
     await appendAuditEvent(db, {
@@ -1108,7 +1114,8 @@ export async function runHeartbeatForAgent(
       summary: executionSummary,
       mission: context.company.mission ?? null,
       companyGoals: context.goalContext?.companyGoals ?? [],
-      projectGoals: context.goalContext?.projectGoals ?? []
+      projectGoals: context.goalContext?.projectGoals ?? [],
+      agentGoals: context.goalContext?.agentGoals ?? []
     });
     await appendAuditEvent(db, {
       companyId,
@@ -1855,20 +1862,43 @@ async function recoverStaleHeartbeatRuns(
   }
 }
 
+type IssueWorkItemRow = {
+  id: string;
+  project_id: string;
+  parent_issue_id: string | null;
+  title: string;
+  body: string | null;
+  status: string;
+  priority: string;
+  labels_json: string;
+  tags_json: string;
+};
+
+type IssueWorkItemRowWithGoals = IssueWorkItemRow & { goal_ids: string[] };
+
+async function hydrateIssueWorkItemsWithGoalIds(
+  db: BopoDb,
+  companyId: string,
+  items: IssueWorkItemRow[]
+): Promise<IssueWorkItemRowWithGoals[]> {
+  if (items.length === 0) {
+    return [];
+  }
+  const map = await listIssueGoalIdsBatch(
+    db,
+    companyId,
+    items.map((item) => item.id)
+  );
+  return items.map((item) => ({
+    ...item,
+    goal_ids: map.get(item.id) ?? []
+  }));
+}
+
 async function loadWakeContextWorkItems(db: BopoDb, companyId: string, wakeIssueIds?: string[]) {
   const normalizedIds = Array.from(new Set((wakeIssueIds ?? []).filter((id) => id.trim().length > 0)));
   if (normalizedIds.length === 0) {
-    return [] as Array<{
-      id: string;
-      project_id: string;
-      parent_issue_id: string | null;
-      title: string;
-      body: string | null;
-      status: string;
-      priority: string;
-      labels_json: string;
-      tags_json: string;
-    }>;
+    return [] as IssueWorkItemRow[];
   }
   const rows = await db
     .select({
@@ -1888,32 +1918,9 @@ async function loadWakeContextWorkItems(db: BopoDb, companyId: string, wakeIssue
   return rows.sort((a, b) => (sortOrder.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (sortOrder.get(b.id) ?? Number.MAX_SAFE_INTEGER));
 }
 
-function mergeContextWorkItems(
-  assigned: Array<{
-    id: string;
-    project_id: string;
-    parent_issue_id: string | null;
-    title: string;
-    body: string | null;
-    status: string;
-    priority: string;
-    labels_json: string;
-    tags_json: string;
-  }>,
-  wakeContext: Array<{
-    id: string;
-    project_id: string;
-    parent_issue_id: string | null;
-    title: string;
-    body: string | null;
-    status: string;
-    priority: string;
-    labels_json: string;
-    tags_json: string;
-  }>
-) {
+function mergeContextWorkItems(assigned: IssueWorkItemRow[], wakeContext: IssueWorkItemRow[]) {
   const seen = new Set<string>();
-  const merged: typeof assigned = [];
+  const merged: IssueWorkItemRow[] = [];
   for (const item of assigned) {
     if (!seen.has(item.id)) {
       seen.add(item.id);
@@ -1930,28 +1937,8 @@ function mergeContextWorkItems(
 }
 
 function resolveExecutionWorkItems(
-  assigned: Array<{
-    id: string;
-    project_id: string;
-    parent_issue_id: string | null;
-    title: string;
-    body: string | null;
-    status: string;
-    priority: string;
-    labels_json: string;
-    tags_json: string;
-  }>,
-  wakeContextItems: Array<{
-    id: string;
-    project_id: string;
-    parent_issue_id: string | null;
-    title: string;
-    body: string | null;
-    status: string;
-    priority: string;
-    labels_json: string;
-    tags_json: string;
-  }>,
+  assigned: IssueWorkItemRow[],
+  wakeContextItems: IssueWorkItemRow[],
   wakeContext?: HeartbeatWakeContext
 ) {
   if (wakeContext?.reason === "issue_comment_recipient" && wakeContextItems.length > 0) {
@@ -1989,6 +1976,62 @@ async function loadWakeContextCommentBody(db: BopoDb, companyId: string, comment
   return body && body.length > 0 ? body : null;
 }
 
+const GOAL_CONTEXT_DESC_MAX_CHARS = 280;
+const GOAL_ANCESTRY_NODE_DESC_MAX_CHARS = 120;
+const GOAL_ANCESTRY_MAX_DEPTH = 16;
+
+type GoalRowForHeartbeat = {
+  id: string;
+  title: string;
+  description: string | null;
+  parentGoalId: string | null;
+  level: string;
+  projectId: string | null;
+  status: string;
+  ownerAgentId: string | null;
+};
+
+function clipGoalDescription(text: string, max: number) {
+  const t = text.trim();
+  if (t.length <= max) {
+    return t;
+  }
+  return `${t.slice(0, Math.max(0, max - 1))}…`;
+}
+
+function formatGoalContextLine(goal: Pick<GoalRowForHeartbeat, "title" | "description">, descMax: number) {
+  const title = goal.title.trim();
+  const desc = goal.description?.trim();
+  if (!desc) {
+    return title;
+  }
+  return `${title} — ${clipGoalDescription(desc, descMax)}`;
+}
+
+function buildGoalAncestryLines(
+  goalId: string | null | undefined,
+  byId: Map<string, GoalRowForHeartbeat>,
+  nodeDescMax: number
+) {
+  if (!goalId) {
+    return [] as string[];
+  }
+  const chain: string[] = [];
+  let current: GoalRowForHeartbeat | undefined = byId.get(goalId);
+  const visited = new Set<string>();
+  let depth = 0;
+  while (current && depth < GOAL_ANCESTRY_MAX_DEPTH) {
+    if (visited.has(current.id)) {
+      break;
+    }
+    visited.add(current.id);
+    chain.unshift(formatGoalContextLine(current, nodeDescMax));
+    current = current.parentGoalId ? byId.get(current.parentGoalId) : undefined;
+    depth += 1;
+  }
+  return chain;
+}
+
 async function buildHeartbeatContext(
   db: BopoDb,
   companyId: string,
@@ -2003,17 +2046,7 @@ async function buildHeartbeatContext(
     memoryContext?: HeartbeatContext["memoryContext"];
     runtime?: { command?: string; args?: string[]; cwd?: string; timeoutMs?: number };
     wakeContext?: HeartbeatWakeContext;
-    workItems: Array<{
-      id: string;
-      project_id: string;
-      parent_issue_id: string | null;
-      title: string;
-      body: string | null;
-      status: string;
-      priority: string;
-      labels_json: string;
-      tags_json: string;
-    }>;
+    workItems: IssueWorkItemRowWithGoals[];
   }
 ): Promise<HeartbeatContext> {
   const [company] = await db
@@ -2104,24 +2137,48 @@ async function buildHeartbeatContext(
       id: goals.id,
       level: goals.level,
       title: goals.title,
+      description: goals.description,
       status: goals.status,
-      projectId: goals.projectId
+      projectId: goals.projectId,
+      parentGoalId: goals.parentGoalId,
+      ownerAgentId: goals.ownerAgentId
     })
     .from(goals)
     .where(eq(goals.companyId, companyId));
 
+  const goalById = new Map<string, GoalRowForHeartbeat>(
+    goalRows.map((row) => [
+      row.id,
+      {
+        id: row.id,
+        title: row.title,
+        description: row.description,
+        parentGoalId: row.parentGoalId,
+        level: row.level,
+        projectId: row.projectId,
+        status: row.status,
+        ownerAgentId: row.ownerAgentId
+      }
+    ])
+  );
+
   const activeCompanyGoals = goalRows
     .filter((goal) => goal.status === "active" && goal.level === "company")
-    .map((goal) => goal.title);
+    .map((goal) => formatGoalContextLine(goal, GOAL_CONTEXT_DESC_MAX_CHARS));
   const activeProjectGoals = goalRows
     .filter(
       (goal) =>
         goal.status === "active" && goal.level === "project" && goal.projectId && projectIds.includes(goal.projectId)
     )
-    .map((goal) => goal.title);
+    .map((goal) => formatGoalContextLine(goal, GOAL_CONTEXT_DESC_MAX_CHARS));
   const activeAgentGoals = goalRows
-    .filter((goal) => goal.status === "active" && goal.level === "agent")
-    .map((goal) => goal.title);
+    .filter(
+      (goal) =>
+        goal.status === "active" &&
+        goal.level === "agent" &&
+        (!goal.ownerAgentId || goal.ownerAgentId === input.agentId)
+    )
+    .map((goal) => formatGoalContextLine(goal, GOAL_CONTEXT_DESC_MAX_CHARS));
   const isCommentOrderWake = input.wakeContext?.reason === "issue_comment_recipient";
   const promptMode = resolveHeartbeatPromptMode();
 
@@ -2160,6 +2217,11 @@ async function buildHeartbeatContext(
       issueId: item.id,
       projectId: item.project_id,
       parentIssueId: item.parent_issue_id,
+      goalIds: item.goal_ids,
+      goalAncestryChains: item.goal_ids.map((gid) => {
+        const chain = buildGoalAncestryLines(gid, goalById, GOAL_ANCESTRY_NODE_DESC_MAX_CHARS);
+        return chain.length > 0 ? chain : [gid];
+      }),
       childIssueIds: childIssueIdsByParent.get(item.id) ?? [],
       projectName: projectNameById.get(item.project_id) ?? null,
       title: item.title,
@@ -2191,10 +2253,13 @@ function computeMissionAlignmentSignal(input: {
   mission: string | null;
   companyGoals: string[];
   projectGoals: string[];
+  agentGoals: string[];
 }) {
   const summaryTokens = new Set(tokenizeAlignmentText(input.summary));
   const missionTokens = tokenizeAlignmentText(input.mission ?? "");
-  const goalTokens = tokenizeAlignmentText([...input.companyGoals, ...input.projectGoals].join(" "));
+  const goalTokens = tokenizeAlignmentText(
+    [...input.companyGoals, ...input.projectGoals, ...input.agentGoals].join(" ")
+  );
   const matchedMissionTerms = missionTokens.filter((token) => summaryTokens.has(token));
   const matchedGoalTerms = goalTokens.filter((token) => summaryTokens.has(token));
   const missionScore = missionTokens.length > 0 ? matchedMissionTerms.length / missionTokens.length : 0;

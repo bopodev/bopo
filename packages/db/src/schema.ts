@@ -53,6 +53,8 @@ export const goals = pgTable("goals", {
     .references(() => companies.id, { onDelete: "cascade" }),
   projectId: text("project_id").references(() => projects.id, { onDelete: "set null" }),
   parentGoalId: text("parent_goal_id"),
+  /** When set, this agent-level goal is included only for that agent's heartbeats; null = all agents. */
+  ownerAgentId: text("owner_agent_id"),
   level: text("level").notNull(),
   title: text("title").notNull(),
   description: text("description"),
@@ -121,6 +123,23 @@ export const issues = pgTable("issues", {
   createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull()
 });
+
+export const issueGoals = pgTable(
+  "issue_goals",
+  {
+    issueId: text("issue_id")
+      .notNull()
+      .references(() => issues.id, { onDelete: "cascade" }),
+    goalId: text("goal_id")
+      .notNull()
+      .references(() => goals.id, { onDelete: "cascade" }),
+    companyId: text("company_id")
+      .notNull()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull()
+  },
+  (table) => [primaryKey({ columns: [table.issueId, table.goalId] })]
+);
 
 export const issueComments = pgTable("issue_comments", {
   id: text("id").primaryKey(),
@@ -425,6 +444,7 @@ export const schema = {
   goals,
   agents,
   issues,
+  issueGoals,
   issueComments,
   issueAttachments,
   activityLogs,

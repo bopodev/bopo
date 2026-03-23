@@ -29,18 +29,21 @@ import styles from "./create-goal-modal.module.scss";
 
 export function CreateGoalModal({
   companyId,
+  agents = [],
   goal,
   triggerLabel = "New Goal",
   triggerVariant = "default",
   triggerSize
 }: {
   companyId: string;
+  agents?: Array<{ id: string; name: string }>;
   goal?: {
     id: string;
     level: "company" | "project" | "agent";
     title: string;
     description?: string | null;
     status: string;
+    ownerAgentId?: string | null;
   };
   triggerLabel?: string;
   triggerVariant?: "default" | "outline" | "secondary" | "ghost" | "destructive";
@@ -53,6 +56,7 @@ export function CreateGoalModal({
   const [description, setDescription] = useState(goal?.description ?? "");
   const [status, setStatus] = useState(goal?.status ?? "draft");
   const [activateNow, setActivateNow] = useState(false);
+  const [ownerAgentId, setOwnerAgentId] = useState<string>(goal?.ownerAgentId ?? "__all__");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -64,6 +68,7 @@ export function CreateGoalModal({
     setDescription(goal?.description ?? "");
     setStatus(goal?.status ?? "draft");
     setActivateNow(false);
+    setOwnerAgentId(goal?.ownerAgentId ?? "__all__");
     setError(null);
   }
 
@@ -77,19 +82,22 @@ export function CreateGoalModal({
           level,
           title,
           description: description || null,
-          status
+          status,
+          ownerAgentId: level === "agent" ? (ownerAgentId === "__all__" ? null : ownerAgentId) : null
         });
       } else {
         await apiPost("/goals", companyId, {
           level,
           title,
           description: description || undefined,
-          activateNow
+          activateNow,
+          ...(level === "agent" && ownerAgentId !== "__all__" ? { ownerAgentId } : {})
         });
         setLevel("company");
         setTitle("");
         setDescription("");
         setActivateNow(false);
+        setOwnerAgentId("__all__");
       }
       setOpen(false);
       router.refresh();
@@ -152,7 +160,14 @@ export function CreateGoalModal({
                 <FieldLabelWithHelp helpText="Who this goal applies to: whole company, a project, or a single agent. Scope affects where the goal appears in reporting.">
                   Goal scope
                 </FieldLabelWithHelp>
-                <Select value={level} onValueChange={(value) => setLevel(value as "company" | "project" | "agent")}>
+                <Select
+                  value={level}
+                  onValueChange={(value) => {
+                    setLevel(value as "company" | "project" | "agent");
+                    if (value !== "agent") {
+                      setOwnerAgentId("__all__");
+                    }
+                  }}>
                   <SelectTrigger className={styles.createGoalModalSelectTrigger}>
                     <SelectValue placeholder="Select a scope" />
                   </SelectTrigger>
@@ -163,6 +178,26 @@ export function CreateGoalModal({
                   </SelectContent>
                 </Select>
               </Field>
+              {level === "agent" && agents.length > 0 ? (
+                <Field>
+                  <FieldLabelWithHelp helpText="Restrict this goal to one agent’s heartbeats, or leave as all agents for a shared agent-level objective.">
+                    Agent scope
+                  </FieldLabelWithHelp>
+                  <Select value={ownerAgentId} onValueChange={setOwnerAgentId}>
+                    <SelectTrigger className={styles.createGoalModalSelectTrigger}>
+                      <SelectValue placeholder="All agents" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__all__">All agents</SelectItem>
+                      {agents.map((agent) => (
+                        <SelectItem key={agent.id} value={agent.id}>
+                          {agent.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+              ) : null}
               <Field>
                 <FieldLabelWithHelp
                   htmlFor="goal-title"

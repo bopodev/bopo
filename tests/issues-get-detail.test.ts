@@ -9,6 +9,7 @@ import {
   addIssueAttachment,
   bootstrapDatabase,
   createCompany,
+  createGoal,
   createIssue,
   createProject
 } from "../packages/db/src/index";
@@ -63,6 +64,7 @@ describe("GET /issues/:issueId", { timeout: 30_000 }, () => {
       body: expect.stringContaining("Full description"),
       labels: [],
       tags: [],
+      goalIds: [],
       attachments: []
     });
   });
@@ -92,5 +94,21 @@ describe("GET /issues/:issueId", { timeout: 30_000 }, () => {
       fileName: "note.md",
       downloadPath: `/issues/${issue.id}/attachments/${att.id}/download`
     });
+  });
+
+  it("returns goalIds matching linked goals", async () => {
+    const project = await createProject(db, { companyId, name: "P3" });
+    const goalA = await createGoal(db, { companyId, level: "company", title: "Company goal A" });
+    const goalB = await createGoal(db, { companyId, level: "company", title: "Company goal B" });
+    const issue = await createIssue(db, {
+      companyId,
+      projectId: project.id,
+      title: "Multi-goal issue",
+      goalIds: [goalA.id, goalB.id]
+    });
+    const res = await request(app).get(`/issues/${issue.id}`).set("x-company-id", companyId);
+    expect(res.status).toBe(200);
+    expect(res.body.data.goalIds).toHaveLength(2);
+    expect(res.body.data.goalIds.sort()).toEqual([goalA.id, goalB.id].sort());
   });
 });

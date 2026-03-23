@@ -24,6 +24,7 @@ import {
   listIssueAttachments,
   listIssueActivity,
   listIssueComments,
+  listIssueGoalIdsBatch,
   listIssues,
   projects,
   projectWorkspaces,
@@ -101,10 +102,12 @@ function normalizeOptionalExternalLink(value: string | null | undefined) {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-function toIssueResponse(issue: Record<string, unknown>) {
+function toIssueResponse(issue: Record<string, unknown>, goalIds: string[] = []) {
   const labels = parseStringArray(issue.labelsJson);
   const tags = parseStringArray(issue.tagsJson);
-  const { labelsJson: _labelsJson, tagsJson: _tagsJson, ...rest } = issue;
+  const { labelsJson: _labelsJson, tagsJson: _tagsJson, goalId: _legacyGoalId, ...rest } = issue as Record<string, unknown> & {
+    goalId?: unknown;
+  };
   const externalRaw = rest.externalLink;
   const externalLink =
     typeof externalRaw === "string" && externalRaw.trim().length > 0 ? externalRaw.trim() : null;
@@ -112,7 +115,8 @@ function toIssueResponse(issue: Record<string, unknown>) {
     ...rest,
     externalLink,
     labels,
-    tags
+    tags,
+    goalIds
   };
 }
 
@@ -130,10 +134,17 @@ export function createIssuesRouter(ctx: AppContext) {
   router.get("/", async (req, res) => {
     const projectId = req.query.projectId?.toString();
     const rows = await listIssues(ctx.db, req.companyId!, projectId);
+    const goalMap = await listIssueGoalIdsBatch(
+      ctx.db,
+      req.companyId!,
+      rows.map((row) => row.id)
+    );
     return sendOkValidated(
       res,
       IssueSchema.array(),
-      rows.map((row) => toIssueResponse(row as unknown as Record<string, unknown>)),
+      rows.map((row) =>
+        toIssueResponse(row as unknown as Record<string, unknown>, goalMap.get(row.id) ?? [])
+      ),
       "issues.list"
     );
   });
@@ -144,7 +155,8 @@ export function createIssuesRouter(ctx: AppContext) {
     if (!issueRow) {
       return sendError(res, "Issue not found.", 404);
     }
-    const base = toIssueResponse(issueRow as unknown as Record<string, unknown>);
+    const goalMap = await listIssueGoalIdsBatch(ctx.db, req.companyId!, [issueId]);
+    const base = toIssueResponse(issueRow as unknown as Record<string, unknown>, goalMap.get(issueId) ?? []);
     const attachmentRows = await listIssueAttachments(ctx.db, req.companyId!, issueId);
     const attachments = attachmentRows.map((row) =>
       toIssueAttachmentResponse(row as unknown as Record<string, unknown>, issueId)
@@ -173,6 +185,7 @@ export function createIssuesRouter(ctx: AppContext) {
       companyId: req.companyId!,
       projectId: parsed.data.projectId,
       parentIssueId: parsed.data.parentIssueId,
+      goalIds: parsed.data.goalIds,
       title: parsed.data.title,
       body: applyIssueMetadataToBody(parsed.data.body, parsed.data.metadata),
       externalLink: normalizeOptionalExternalLink(parsed.data.externalLink ?? null),
@@ -197,7 +210,10 @@ export function createIssuesRouter(ctx: AppContext) {
       entityId: issue.id,
       payload: issue
     });
-    return sendOk(res, toIssueResponse(issue as unknown as Record<string, unknown>));
+    return sendOk(
+      res,
+      toIssueResponse(issue as unknown as Record<string, unknown>, parsed.data.goalIds)
+    );
   });
 
   router.post("/:issueId/attachments", async (req, res) => {
@@ -562,7 +578,11 @@ export function createIssuesRouter(ctx: AppContext) {
       entityId: issue.id,
       payload: issue
     });
-    return sendOk(res, toIssueResponse(issue as unknown as Record<string, unknown>));
+    const goalMap = await listIssueGoalIdsBatch(ctx.db, req.companyId!, [issue.id]);
+    return sendOk(
+      res,
+      toIssueResponse(issue as unknown as Record<string, unknown>, goalMap.get(issue.id) ?? [])
+    );
   });
 
   router.delete("/:issueId", async (req, res) => {

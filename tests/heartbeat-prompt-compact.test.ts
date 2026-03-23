@@ -86,6 +86,26 @@ describe("heartbeat prompt compact mode", () => {
     expect(prompt).not.toContain(longNotes);
   });
 
+  it("prints one linked-goal line per goal ancestry chain", () => {
+    const prompt = createPrompt(
+      minimalContext({
+        workItems: [
+          {
+            issueId: "issue-g",
+            projectId: "project-1",
+            title: "Do work",
+            body: "Work body",
+            status: "in_progress",
+            goalIds: ["g1", "g2"],
+            goalAncestryChains: [["Company OKR", "Epic A"], ["g2"]]
+          }
+        ]
+      })
+    );
+    expect(prompt).toContain("Linked goal 1 (root → leaf): Company OKR → Epic A");
+    expect(prompt).toContain("Linked goal 2 (root → leaf): g2");
+  });
+
   it("idle micro prompt is minimal and keeps JSON footer", () => {
     const prompt = createPrompt(
       minimalContext({

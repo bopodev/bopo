@@ -296,6 +296,7 @@ export function ProjectDetailPageClient({
             companyId={companyId}
             projects={[{ id: project.id, name: project.name }]}
             agents={agents}
+            goals={goals}
             defaultProjectId={project.id}
             triggerLabel="Create issue"
             triggerVariant="outline"

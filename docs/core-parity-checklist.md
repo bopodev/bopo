@@ -24,7 +24,8 @@ A feature is only marked complete when a user can exercise it end-to-end in the 
 - [x] Goals can be created at company, project, or agent level.
 - [x] Goal activation requests can be queued for approval rather than immediately mutating state.
 - [x] Approved goal activation requests create an active goal rather than only updating approval status.
-- [x] Heartbeat prompt context includes company mission plus active company/project/agent goals.
+- [x] Heartbeat prompt context includes company mission plus active company/project/agent goals (with descriptions clipped, parent-goal ancestry per linked issue goal, and agent goals filtered by optional `ownerAgentId`).
+- [x] Issues can optionally reference multiple goals via `issue_goals`; API enforces company and project scope for each link.
 
 ## Agents / Org Chart / Heartbeats
 

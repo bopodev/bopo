@@ -48,6 +48,7 @@ interface IssueRow {
   id: string;
   projectId: string;
   parentIssueId?: string | null;
+  goalIds?: string[];
   assigneeAgentId: string | null;
   title: string;
   body?: string | null;
@@ -74,6 +75,12 @@ interface AgentRow {
 interface ProjectRow {
   id: string;
   name: string;
+}
+
+interface GoalPickerRow {
+  id: string;
+  title: string;
+  projectId: string | null;
 }
 
 interface CostRow {
@@ -501,6 +508,7 @@ export function IssueDetailPageClient({
   allIssues,
   agents,
   projects,
+  goals,
   costEntries
 }: {
   companyId: string;
@@ -509,6 +517,7 @@ export function IssueDetailPageClient({
   allIssues: IssueRow[];
   agents: AgentRow[];
   projects: ProjectRow[];
+  goals: GoalPickerRow[];
   costEntries: CostRow[];
 }) {
   const router = useRouter();
@@ -851,6 +860,7 @@ export function IssueDetailPageClient({
               companyId={companyId}
               projects={projects}
               agents={agents}
+              goals={goals}
               issue={issue}
               triggerLabel="Edit issue"
               triggerVariant="outline"
@@ -1167,6 +1177,7 @@ export function IssueDetailPageClient({
                   companyId={companyId}
                   projects={projects}
                   agents={agents}
+                  goals={goals}
                   defaultProjectId={issue.projectId}
                   defaultParentIssueId={issue.id}
                   triggerLabel="Add sub-issue"

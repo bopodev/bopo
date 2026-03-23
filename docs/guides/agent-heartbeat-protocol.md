@@ -28,7 +28,9 @@ When `BOPO_HEARTBEAT_PROMPT_MODE=compact`:
 
 3. Use the same **actor headers** as for other API calls (`x-company-id`, `x-actor-type`, `x-actor-id`, `x-actor-companies`, `x-actor-permissions`). The prompt includes a curl template; prefer the env vars already injected for your shell.
 
-The issue detail response includes **attachments** metadata and each attachment’s **`downloadPath`** (API-relative path to the download route). Prefer HTTP when the runtime is remote from the API host; local runs may still use filesystem paths printed in the prompt.
+The issue detail response includes **`goalIds`** (linked planning goals), **attachments** metadata, and each attachment’s **`downloadPath`** (API-relative path to the download route). Prefer HTTP when the runtime is remote from the API host; local runs may still use filesystem paths printed in the prompt.
+
+In **full** prompt mode, assigned work items may also include one **“Linked goal N (root → leaf): …”** line per linked goal (compact mode still expects you to hydrate issue detail for full goal lists when needed).
 
 ## Attachments
 

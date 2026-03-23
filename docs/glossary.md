@@ -11,8 +11,8 @@ This glossary defines canonical terms used across product, API, and operations d
 - **Repo bootstrap**: heartbeat-time preparation step that clones/fetches/checks out workspace repositories before agent execution.
 - **Git credential broker**: runtime resolver that selects host credentials by default, or token-based auth from configured env var policy.
 - **Isolated worktree**: per-run/per-agent git worktree path derived from policy strategy and used as runtime cwd when enabled.
-- **Issue**: execution unit within a project; may have comments, attachments, and an assignee.
-- **Goal**: desired outcome at `company`, `project`, or `agent` level.
+- **Issue**: execution unit within a project; may have comments, attachments, an assignee, and optional linked **goals** (zero or more) for planning alignment.
+- **Goal**: desired outcome at `company`, `project`, or `agent` level; may form a hierarchy via parent goals. **Agent-level** goals may be scoped to a single agent (`ownerAgentId`) or shared across agents.
 
 ## Agent and Execution Terms
 

@@ -86,6 +86,7 @@ export interface GoalRow {
   id: string;
   projectId: string | null;
   parentGoalId: string | null;
+  ownerAgentId?: string | null;
   level: string;
   title: string;
   description?: string | null;

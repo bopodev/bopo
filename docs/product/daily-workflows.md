@@ -21,8 +21,10 @@ Provide an end-to-end operating sequence for projects, issues, and goals.
 1. **Triage issues**
    - Review `issues` view by status and priority.
    - Ensure each issue is linked to the right project and has clear acceptance criteria.
+   - Optionally link issues to one or more **planning goals** so heartbeats include a goal chain (root → leaf) per linked goal.
 2. **Align goals**
    - Check active company/project goals in `goals`.
+   - For agent-level goals, set **owner agent** when a goal applies to one worker only.
    - Update goal status to avoid stale planning context.
 3. **Prepare execution**
    - Verify issue assignees and dependencies.

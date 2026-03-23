@@ -15,6 +15,27 @@ describe("issue route validation", () => {
       expect(parsed.data.status).toBe("todo");
       expect(parsed.data.priority).toBe("none");
       expect(parsed.data.labels).toEqual([]);
+      expect(parsed.data.goalIds).toEqual([]);
+    }
+  });
+
+  it("accepts create payload with goalIds", () => {
+    const parsed = createIssueSchema.safeParse({
+      projectId: "proj1",
+      title: "Hello",
+      goalIds: ["goal_a", "goal_b"]
+    });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.goalIds).toEqual(["goal_a", "goal_b"]);
+    }
+  });
+
+  it("accepts update payload with goalIds", () => {
+    const parsed = updateIssueSchema.safeParse({ goalIds: [] });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.goalIds).toEqual([]);
     }
   });
 

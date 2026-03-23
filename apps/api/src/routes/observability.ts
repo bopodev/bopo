@@ -292,7 +292,12 @@ export function createObservabilityRouter(ctx: AppContext) {
       .filter((goal) => goal.status === "active" && goal.level === "project" && goal.projectId && projectIds.includes(goal.projectId))
       .map((goal) => goal.title);
     const activeAgentGoals = goals
-      .filter((goal) => goal.status === "active" && goal.level === "agent")
+      .filter(
+        (goal) =>
+          goal.status === "active" &&
+          goal.level === "agent" &&
+          (!goal.ownerAgentId || goal.ownerAgentId === agentId)
+      )
       .map((goal) => goal.title);
     const compiledPreview = [
       `Agent: ${agent.name} (${agent.role})`,

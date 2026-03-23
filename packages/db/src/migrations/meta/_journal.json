@@ -15,6 +15,20 @@
       "when": 1742600000000,
       "tag": "0001_issues_external_link",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1742700000000,
+      "tag": "0002_issues_goal_goals_owner_agent",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1742800000000,
+      "tag": "0003_issue_goals_junction",
+      "breakpoints": true
     }
   ]
 }

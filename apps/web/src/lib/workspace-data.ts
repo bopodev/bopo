@@ -35,6 +35,7 @@ export interface WorkspaceData {
     companyId: string;
     projectId: string;
     parentIssueId: string | null;
+    goalIds: string[];
     assigneeAgentId: string | null;
     title: string;
     body?: string | null;
@@ -85,6 +86,7 @@ export interface WorkspaceData {
     id: string;
     projectId: string | null;
     parentGoalId: string | null;
+    ownerAgentId?: string | null;
     level: string;
     title: string;
     description?: string | null;

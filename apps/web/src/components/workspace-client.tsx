@@ -108,6 +108,7 @@ interface IssueRow {
   companyId: string;
   projectId: string;
   parentIssueId: string | null;
+  goalIds?: string[];
   assigneeAgentId: string | null;
   title: string;
   body?: string | null;
@@ -217,6 +218,7 @@ interface GoalRow {
   id: string;
   projectId: string | null;
   parentGoalId: string | null;
+  ownerAgentId?: string | null;
   level: string;
   title: string;
   description?: string | null;
@@ -3200,12 +3202,14 @@ export function WorkspaceClient({
             <div className={styles.formatDurationContainer3}>
               <CreateGoalModal
                 companyId={companyId!}
+                agents={agents.map((a) => ({ id: a.id, name: a.name }))}
                 goal={{
                   id: goal.id,
                   level: goal.level as "company" | "project" | "agent",
                   title: goal.title,
                   description: goal.description ?? null,
-                  status: goal.status
+                  status: goal.status,
+                  ownerAgentId: goal.ownerAgentId ?? null
                 }}
                 triggerLabel="Edit"
                 triggerVariant="outline"
@@ -3216,7 +3220,7 @@ export function WorkspaceClient({
         }
       }
     ],
-    [companyId, onboardingRuntimeFallback, suggestedAgentRuntimeCwd]
+    [agents, companyId]
   );
 
   const agentColumns = useMemo<ColumnDef<AgentRow>[]>(
@@ -4006,27 +4010,45 @@ export function WorkspaceClient({
         return (
           <div className={styles.renderSectionActionsContainer1}>
             <CreateProjectModal companyId={scopedCompanyId} goals={goals} />
-            <CreateIssueModal companyId={scopedCompanyId} projects={projects} agents={agents} />
+            <CreateIssueModal
+              companyId={scopedCompanyId}
+              projects={projects}
+              agents={agents}
+              goals={goals.map((g) => ({ id: g.id, title: g.title, projectId: g.projectId }))}
+            />
           </div>
         );
       case "Projects":
         return (
           <div className={styles.renderSectionActionsContainer1}>
             <CreateProjectModal companyId={scopedCompanyId} goals={goals} />
-            <CreateIssueModal companyId={scopedCompanyId} projects={projects} agents={agents} />
+            <CreateIssueModal
+              companyId={scopedCompanyId}
+              projects={projects}
+              agents={agents}
+              goals={goals.map((g) => ({ id: g.id, title: g.title, projectId: g.projectId }))}
+            />
           </div>
         );
       case "Issues":
         return (
           <div className={styles.renderSectionActionsContainer1}>
-            <CreateIssueModal companyId={scopedCompanyId} projects={projects} agents={agents} />
+            <CreateIssueModal
+              companyId={scopedCompanyId}
+              projects={projects}
+              agents={agents}
+              goals={goals.map((g) => ({ id: g.id, title: g.title, projectId: g.projectId }))}
+            />
             <CreateProjectModal companyId={scopedCompanyId} goals={goals} />
           </div>
         );
       case "Goals":
         return (
           <div className={styles.renderSectionActionsContainer1}>
-            <CreateGoalModal companyId={scopedCompanyId} />
+            <CreateGoalModal
+              companyId={scopedCompanyId}
+              agents={agents.map((a) => ({ id: a.id, name: a.name }))}
+            />
           </div>
         );
       case "Agents":
@@ -4353,7 +4375,12 @@ export function WorkspaceClient({
             companyId={companyId}
             headerActions={
               <>
-                <CreateIssueModal companyId={companyId} projects={projects} agents={agents} />
+                <CreateIssueModal
+                  companyId={companyId}
+                  projects={projects}
+                  agents={agents}
+                  goals={goals.map((g) => ({ id: g.id, title: g.title, projectId: g.projectId }))}
+                />
               </>
             }
           />

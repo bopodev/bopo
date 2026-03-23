@@ -14,7 +14,7 @@ Provide one place to define goals, organize work, run agents, manage approvals, 
 
 ## Core Product Areas
 
-- **Planning**: companies, projects, issues, and goals.
+- **Planning**: companies, projects, issues (each can link to multiple goals), and goals.
 - **Execution**: agent lifecycle, runtime configuration, and heartbeat runs.
 - **Governance**: explicit approvals for sensitive actions.
 - **Observability**: run diagnostics, logs, and cost signals.

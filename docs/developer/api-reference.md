@@ -69,7 +69,7 @@ All attention routes are company-scoped and publish realtime updates.
 ## Issues
 
 - `GET /issues`
-- `GET /issues/:issueId` — full issue row (same shape as list items) plus `attachments[]` with metadata and `downloadPath` for each file. Used by agents for **compact** heartbeat hydration; see [`../guides/agent-heartbeat-protocol.md`](../guides/agent-heartbeat-protocol.md).
+- `GET /issues/:issueId` — full issue row (same shape as list items), including `goalIds`, plus `attachments[]` with metadata and `downloadPath` for each file. Used by agents for **compact** heartbeat hydration; see [`../guides/agent-heartbeat-protocol.md`](../guides/agent-heartbeat-protocol.md).
 - `POST /issues`
 - `PUT /issues/:issueId`
 - `DELETE /issues/:issueId`
@@ -91,12 +91,21 @@ Delegated hiring metadata:
 
 - `POST /issues` accepts optional `metadata.delegatedHiringIntent` for typed hiring delegation context.
 
+Issue ↔ goals:
+
+- `POST /issues` accepts optional `goalIds` (array, default `[]`). `PUT /issues/:issueId` accepts optional `goalIds` to replace the full set (use `[]` to clear). Each goal must belong to the same company; if a goal has a `projectId`, it must match the issue’s project.
+- `GET /issues` and `GET /issues/:issueId` include `goalIds` on each issue.
+
 ## Goals
 
 - `GET /goals`
 - `POST /goals`
 - `PUT /goals/:goalId`
 - `DELETE /goals/:goalId`
+
+Agent-scoped agent goals:
+
+- `POST /goals` / `PUT /goals/:goalId` accept optional `ownerAgentId` for `level: "agent"`. When set, only that agent receives the goal in heartbeat context; omit or set `null` for all agents.
 
 ## Agents
 

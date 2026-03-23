@@ -19,7 +19,7 @@ export default async function IssuePage({
       approvals: false,
       costEntries: true,
       projects: true,
-      goals: false,
+      goals: true,
       governanceInbox: false,
       attentionItems: false,
       auditEvents: false
@@ -31,6 +31,12 @@ export default async function IssuePage({
     notFound();
   }
 
+  const goalsForIssues = workspaceData.goals.map((g) => ({
+    id: g.id,
+    title: g.title,
+    projectId: g.projectId
+  }));
+
   return (
     <IssueDetailPageClient
       companyId={workspaceData.companyId}
@@ -39,6 +45,7 @@ export default async function IssuePage({
       allIssues={workspaceData.issues}
       agents={workspaceData.agents}
       projects={workspaceData.projects}
+      goals={goalsForIssues}
       costEntries={workspaceData.costEntries}
     />
   );

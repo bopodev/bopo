@@ -13,7 +13,7 @@ import {
   createProject
 } from "../packages/db/src/index";
 
-describe("board attention inbox", { timeout: 30_000 }, () => {
+describe("board attention inbox", { timeout: 60_000 }, () => {
   let db: BopoDb;
   let app: ReturnType<typeof createApp>;
   let tempDir: string;

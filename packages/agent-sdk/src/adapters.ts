@@ -2750,6 +2750,11 @@ export function createPrompt(context: HeartbeatContext) {
             `- [${item.issueId}] ${item.title}`,
             `  Project: ${item.projectName ?? item.projectId}`,
             item.parentIssueId ? `  Parent issue: ${item.parentIssueId}` : null,
+            ...(item.goalAncestryChains && item.goalAncestryChains.length > 0
+              ? item.goalAncestryChains.map(
+                  (chain, idx) => `  Linked goal ${idx + 1} (root → leaf): ${chain.join(" → ")}`
+                )
+              : []),
             item.childIssueIds?.length ? `  Sub-issues: ${item.childIssueIds.join(", ")}` : null,
             item.status ? `  Status: ${item.status}` : null,
             item.priority ? `  Priority: ${item.priority}` : null,

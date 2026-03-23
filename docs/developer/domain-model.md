@@ -19,10 +19,11 @@ Create one canonical reference for schema-level terminology and behavior.
   - belongs to company; groups issues and optional local workspace metadata.
 - **Issue**
   - belongs to project and company; can reference `parentIssueId` for hierarchy.
+  - optional many-to-many links to goals via `issue_goals` (company-wide goals or goals whose `projectId` matches the issue’s project).
   - status: `todo`, `in_progress`, `blocked`, `in_review`, `done`, `canceled`.
 - **Goal**
-  - belongs to company; optional project parentage.
-  - level: `company`, `project`, `agent`.
+  - belongs to company; optional project parentage and optional `parentGoalId` tree.
+  - level: `company`, `project`, `agent`; for `agent`, optional `ownerAgentId` scopes the goal to one agent’s heartbeats (omit for all agents).
   - status: `draft`, `active`, `completed`, `archived`.
 
 ## Execution Graph

@@ -15,6 +15,7 @@ import {
   heartbeatRunMessages,
   issueAttachments,
   issueComments,
+  issueGoals,
   issues,
   pluginConfigs,
   pluginRuns,
@@ -29,6 +30,7 @@ import {
 import {
   assertAgentBelongsToCompany,
   assertGoalBelongsToCompany,
+  assertIssueGoalsAssignable,
   assertIssueBelongsToCompany,
   assertProjectBelongsToCompany,
   assertTemplateBelongsToCompany,
@@ -455,6 +457,46 @@ export async function listIssues(db: BopoDb, companyId: string, projectId?: stri
   return db.select().from(issues).where(where).orderBy(desc(issues.updatedAt));
 }
 
+export async function listIssueGoalIdsBatch(db: BopoDb, companyId: string, issueIds: string[]) {
+  const map = new Map<string, string[]>();
+  if (issueIds.length === 0) {
+    return map;
+  }
+  const rows = await db
+    .select({ issueId: issueGoals.issueId, goalId: issueGoals.goalId })
+    .from(issueGoals)
+    .where(and(eq(issueGoals.companyId, companyId), inArray(issueGoals.issueId, issueIds)));
+  for (const row of rows) {
+    const list = map.get(row.issueId) ?? [];
+    list.push(row.goalId);
+    map.set(row.issueId, list);
+  }
+  return map;
+}
+
+export async function syncIssueGoals(
+  db: BopoDb,
+  input: { companyId: string; issueId: string; projectId: string; goalIds: string[] }
+) {
+  const dedupedGoalIds = Array.from(new Set(input.goalIds.map((id) => id.trim()).filter((id) => id.length > 0)));
+  await assertIssueBelongsToCompany(db, input.companyId, input.issueId);
+  await assertIssueGoalsAssignable(db, input.companyId, input.projectId, dedupedGoalIds);
+
+  await db
+    .delete(issueGoals)
+    .where(and(eq(issueGoals.companyId, input.companyId), eq(issueGoals.issueId, input.issueId)));
+
+  if (dedupedGoalIds.length > 0) {
+    await db.insert(issueGoals).values(
+      dedupedGoalIds.map((goalId) => ({
+        issueId: input.issueId,
+        goalId,
+        companyId: input.companyId
+      }))
+    );
+  }
+}
+
 export async function getIssue(db: BopoDb, companyId: string, issueId: string) {
   const [row] = await db
     .select()
@@ -470,6 +512,7 @@ export async function createIssue(
     companyId: string;
     projectId: string;
     parentIssueId?: string | null;
+    goalIds?: string[];
     title: string;
     body?: string;
     externalLink?: string | null;
@@ -488,22 +531,35 @@ export async function createIssue(
     await assertAgentBelongsToCompany(db, input.companyId, input.assigneeAgentId);
   }
   const id = nanoid(12);
-  await db.insert(issues).values({
-    id,
-    companyId: input.companyId,
-    projectId: input.projectId,
-    parentIssueId: input.parentIssueId ?? null,
-    title: input.title,
-    body: input.body,
-    externalLink: input.externalLink?.trim() ? input.externalLink.trim() : null,
-    status: input.status ?? "todo",
-    priority: input.priority ?? "none",
-    assigneeAgentId: input.assigneeAgentId ?? null,
-    labelsJson: JSON.stringify(input.labels ?? []),
-    tagsJson: JSON.stringify(input.tags ?? [])
+  return await db.transaction(async (tx) => {
+    const [row] = await tx
+      .insert(issues)
+      .values({
+        id,
+        companyId: input.companyId,
+        projectId: input.projectId,
+        parentIssueId: input.parentIssueId ?? null,
+        title: input.title,
+        body: input.body,
+        externalLink: input.externalLink?.trim() ? input.externalLink.trim() : null,
+        status: input.status ?? "todo",
+        priority: input.priority ?? "none",
+        assigneeAgentId: input.assigneeAgentId ?? null,
+        labelsJson: JSON.stringify(input.labels ?? []),
+        tagsJson: JSON.stringify(input.tags ?? [])
+      })
+      .returning();
+    if (!row) {
+      throw new RepositoryValidationError("Failed to create issue.");
+    }
+    await syncIssueGoals(tx as unknown as BopoDb, {
+      companyId: input.companyId,
+      issueId: row.id,
+      projectId: input.projectId,
+      goalIds: input.goalIds ?? []
+    });
+    return row;
   });
-
-  return { id, ...input };
 }
 
 export async function updateIssue(
@@ -512,6 +568,7 @@ export async function updateIssue(
     companyId: string;
     id: string;
     projectId?: string;
+    goalIds?: string[];
     title?: string;
     body?: string | null;
     externalLink?: string | null;
@@ -522,6 +579,14 @@ export async function updateIssue(
     tags?: string[];
   }
 ) {
+  const [existing] = await db
+    .select()
+    .from(issues)
+    .where(and(eq(issues.companyId, input.companyId), eq(issues.id, input.id)))
+    .limit(1);
+  if (!existing) {
+    return null;
+  }
   if (input.projectId) {
     await assertProjectBelongsToCompany(db, input.companyId, input.projectId);
   }
@@ -551,7 +616,32 @@ export async function updateIssue(
     )
     .where(and(eq(issues.companyId, input.companyId), eq(issues.id, input.id)))
     .returning();
-  return issue ?? null;
+  if (!issue) {
+    return null;
+  }
+  if (input.goalIds !== undefined) {
+    await syncIssueGoals(db, {
+      companyId: input.companyId,
+      issueId: issue.id,
+      projectId: issue.projectId,
+      goalIds: input.goalIds
+    });
+  } else if (input.projectId && input.projectId !== existing.projectId) {
+    const currentRows = await db
+      .select({ goalId: issueGoals.goalId })
+      .from(issueGoals)
+      .where(and(eq(issueGoals.companyId, input.companyId), eq(issueGoals.issueId, issue.id)));
+    const currentGoalIds = currentRows.map((row) => row.goalId);
+    if (currentGoalIds.length > 0) {
+      await syncIssueGoals(db, {
+        companyId: input.companyId,
+        issueId: issue.id,
+        projectId: issue.projectId,
+        goalIds: currentGoalIds
+      });
+    }
+  }
+  return issue;
 }
 
 export async function deleteIssue(db: BopoDb, companyId: string, id: string) {
@@ -846,6 +936,7 @@ export async function createGoal(
     companyId: string;
     projectId?: string | null;
     parentGoalId?: string | null;
+    ownerAgentId?: string | null;
     level: "company" | "project" | "agent";
     title: string;
     description?: string;
@@ -857,12 +948,16 @@ export async function createGoal(
   if (input.parentGoalId) {
     await assertGoalBelongsToCompany(db, input.companyId, input.parentGoalId);
   }
+  if (input.ownerAgentId) {
+    await assertAgentBelongsToCompany(db, input.companyId, input.ownerAgentId);
+  }
   const id = nanoid(12);
   await db.insert(goals).values({
     id,
     companyId: input.companyId,
     projectId: input.projectId ?? null,
     parentGoalId: input.parentGoalId ?? null,
+    ownerAgentId: input.ownerAgentId?.trim() ? input.ownerAgentId.trim() : null,
     level: input.level,
     title: input.title,
     description: input.description ?? null
@@ -881,6 +976,7 @@ export async function updateGoal(
     id: string;
     projectId?: string | null;
     parentGoalId?: string | null;
+    ownerAgentId?: string | null;
     level?: "company" | "project" | "agent";
     title?: string;
     description?: string | null;
@@ -893,12 +989,21 @@ export async function updateGoal(
   if (input.parentGoalId) {
     await assertGoalBelongsToCompany(db, input.companyId, input.parentGoalId);
   }
+  if (input.ownerAgentId) {
+    await assertAgentBelongsToCompany(db, input.companyId, input.ownerAgentId);
+  }
   const [goal] = await db
     .update(goals)
     .set(
       compactUpdate({
         projectId: input.projectId,
         parentGoalId: input.parentGoalId,
+        ownerAgentId:
+          input.ownerAgentId === undefined
+            ? undefined
+            : input.ownerAgentId?.trim()
+              ? input.ownerAgentId.trim()
+              : null,
         level: input.level,
         title: input.title,
         description: input.description,

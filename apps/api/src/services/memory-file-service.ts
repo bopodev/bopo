@@ -106,6 +106,7 @@ export async function persistHeartbeatMemory(input: {
   goalContext?: {
     companyGoals?: string[];
     projectGoals?: string[];
+    agentGoals?: string[];
   };
 }): Promise<PersistedHeartbeatMemory> {
   const memoryRoot = resolveAgentMemoryRootPath(input.companyId, input.agentId);
@@ -237,6 +238,7 @@ function deriveCandidateFacts(
     goalContext?: {
       companyGoals?: string[];
       projectGoals?: string[];
+      agentGoals?: string[];
     };
   }
 ): MemoryCandidateFact[] {
@@ -575,6 +577,7 @@ function deriveImpactTags(
   goalContext?: {
     companyGoals?: string[];
     projectGoals?: string[];
+    agentGoals?: string[];
   }
 ) {
   const tags = new Set<string>();
@@ -595,7 +598,9 @@ function deriveImpactTags(
   if (scoreTextMatch(fact, missionTokens) > 0) {
     tags.add("mission");
   }
-  const goalTokens = tokenize([...(goalContext?.companyGoals ?? []), ...(goalContext?.projectGoals ?? [])].join(" "));
+  const goalTokens = tokenize(
+    [...(goalContext?.companyGoals ?? []), ...(goalContext?.projectGoals ?? []), ...(goalContext?.agentGoals ?? [])].join(" ")
+  );
   if (scoreTextMatch(fact, goalTokens) > 0) {
     tags.add("goal");
   }
@@ -608,10 +613,13 @@ function computeMissionAlignmentScore(
   goalContext?: {
     companyGoals?: string[];
     projectGoals?: string[];
+    agentGoals?: string[];
   }
 ) {
   const missionTokens = tokenize(mission ?? "");
-  const goalTokens = tokenize([...(goalContext?.companyGoals ?? []), ...(goalContext?.projectGoals ?? [])].join(" "));
+  const goalTokens = tokenize(
+    [...(goalContext?.companyGoals ?? []), ...(goalContext?.projectGoals ?? []), ...(goalContext?.agentGoals ?? [])].join(" ")
+  );
   const missionScore = scoreTextMatch(summary, missionTokens);
   const goalScore = scoreTextMatch(summary, goalTokens);
   return Math.min(1, missionScore * 0.55 + goalScore * 0.45);

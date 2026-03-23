@@ -42,6 +42,41 @@ export async function assertGoalBelongsToCompany(db: BopoDb, companyId: string, 
   }
 }
 
+/** Ensures a goal can be linked to an issue: same company; project-scoped goals must match the issue's project. */
+export async function assertIssueGoalAssignable(
+  db: BopoDb,
+  companyId: string,
+  issueProjectId: string,
+  goalId: string | null | undefined
+) {
+  if (!goalId) {
+    return;
+  }
+  const [goal] = await db
+    .select({ id: goals.id, projectId: goals.projectId })
+    .from(goals)
+    .where(and(eq(goals.companyId, companyId), eq(goals.id, goalId)))
+    .limit(1);
+  if (!goal) {
+    throw new RepositoryValidationError("Goal not found for company.");
+  }
+  if (goal.projectId && goal.projectId !== issueProjectId) {
+    throw new RepositoryValidationError("Goal is scoped to a different project than this issue.");
+  }
+}
+
+/** Validates each goal can be linked to an issue (same company; project goals must match issue project). */
+export async function assertIssueGoalsAssignable(
+  db: BopoDb,
+  companyId: string,
+  issueProjectId: string,
+  goalIds: string[]
+) {
+  for (const goalId of goalIds) {
+    await assertIssueGoalAssignable(db, companyId, issueProjectId, goalId);
+  }
+}
+
 export async function assertAgentBelongsToCompany(db: BopoDb, companyId: string, agentId: string) {
   const [agent] = await db
     .select({ id: agents.id })

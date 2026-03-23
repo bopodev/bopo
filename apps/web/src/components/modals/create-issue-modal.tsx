@@ -1,10 +1,18 @@
 "use client";
 
-import { useState, type ChangeEvent, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import type { IssuePriority, IssueStatus } from "bopodev-contracts";
 import { ApiError, apiDelete, apiPost, apiPostFormData, apiPut } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu";
 import {
   Dialog,
   DialogContent,
@@ -35,6 +43,12 @@ interface ProjectOption {
 interface AgentOption {
   id: string;
   name: string;
+}
+
+interface GoalOption {
+  id: string;
+  title: string;
+  projectId: string | null;
 }
 
 interface IssueAttachmentRow {
@@ -71,6 +85,7 @@ export function CreateIssueModal({
   companyId,
   projects,
   agents,
+  goals = [],
   issue,
   defaultParentIssueId,
   defaultProjectId,
@@ -81,6 +96,7 @@ export function CreateIssueModal({
   companyId: string;
   projects: ProjectOption[];
   agents: AgentOption[];
+  goals?: GoalOption[];
   issue?: {
     id: string;
     projectId: string;
@@ -90,6 +106,7 @@ export function CreateIssueModal({
     status: IssueStatus;
     priority?: string | null;
     assigneeAgentId?: string | null;
+    goalIds?: string[];
     labels?: string[];
   };
   defaultParentIssueId?: string | null;
@@ -107,12 +124,36 @@ export function CreateIssueModal({
   const [status, setStatus] = useState<IssueStatus>(issue?.status ?? "todo");
   const [priority, setPriority] = useState<IssuePriority>(normalizeIssuePriority(issue?.priority));
   const [assigneeAgentId, setAssigneeAgentId] = useState<string>(issue?.assigneeAgentId ?? "unassigned");
+  const [goalIds, setGoalIds] = useState<string[]>(issue?.goalIds ?? []);
   const [labels, setLabels] = useState(issue?.labels?.join(", ") ?? "");
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const isEditing = Boolean(issue);
+
+  const applicableGoals = useMemo(() => {
+    if (!goals.length || !projectId) {
+      return [];
+    }
+    return goals.filter((g) => !g.projectId || g.projectId === projectId);
+  }, [goals, projectId]);
+
+  useEffect(() => {
+    setGoalIds((prev) => prev.filter((id) => applicableGoals.some((g) => g.id === id)));
+  }, [applicableGoals]);
+
+  function toggleIssueGoal(goalId: string, isChecked: boolean) {
+    setGoalIds((current) => {
+      if (isChecked) {
+        if (current.includes(goalId)) {
+          return current;
+        }
+        return [...current, goalId];
+      }
+      return current.filter((id) => id !== goalId);
+    });
+  }
 
   function hydrateFormFromProps() {
     setProjectId(issue?.projectId ?? defaultProjectId ?? projects[0]?.id ?? "");
@@ -122,6 +163,7 @@ export function CreateIssueModal({
     setStatus(issue?.status ?? "todo");
     setPriority(normalizeIssuePriority(issue?.priority));
     setAssigneeAgentId(issue?.assigneeAgentId ?? "unassigned");
+    setGoalIds(issue?.goalIds ?? []);
     setLabels(issue?.labels?.join(", ") ?? "");
     setSelectedFiles([]);
     setError(null);
@@ -151,6 +193,7 @@ export function CreateIssueModal({
         status,
         priority,
         assigneeAgentId: assigneeAgentId === "unassigned" ? null : assigneeAgentId,
+        goalIds,
         labels: labels
           .split(",")
           .map((label) => label.trim())
@@ -179,6 +222,7 @@ export function CreateIssueModal({
         setPriority("none");
         setAssigneeAgentId("unassigned");
         setLabels("");
+        setGoalIds([]);
       }
       setSelectedFiles([]);
       setOpen(false);
@@ -239,6 +283,22 @@ export function CreateIssueModal({
           <div className="ui-dialog-content-scrollable">
             <FieldGroup>
               <Field>
+                <FieldLabelWithHelp
+                  htmlFor="issue-title"
+                  helpText="A short, scannable summary. Shown in lists and links; keep it specific enough to recognize later.">
+                  Title
+                </FieldLabelWithHelp>
+                <Input id="issue-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Improve approval latency" required />
+              </Field>
+              <Field>
+                <FieldLabelWithHelp
+                  htmlFor="issue-description"
+                  helpText="Context, acceptance criteria, and links agents need to execute the work. Markdown-style line breaks are preserved.">
+                  Description
+                </FieldLabelWithHelp>
+                <Textarea id="issue-description" value={body} onChange={(e) => setBody(e.target.value)} placeholder="Describe the work and expected outcome." />
+              </Field>
+              <Field>
                 <FieldLabelWithHelp helpText="Issues live under a project for grouping, permissions, and reporting. Pick where this work belongs.">
                   Project
                 </FieldLabelWithHelp>
@@ -256,70 +316,42 @@ export function CreateIssueModal({
                 </Select>
                 {projects.length === 0 ? <FieldDescription>Create a project first so new issues have a home.</FieldDescription> : null}
               </Field>
-              <Field>
-                <FieldLabelWithHelp
-                  htmlFor="issue-title"
-                  helpText="A short, scannable summary. Shown in lists and links; keep it specific enough to recognize later.">
-                  Issue title
-                </FieldLabelWithHelp>
-                <Input id="issue-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Improve approval latency" required />
-              </Field>
-              <Field>
-                <FieldLabelWithHelp
-                  htmlFor="issue-description"
-                  helpText="Context, acceptance criteria, and links agents need to execute the work. Markdown-style line breaks are preserved.">
-                  Description
-                </FieldLabelWithHelp>
-                <Textarea id="issue-description" value={body} onChange={(e) => setBody(e.target.value)} placeholder="Describe the work and expected outcome." />
-              </Field>
-              <Field>
-                <FieldLabelWithHelp
-                  htmlFor="issue-external-link"
-                  helpText="Optional URL for a pull request, ticket, or doc. Stored as metadata so people can jump straight to the source.">
-                  PR / external link (optional)
-                </FieldLabelWithHelp>
-                <Input
-                  id="issue-external-link"
-                  value={externalLink}
-                  onChange={(e) => setExternalLink(e.target.value)}
-                  placeholder="https://github.com/org/repo/pull/123"
-                />
-                <FieldDescription>Link a GitHub/GitLab PR or any URL related to this issue.</FieldDescription>
-              </Field>
-              <Field>
-                <FieldLabelWithHelp helpText="Workflow column for this issue (e.g. todo → in progress → done). Updates how it appears in boards and filters.">
-                  Status
-                </FieldLabelWithHelp>
-                <Select value={status} onValueChange={(value) => setStatus(value as IssueStatus)}>
-                  <SelectTrigger className={styles.createIssueModalSelectTrigger}>
-                    <SelectValue placeholder="Select a status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {issueStatusOptions.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
-              <Field>
-                <FieldLabelWithHelp helpText="Relative urgency for triage. None is fine for routine work; raise it when timelines or risk demand attention.">
-                  Priority
-                </FieldLabelWithHelp>
-                <Select value={priority} onValueChange={(value) => setPriority(value as IssuePriority)}>
-                  <SelectTrigger className={styles.createIssueModalSelectTrigger}>
-                    <SelectValue placeholder="Select a priority" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {issuePriorityOptions.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
+              <div className={styles.createIssueModalStatusPriorityRow}>
+                <Field>
+                  <FieldLabelWithHelp helpText="Workflow column for this issue (e.g. todo → in progress → done). Updates how it appears in boards and filters.">
+                    Status
+                  </FieldLabelWithHelp>
+                  <Select value={status} onValueChange={(value) => setStatus(value as IssueStatus)}>
+                    <SelectTrigger className={styles.createIssueModalSelectTrigger}>
+                      <SelectValue placeholder="Select a status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {issueStatusOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field>
+                  <FieldLabelWithHelp helpText="Relative urgency for triage. None is fine for routine work; raise it when timelines or risk demand attention.">
+                    Priority
+                  </FieldLabelWithHelp>
+                  <Select value={priority} onValueChange={(value) => setPriority(value as IssuePriority)}>
+                    <SelectTrigger className={styles.createIssueModalSelectTrigger}>
+                      <SelectValue placeholder="Select a priority" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {issuePriorityOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+              </div>
               <Field>
                 <FieldLabelWithHelp helpText="Optional owner for execution. Unassigned issues stay in the pool until someone or an agent picks them up.">
                   Assigned agent
@@ -338,6 +370,47 @@ export function CreateIssueModal({
                   </SelectContent>
                 </Select>
               </Field>
+              {goals.length > 0 ? (
+                <Field>
+                  <FieldLabelWithHelp helpText="Link one or more company or project goals. Agents see each chain in heartbeats so work traces to outcomes.">
+                    Goals
+                  </FieldLabelWithHelp>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className={styles.createIssueModalGoalsTrigger}
+                        disabled={!projectId}>
+                        {!projectId
+                          ? "Select a project first"
+                          : applicableGoals.length === 0
+                            ? "No goals for this project"
+                            : goalIds.length === 0
+                              ? "Select goals"
+                              : `${goalIds.length} selected`}
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="min-w-[var(--radix-dropdown-menu-trigger-width)]">
+                      <DropdownMenuLabel>Attach goals</DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      {applicableGoals.length === 0 ? (
+                        <p className="px-2 py-1.5 text-base text-muted-foreground">No applicable goals.</p>
+                      ) : (
+                        applicableGoals.map((g) => (
+                          <DropdownMenuCheckboxItem
+                            key={g.id}
+                            checked={goalIds.includes(g.id)}
+                            onSelect={(event) => event.preventDefault()}
+                            onCheckedChange={(next) => toggleIssueGoal(g.id, Boolean(next))}>
+                            {g.title}
+                          </DropdownMenuCheckboxItem>
+                        ))
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </Field>
+              ) : null}
               <Field>
                 <FieldLabelWithHelp
                   htmlFor="issue-labels"
@@ -349,6 +422,19 @@ export function CreateIssueModal({
                   value={labels}
                   onChange={(e) => setLabels(e.target.value)}
                   placeholder="bug, onboarding, backend"
+                />
+              </Field>
+              <Field>
+                <FieldLabelWithHelp
+                  htmlFor="issue-external-link"
+                  helpText="Optional URL for a pull request, ticket, or doc. Stored as metadata so people can jump straight to the source.">
+                  PR / external link
+                </FieldLabelWithHelp>
+                <Input
+                  id="issue-external-link"
+                  value={externalLink}
+                  onChange={(e) => setExternalLink(e.target.value)}
+                  placeholder="https://github.com/org/repo/pull/123"
                 />
               </Field>
               <Field>

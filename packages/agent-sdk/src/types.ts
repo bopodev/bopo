@@ -6,6 +6,10 @@ export interface AgentWorkItem {
   issueId: string;
   projectId: string;
   parentIssueId?: string | null;
+  /** Linked planning goals for this issue, if any. */
+  goalIds?: string[];
+  /** Root-to-leaf chain per linked goal (same order as goalIds). */
+  goalAncestryChains?: string[][];
   childIssueIds?: string[];
   projectName?: string | null;
   title: string;
