@@ -992,6 +992,9 @@ body {
 
 .ui-field-content {
   @apply flex flex-1 flex-col gap-1.5 leading-snug;
+  label {
+    @apply mb-0;
+  }
 }
 
 .ui-field-label {
