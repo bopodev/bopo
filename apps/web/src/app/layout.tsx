@@ -5,6 +5,7 @@ import "@/components/ui/shadcn.scss";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ThemePaletteProvider } from "@/components/theme-palette-provider";
 import { Toaster } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import styles from "./layout.module.scss";
 
 const geistSans = Geist({
@@ -36,7 +37,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           storageKey="bopodev-theme-v2"
         >
           <ThemePaletteProvider>
-            {children}
+            <TooltipProvider>{children}</TooltipProvider>
             <Toaster position="bottom-right" />
           </ThemePaletteProvider>
         </ThemeProvider>

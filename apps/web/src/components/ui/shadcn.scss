@@ -872,6 +872,18 @@ body {
   @apply data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0;
 }
 
+.ui-tooltip-content.ui-tooltip-content--label-help {
+  @apply w-max min-w-0 max-w-50 px-2 py-1 text-sm leading-snug text-pretty;
+}
+
+.ui-label-help {
+  @apply inline-flex shrink-0 items-center justify-center rounded-sm p-0.5 text-muted-foreground outline-offset-2 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring;
+}
+
+.ui-label-help svg {
+  @apply size-3.5;
+}
+
 .ui-command {
   @apply flex h-full w-full flex-col overflow-hidden rounded-md border bg-popover text-popover-foreground;
 }

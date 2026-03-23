@@ -48,6 +48,10 @@
   @apply text-base text-destructive;
 }
 
+.createAgentModalLabelWithHelp {
+  @apply items-center gap-1.5;
+}
+
 .createAgentModalEnvTextarea {
   field-sizing: fixed;
   min-width: 0;
