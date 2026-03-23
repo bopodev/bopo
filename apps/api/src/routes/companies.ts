@@ -10,6 +10,7 @@ import { normalizeRuntimeConfig, resolveRuntimeModelForProvider, runtimeConfigTo
 import { buildDefaultCeoBootstrapPrompt } from "../lib/ceo-bootstrap-prompt";
 import { resolveOpencodeRuntimeModel } from "../lib/opencode-model";
 import { resolveDefaultRuntimeCwdForCompany } from "../lib/workspace-policy";
+import { buildCompanyPortabilityExport } from "../services/company-export-service";
 import { canAccessCompany, requireBoardRole, requirePermission } from "../middleware/request-actor";
 import { ensureCompanyBuiltinPluginDefaults } from "../services/plugin-runtime";
 import { ensureCompanyBuiltinTemplateDefaults } from "../services/template-catalog";
@@ -21,7 +22,7 @@ const createCompanySchema = z.object({
   name: z.string().min(1),
   mission: z.string().optional(),
   providerType: z
-    .enum(["codex", "claude_code", "cursor", "gemini_cli", "opencode", "openai_api", "anthropic_api", "shell"])
+    .enum(["codex", "claude_code", "cursor", "gemini_cli", "opencode", "openai_api", "anthropic_api", "http", "shell"])
     .optional(),
   runtimeModel: z.string().optional()
 });
@@ -51,6 +52,21 @@ export function createCompaniesRouter(ctx: AppContext) {
       companies.filter((company) => visibleCompanyIds.has(company.id)),
       "companies.list.filtered"
     );
+  });
+
+  router.get("/:companyId/export", async (req, res) => {
+    const companyId = readCompanyIdParam(req);
+    if (!companyId) {
+      return sendError(res, "Missing company id.", 422);
+    }
+    if (!canAccessCompany(req, companyId)) {
+      return sendError(res, "Actor does not have access to this company.", 403);
+    }
+    const payload = await buildCompanyPortabilityExport(ctx.db, companyId);
+    if (!payload) {
+      return sendError(res, "Company not found.", 404);
+    }
+    return sendOk(res, payload);
   });
 
   router.post("/", requireBoardRole, async (req, res) => {
@@ -171,6 +187,7 @@ function parseAgentProvider(value: unknown) {
     value === "opencode" ||
     value === "openai_api" ||
     value === "anthropic_api" ||
+    value === "http" ||
     value === "shell"
   ) {
     return value;

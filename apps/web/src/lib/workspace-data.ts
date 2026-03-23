@@ -42,6 +42,7 @@ export interface WorkspaceData {
     priority: string;
     labels: string[];
     tags: string[];
+    externalLink?: string | null;
     createdAt: string;
     updatedAt: string;
   }>;

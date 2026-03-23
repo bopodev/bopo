@@ -18,6 +18,11 @@ export async function listCompanies(db: BopoDb) {
   return db.select().from(companies).orderBy(desc(companies.createdAt));
 }
 
+export async function getCompany(db: BopoDb, id: string) {
+  const [row] = await db.select().from(companies).where(eq(companies.id, id)).limit(1);
+  return row ?? null;
+}
+
 export async function updateCompany(
   db: BopoDb,
   input: { id: string; name?: string; mission?: string | null }

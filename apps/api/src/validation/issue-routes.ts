@@ -24,6 +24,7 @@ export const createIssueSchema = z.object({
   status: z.enum(["todo", "in_progress", "blocked", "in_review", "done", "canceled"]).default("todo"),
   priority: z.enum(["none", "low", "medium", "high", "urgent"]).default("none"),
   assigneeAgentId: z.string().nullable().optional(),
+  externalLink: z.string().max(2048).nullable().optional(),
   labels: z.array(z.string()).default([]),
   tags: z.array(z.string()).default([])
 });
@@ -69,6 +70,7 @@ export const updateIssueSchema = z
     status: z.enum(["todo", "in_progress", "blocked", "in_review", "done", "canceled"]).optional(),
     priority: z.enum(["none", "low", "medium", "high", "urgent"]).optional(),
     assigneeAgentId: z.string().nullable().optional(),
+    externalLink: z.string().max(2048).nullable().optional(),
     labels: z.array(z.string()).optional(),
     tags: z.array(z.string()).optional()
   })

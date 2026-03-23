@@ -93,12 +93,24 @@ function parseStringArray(value: unknown) {
   }
 }
 
+function normalizeOptionalExternalLink(value: string | null | undefined) {
+  if (value === undefined) {
+    return undefined;
+  }
+  const trimmed = value?.trim() ?? "";
+  return trimmed.length > 0 ? trimmed : null;
+}
+
 function toIssueResponse(issue: Record<string, unknown>) {
   const labels = parseStringArray(issue.labelsJson);
   const tags = parseStringArray(issue.tagsJson);
   const { labelsJson: _labelsJson, tagsJson: _tagsJson, ...rest } = issue;
+  const externalRaw = rest.externalLink;
+  const externalLink =
+    typeof externalRaw === "string" && externalRaw.trim().length > 0 ? externalRaw.trim() : null;
   return {
     ...rest,
+    externalLink,
     labels,
     tags
   };
@@ -163,6 +175,7 @@ export function createIssuesRouter(ctx: AppContext) {
       parentIssueId: parsed.data.parentIssueId,
       title: parsed.data.title,
       body: applyIssueMetadataToBody(parsed.data.body, parsed.data.metadata),
+      externalLink: normalizeOptionalExternalLink(parsed.data.externalLink ?? null),
       status: parsed.data.status,
       priority: parsed.data.priority,
       assigneeAgentId: parsed.data.assigneeAgentId,
@@ -525,7 +538,11 @@ export function createIssuesRouter(ctx: AppContext) {
       }
     }
 
-    const issue = await updateIssue(ctx.db, { companyId: req.companyId!, id: req.params.issueId, ...parsed.data });
+    const updateBody = { ...parsed.data };
+    if (updateBody.externalLink !== undefined) {
+      updateBody.externalLink = normalizeOptionalExternalLink(updateBody.externalLink) ?? null;
+    }
+    const issue = await updateIssue(ctx.db, { companyId: req.companyId!, id: req.params.issueId, ...updateBody });
     if (!issue) {
       return sendError(res, "Issue not found.", 404);
     }

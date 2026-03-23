@@ -85,6 +85,7 @@ export function CreateIssueModal({
     projectId: string;
     title: string;
     body?: string | null;
+    externalLink?: string | null;
     status: IssueStatus;
     priority?: string | null;
     assigneeAgentId?: string | null;
@@ -101,6 +102,7 @@ export function CreateIssueModal({
   const [projectId, setProjectId] = useState(issue?.projectId ?? defaultProjectId ?? projects[0]?.id ?? "");
   const [title, setTitle] = useState(issue?.title ?? "");
   const [body, setBody] = useState(issue?.body ?? "");
+  const [externalLink, setExternalLink] = useState(issue?.externalLink ?? "");
   const [status, setStatus] = useState<IssueStatus>(issue?.status ?? "todo");
   const [priority, setPriority] = useState<IssuePriority>(normalizeIssuePriority(issue?.priority));
   const [assigneeAgentId, setAssigneeAgentId] = useState<string>(issue?.assigneeAgentId ?? "unassigned");
@@ -115,6 +117,7 @@ export function CreateIssueModal({
     setProjectId(issue?.projectId ?? defaultProjectId ?? projects[0]?.id ?? "");
     setTitle(issue?.title ?? "");
     setBody(issue?.body ?? "");
+    setExternalLink(issue?.externalLink ?? "");
     setStatus(issue?.status ?? "todo");
     setPriority(normalizeIssuePriority(issue?.priority));
     setAssigneeAgentId(issue?.assigneeAgentId ?? "unassigned");
@@ -143,6 +146,7 @@ export function CreateIssueModal({
         parentIssueId: isEditing ? undefined : defaultParentIssueId ?? undefined,
         title,
         body,
+        externalLink: externalLink.trim() || null,
         status,
         priority,
         assigneeAgentId: assigneeAgentId === "unassigned" ? null : assigneeAgentId,
@@ -169,6 +173,7 @@ export function CreateIssueModal({
       if (!isEditing) {
         setTitle("");
         setBody("");
+        setExternalLink("");
         setStatus("todo");
         setPriority("none");
         setAssigneeAgentId("unassigned");
@@ -255,6 +260,16 @@ export function CreateIssueModal({
               <Field>
                 <FieldLabel htmlFor="issue-description">Description</FieldLabel>
                 <Textarea id="issue-description" value={body} onChange={(e) => setBody(e.target.value)} placeholder="Describe the work and expected outcome." />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="issue-external-link">PR / external link (optional)</FieldLabel>
+                <Input
+                  id="issue-external-link"
+                  value={externalLink}
+                  onChange={(e) => setExternalLink(e.target.value)}
+                  placeholder="https://github.com/org/repo/pull/123"
+                />
+                <FieldDescription>Link a GitHub/GitLab PR or any URL related to this issue.</FieldDescription>
               </Field>
               <Field>
                 <FieldLabel>Status</FieldLabel>

@@ -2,6 +2,8 @@
 
 This page contains developer-focused details that are intentionally kept out of the top-level `README.md`.
 
+For a short “clone → dev → test” loop, see the repo root [`DEVELOPING.md`](../DEVELOPING.md).
+
 For the full docs map, start at [`docs/index.md`](./index.md).
 
 ## Architecture

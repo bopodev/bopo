@@ -113,6 +113,8 @@ export const IssueSchema = z.object({
   parentIssueId: EntityIdSchema.nullable(),
   title: z.string().min(1),
   body: z.string().nullable().optional(),
+  /** PR URL, compare view, or other external link (optional). */
+  externalLink: z.string().max(2048).nullable().optional(),
   status: IssueStatusSchema,
   priority: IssuePrioritySchema,
   assigneeAgentId: EntityIdSchema.nullable(),

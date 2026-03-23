@@ -2,6 +2,7 @@
 import { Command } from "commander";
 import { cancel, outro } from "@clack/prompts";
 import { runDoctorCommand } from "./commands/doctor";
+import { runIssueShellEnvCommand } from "./commands/issue-shell-env";
 import { runOnboardFlow } from "./commands/onboard";
 import { runStartCommand } from "./commands/start";
 import { runUpgradeCommand } from "./commands/upgrade";
@@ -60,6 +61,37 @@ program
       process.exitCode = 1;
     }
   });
+
+const issueCommand = program.command("issue").description("Issue helpers for terminal workflows");
+issueCommand
+  .command("shell-env <issueId>")
+  .description("Print shell exports for BOPODEV_* and cd to the project primary workspace cwd when set")
+  .option("--api-url <url>", "API base URL", process.env.BOPODEV_API_URL ?? "http://localhost:4020")
+  .option("--company-id <id>", "Company id (default: BOPODEV_COMPANY_ID)")
+  .option("--json", "Print JSON instead of shell exports", false)
+  .action(
+    async (
+      issueId: string,
+      opts: { apiUrl: string; companyId?: string; json: boolean }
+    ) => {
+      try {
+        const companyId = (opts.companyId ?? process.env.BOPODEV_COMPANY_ID ?? "").trim();
+        if (!companyId) {
+          cancel("Set --company-id or BOPODEV_COMPANY_ID.");
+          process.exitCode = 1;
+          return;
+        }
+        await runIssueShellEnvCommand(issueId, {
+          apiUrl: opts.apiUrl,
+          companyId,
+          json: opts.json
+        });
+      } catch (error) {
+        cancel(String(error));
+        process.exitCode = 1;
+      }
+    }
+  );
 
 program
   .command("upgrade")

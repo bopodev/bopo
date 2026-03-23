@@ -55,6 +55,7 @@ interface IssueRow {
   priority: string;
   labels: string[];
   tags: string[];
+  externalLink?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -876,6 +877,22 @@ export function IssueDetailPageClient({
           )}
         </CardContent>
       </Card>
+
+      {issue.externalLink?.trim() ? (
+        <Card>
+          <CardContent className="ui-detail-sidebar-section">
+            <div className="ui-property-label">External link</div>
+            <a
+              href={issue.externalLink.trim()}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm break-all underline underline-offset-2"
+            >
+              {issue.externalLink.trim()}
+            </a>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {actionError ? (
             <Alert variant="destructive">

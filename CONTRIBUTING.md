@@ -4,6 +4,8 @@ Thanks for contributing.
 
 ## Development Setup
 
+See **[DEVELOPING.md](./DEVELOPING.md)** for ports, migrations, CLI helpers, and API export notes.
+
 Preferred one-shot setup:
 
 1. Run onboarding: `pnpm onboard`

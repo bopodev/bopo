@@ -472,6 +472,7 @@ export async function createIssue(
     parentIssueId?: string | null;
     title: string;
     body?: string;
+    externalLink?: string | null;
     status?: string;
     priority?: string;
     assigneeAgentId?: string | null;
@@ -494,6 +495,7 @@ export async function createIssue(
     parentIssueId: input.parentIssueId ?? null,
     title: input.title,
     body: input.body,
+    externalLink: input.externalLink?.trim() ? input.externalLink.trim() : null,
     status: input.status ?? "todo",
     priority: input.priority ?? "none",
     assigneeAgentId: input.assigneeAgentId ?? null,
@@ -512,6 +514,7 @@ export async function updateIssue(
     projectId?: string;
     title?: string;
     body?: string | null;
+    externalLink?: string | null;
     status?: string;
     priority?: string;
     assigneeAgentId?: string | null;
@@ -532,6 +535,12 @@ export async function updateIssue(
         projectId: input.projectId,
         title: input.title,
         body: input.body,
+        externalLink:
+          input.externalLink === undefined
+            ? undefined
+            : input.externalLink?.trim()
+              ? input.externalLink.trim()
+              : null,
         status: input.status,
         priority: input.priority,
         assigneeAgentId: input.assigneeAgentId,

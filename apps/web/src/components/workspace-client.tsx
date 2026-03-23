@@ -69,77 +69,19 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { ModelPricingRow, TemplateRow } from "@/components/workspace/types";
-
-const MODELS_PROVIDER_FALLBACKS = ["openai_api", "anthropic_api", "opencode", "gemini_api"] as const;
-
-function resolveModelCatalogProvider(providerType: string) {
-  const normalizedProvider = providerType.trim();
-  if (normalizedProvider === "opencode") {
-    return "opencode";
-  }
-  if (normalizedProvider === "gemini_api" || normalizedProvider === "gemini_cli") {
-    return "gemini_api";
-  }
-  if (normalizedProvider === "anthropic_api" || normalizedProvider === "claude_code") {
-    return "anthropic_api";
-  }
-  if (
-    normalizedProvider === "openai_api" ||
-    normalizedProvider === "codex" ||
-    normalizedProvider === "cursor"
-  ) {
-    return "openai_api";
-  }
-  return null;
-}
-
-function normalizeModelIdForCatalog(providerType: string, modelId: string | null | undefined) {
-  const normalizedModel = modelId?.trim();
-  if (!normalizedModel) {
-    return null;
-  }
-  if (providerType === "opencode" && normalizedModel === "big-pickle") {
-    return "opencode/big-pickle";
-  }
-  return normalizedModel;
-}
-
-function resolveRuntimeProviderForModelDefaults(providerType: string) {
-  const normalizedProviderType = providerType.trim();
-  if (
-    normalizedProviderType === "codex" ||
-    normalizedProviderType === "claude_code" ||
-    normalizedProviderType === "opencode" ||
-    normalizedProviderType === "gemini_cli" ||
-    normalizedProviderType === "openai_api" ||
-    normalizedProviderType === "anthropic_api" ||
-    normalizedProviderType === "http" ||
-    normalizedProviderType === "shell"
-  ) {
-    return normalizedProviderType;
-  }
-  if (normalizedProviderType === "gemini_api") {
-    return "gemini_cli";
-  }
-  return null;
-}
-
-function resolveNamedModelForAgent(agent: {
-  providerType: string;
-  runtimeModel?: string | null;
-  stateBlob?: string;
-}) {
-  const configuredModel = agent.runtimeModel?.trim() || parseRuntimeModelFromStateBlob(agent.stateBlob);
-  if (configuredModel) {
-    return configuredModel;
-  }
-  const runtimeProvider = resolveRuntimeProviderForModelDefaults(agent.providerType);
-  if (!runtimeProvider) {
-    return null;
-  }
-  const fallback = getSupportedModelOptionsForProvider(runtimeProvider).find((option) => option.value.trim().length > 0);
-  return fallback?.value ?? null;
-}
+import {
+  MODELS_PROVIDER_FALLBACKS,
+  normalizeModelIdForCatalog,
+  parseRuntimeModelFromStateBlob,
+  resolveModelCatalogProvider,
+  resolveNamedModelForAgent
+} from "@/components/workspace/workspace-client-model";
+import {
+  buildRecentDayKeys,
+  formatMonthLabel,
+  formatRelativeAgeCompact,
+  monthKeyFromDate
+} from "@/components/workspace/workspace-client-time";
 
 const AgentRuntimeDefaultsCard = dynamic(
   () => import("@/components/agent-runtime-defaults-card").then((module) => module.AgentRuntimeDefaultsCard),
@@ -172,6 +114,7 @@ interface IssueRow {
   priority: string;
   labels: string[];
   tags: string[];
+  externalLink?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -222,18 +165,6 @@ function isRuntimeDefaultsProviderType(value: unknown): value is RuntimeDefaults
     value === "http" ||
     value === "shell"
   );
-}
-
-function parseRuntimeModelFromStateBlob(rawStateBlob: string | undefined) {
-  if (!rawStateBlob) {
-    return "";
-  }
-  try {
-    const parsed = JSON.parse(rawStateBlob) as { runtime?: { model?: unknown } };
-    return typeof parsed.runtime?.model === "string" ? parsed.runtime.model : "";
-  } catch {
-    return "";
-  }
 }
 
 interface HeartbeatRunRow {
@@ -889,64 +820,6 @@ function formatAttentionContextSummary(contextSummary: string, maxLength = 120) 
     return focused;
   }
   return `${focused.slice(0, Math.max(0, maxLength - 3)).trimEnd()}...`;
-}
-
-function formatRelativeAgeCompact(timestamp: string | null) {
-  if (!timestamp) {
-    return "n/a";
-  }
-  const ageMs = Date.now() - new Date(timestamp).getTime();
-  if (!Number.isFinite(ageMs)) {
-    return "n/a";
-  }
-  const ageHours = ageMs / (1000 * 60 * 60);
-  if (ageHours < 1) {
-    return `${Math.max(Math.round(ageHours * 60), 1)}m`;
-  }
-  if (ageHours < 24) {
-    return `${ageHours.toFixed(1)}h`;
-  }
-  return `${(ageHours / 24).toFixed(1)}d`;
-}
-
-function monthKeyFromDate(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "unknown";
-  }
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  return `${date.getFullYear()}-${month}`;
-}
-
-function formatMonthLabel(monthKey: string) {
-  const match = monthKey.match(/^(\d{4})-(\d{2})$/);
-  if (!match) {
-    return monthKey;
-  }
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  return new Date(year, month - 1, 1).toLocaleString(undefined, { month: "long", year: "numeric" });
-}
-
-function dayKeyFromDate(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return null;
-  }
-  date.setHours(0, 0, 0, 0);
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-}
-
-function buildRecentDayKeys(days: number) {
-  const now = new Date();
-  const dayKeys: string[] = [];
-  for (let i = days - 1; i >= 0; i -= 1) {
-    const day = new Date(now);
-    day.setHours(0, 0, 0, 0);
-    day.setDate(day.getDate() - i);
-    dayKeys.push(`${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`);
-  }
-  return dayKeys;
 }
 
 export function WorkspaceClient({
@@ -3142,14 +3015,7 @@ export function WorkspaceClient({
     if (!isDashboardNav) {
       return [];
     }
-    const now = new Date();
-    const dayKeys: string[] = [];
-    for (let i = 13; i >= 0; i -= 1) {
-      const day = new Date(now);
-      day.setHours(0, 0, 0, 0);
-      day.setDate(day.getDate() - i);
-      dayKeys.push(`${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`);
-    }
+    const dayKeys = buildRecentDayKeys(14);
     const pendingApprovalsByRequester = new Map<string, number>();
     for (const inboxItem of governanceInbox) {
       if (inboxItem.approval.status !== "pending") {
