@@ -232,7 +232,7 @@ export function IssueWorkspace({
       },
       {
         id: "assignee",
-        header: "Assignee",
+        header: "Agent",
         cell: ({ row }) => (
           <div className={styles.savedViewContainer5}>
             {row.original.assigneeAgentId ? agents.find((agent) => agent.id === row.original.assigneeAgentId)?.name ?? "Unknown" : "Unassigned"}

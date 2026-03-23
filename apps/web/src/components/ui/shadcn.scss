@@ -1352,7 +1352,7 @@ body {
 }
 
 .ui-shell-group-label {
-  @apply px-2 text-sm font-bold text-sidebar-foreground/45 tracking-wider uppercase;
+  @apply px-2 pb-0 text-sm font-bold text-sidebar-foreground/45 tracking-wider uppercase mb-2;
 }
 
 .ui-shell-nav {
