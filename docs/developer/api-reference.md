@@ -89,7 +89,7 @@ Attachments:
 
 Delegated hiring metadata:
 
-- `POST /issues` accepts optional `metadata.delegatedHiringIntent` for typed hiring delegation context.
+- `POST /issues` accepts optional `metadata.delegatedHiringIntent` for typed hiring delegation context (e.g. `requestedRoleKey`, `requestedTitle`, `requestedCapabilities`—nullable string, max 4000—so the hiring manager can pass suggested org-chart text for the new hire).
 
 Issue ↔ goals:
 
@@ -108,6 +108,8 @@ Agent-scoped agent goals:
 - `POST /goals` / `PUT /goals/:goalId` accept optional `ownerAgentId` for `level: "agent"`. When set, only that agent receives the goal in heartbeat context; omit or set `null` for all agents.
 
 ## Agents
+
+- Agent resources include optional `capabilities` (nullable string, max 4000 characters): human-readable description of what the agent can do, returned on `GET /agents` and accepted on `POST /agents` and `PUT /agents/:agentId` (empty string normalizes to `null`).
 
 - `GET /agents`
 - `GET /agents/hiring-delegate`

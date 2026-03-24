@@ -1032,6 +1032,7 @@ export async function createAgent(
     role: string;
     roleKey?: string | null;
     title?: string | null;
+    capabilities?: string | null;
     name: string;
     providerType:
       | "claude_code"
@@ -1073,6 +1074,7 @@ export async function createAgent(
     role: input.role,
     roleKey: input.roleKey ?? null,
     title: input.title ?? null,
+    capabilities: input.capabilities ?? null,
     name: input.name,
     providerType: input.providerType,
     heartbeatCron: input.heartbeatCron,
@@ -1108,6 +1110,7 @@ export async function updateAgent(
     role?: string;
     roleKey?: string | null;
     title?: string | null;
+    capabilities?: string | null;
     name?: string;
     providerType?:
       | "claude_code"
@@ -1148,6 +1151,7 @@ export async function updateAgent(
         role: input.role,
         roleKey: input.roleKey,
         title: input.title,
+        capabilities: input.capabilities,
         name: input.name,
         providerType: input.providerType,
         status: input.status,

@@ -85,6 +85,15 @@ export interface HeartbeatContext {
     commentBody?: string | null;
     issueIds?: string[];
   };
+  /** Company agents (non-terminated), sorted by name; used for delegation and task routing hints. */
+  teamRoster?: Array<{
+    id: string;
+    name: string;
+    role: string;
+    title?: string | null;
+    capabilities?: string | null;
+    status: string;
+  }>;
 }
 
 /**

@@ -41,6 +41,7 @@ interface AgentRow {
   name: string;
   avatarSeed?: string | null;
   role: string;
+  capabilities?: string | null;
   managerAgentId: string | null;
   status: string;
   providerType: string;
@@ -1175,6 +1176,10 @@ export function AgentDetailPageClient({
         <CardContent className="ui-config-card-stack">
           <ConfigRow label="Agent ID" value={agent.id} />
           <ConfigRow label="Role" value={agent.role ?? "Not set"} />
+          <ConfigRow
+            label="Capabilities"
+            value={agent.capabilities?.trim() ? agent.capabilities.trim() : "Not set"}
+          />
           <ConfigRow label="Status" value={liveStatus} detail={liveStatusDetail} />
           <ConfigRow label="Heartbeat" value={formatHeartbeatCadence(agent.heartbeatCron)} />
         </CardContent>
@@ -1232,6 +1237,7 @@ export function AgentDetailPageClient({
           runtimeModel: agent.runtimeModel,
           runtimeThinkingEffort: agent.runtimeThinkingEffort,
           bootstrapPrompt: agent.bootstrapPrompt,
+          capabilities: agent.capabilities,
           runtimeTimeoutSec: agent.runtimeTimeoutSec,
           interruptGraceSec: agent.interruptGraceSec,
           runPolicyJson: agent.runPolicyJson,

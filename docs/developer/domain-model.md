@@ -30,6 +30,7 @@ Create one canonical reference for schema-level terminology and behavior.
 
 - **Agent**
   - role + provider + runtime config + budget + cadence.
+  - optional free-text `capabilities` for org-chart visibility and delegation hints (included in heartbeat team roster).
   - status: `idle`, `running`, `paused`, `terminated`.
   - leadership behavior is capability-driven (`canHireAgents`) with policy-based delegate resolution.
 - **Provider type**

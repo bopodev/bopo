@@ -16,7 +16,8 @@ export const createIssueSchema = z.object({
           requestedName: z.string().nullable().optional(),
           requestedManagerAgentId: z.string().nullable().optional(),
           requestedProviderType: z.string().nullable().optional(),
-          requestedRuntimeModel: z.string().nullable().optional()
+          requestedRuntimeModel: z.string().nullable().optional(),
+          requestedCapabilities: z.string().max(4000).nullable().optional()
         })
         .optional()
     })

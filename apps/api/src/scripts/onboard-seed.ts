@@ -139,6 +139,8 @@ export async function ensureOnboardingSeed(input: {
           role: "CEO",
           roleKey: "ceo",
           title: "CEO",
+          capabilities:
+            "Company leadership: priorities, hiring, governance, and aligning agents to mission and budget.",
           name: "CEO",
           providerType: agentProvider,
           heartbeatCron: "*/5 * * * *",

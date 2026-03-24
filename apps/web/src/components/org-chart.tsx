@@ -16,6 +16,7 @@ interface AgentNode {
   role: string;
   roleKey?: AgentRoleKey | null;
   title?: string | null;
+  capabilities?: string | null;
   managerAgentId: string | null;
   status: string;
   providerType: string;
@@ -122,6 +123,16 @@ function normalizeRoleKey(value: string | null | undefined): AgentRoleKey | null
   return AGENT_ROLE_KEYS.includes(normalized as AgentRoleKey) ? (normalized as AgentRoleKey) : null;
 }
 
+const ORG_CHART_CAPABILITIES_MAX = 120;
+
+function truncateOrgCapabilities(text: string) {
+  const t = text.trim();
+  if (t.length <= ORG_CHART_CAPABILITIES_MAX) {
+    return t;
+  }
+  return `${t.slice(0, ORG_CHART_CAPABILITIES_MAX)}…`;
+}
+
 function formatRole(agent: Pick<AgentNode, "role" | "roleKey" | "title">) {
   const title = typeof agent.title === "string" ? agent.title.trim() : "";
   if (title) {
@@ -167,6 +178,9 @@ export function OrgChart({
           <div className={styles.orgCardText}>
             <div className={styles.orgCardName}>{agent.name}</div>
             <div className={styles.orgCardMeta}>{formatRole(agent)}</div>
+            {agent.capabilities?.trim() ? (
+              <div className={styles.orgCardCapabilities}>{truncateOrgCapabilities(agent.capabilities)}</div>
+            ) : null}
           </div>
         </div>
       </div>
@@ -223,6 +237,9 @@ export function OrgChart({
               <Badge variant="outline">{node.agent.providerType}</Badge>
               <Badge variant="outline">{node.agent.status}</Badge>
             </div>
+            {node.agent.capabilities?.trim() ? (
+              <p className="text-xs text-muted-foreground">{truncateOrgCapabilities(node.agent.capabilities)}</p>
+            ) : null}
             {node.reports.length > 0 ? (
               <Accordion type="multiple" className="pl-2 border-l">
                 {node.reports.map((report) => renderMobileBranch(report))}

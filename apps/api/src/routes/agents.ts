@@ -100,6 +100,7 @@ const UPDATE_AGENT_ALLOWED_KEYS = new Set([
   "role",
   "roleKey",
   "title",
+  "capabilities",
   "name",
   "providerType",
   "status",
@@ -466,6 +467,7 @@ export function createAgentsRouter(ctx: AppContext) {
       role: resolveAgentRoleText(parsed.data.role, parsed.data.roleKey, parsed.data.title),
       roleKey: normalizeRoleKey(parsed.data.roleKey),
       title: normalizeTitle(parsed.data.title),
+      capabilities: normalizeCapabilities(parsed.data.capabilities),
       name: parsed.data.name,
       providerType: parsed.data.providerType,
       heartbeatCron: parsed.data.heartbeatCron,
@@ -614,6 +616,8 @@ export function createAgentsRouter(ctx: AppContext) {
             : undefined,
         roleKey: parsed.data.roleKey !== undefined ? normalizeRoleKey(parsed.data.roleKey) : undefined,
         title: parsed.data.title !== undefined ? normalizeTitle(parsed.data.title) : undefined,
+        capabilities:
+          parsed.data.capabilities !== undefined ? normalizeCapabilities(parsed.data.capabilities) : undefined,
         name: parsed.data.name,
         providerType: parsed.data.providerType,
         status: parsed.data.status,
@@ -860,6 +864,11 @@ function normalizeRoleKey(input: string | null | undefined) {
 }
 
 function normalizeTitle(input: string | null | undefined) {
+  const normalized = input?.trim();
+  return normalized ? normalized : null;
+}
+
+function normalizeCapabilities(input: string | null | undefined) {
   const normalized = input?.trim();
   return normalized ? normalized : null;
 }

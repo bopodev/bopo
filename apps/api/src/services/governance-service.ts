@@ -60,30 +60,6 @@ const approvalGatedActions = new Set([
 const hireAgentPayloadSchema = AgentCreateRequestSchema.extend({
   sourceIssueId: z.string().min(1).optional(),
   sourceIssueIds: z.array(z.string().min(1)).default([]),
-  delegationIntent: z
-    .object({
-      intentType: z.literal("agent_hiring_request"),
-      requestedRole: z.string().nullable().optional(),
-      requestedName: z.string().nullable().optional(),
-      requestedManagerAgentId: z.string().nullable().optional(),
-      requestedProviderType: z
-        .enum([
-          "claude_code",
-          "codex",
-          "cursor",
-          "opencode",
-          "gemini_cli",
-          "openai_api",
-          "anthropic_api",
-          "openclaw_gateway",
-          "http",
-          "shell"
-        ])
-        .nullable()
-        .optional(),
-      requestedRuntimeModel: z.string().nullable().optional()
-    })
-    .optional(),
   runtimeCommand: z.string().optional(),
   runtimeArgs: z.array(z.string()).optional(),
   runtimeCwd: z.string().optional(),
@@ -321,6 +297,7 @@ async function applyApprovalAction(db: BopoDb, companyId: string, action: string
       role: resolveAgentRoleText(parsed.data.role, parsed.data.roleKey, parsed.data.title),
       roleKey: normalizeRoleKey(parsed.data.roleKey),
       title: normalizeTitle(parsed.data.title),
+      capabilities: normalizeCapabilities(parsed.data.capabilities),
       name: parsed.data.name,
       providerType: parsed.data.providerType,
       heartbeatCron: parsed.data.heartbeatCron,
@@ -746,6 +723,11 @@ function normalizeRoleKey(input: string | null | undefined) {
 }
 
 function normalizeTitle(input: string | null | undefined) {
+  const normalized = input?.trim();
+  return normalized ? normalized : null;
+}
+
+function normalizeCapabilities(input: string | null | undefined) {
   const normalized = input?.trim();
   return normalized ? normalized : null;
 }

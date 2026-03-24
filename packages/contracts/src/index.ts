@@ -247,11 +247,14 @@ export const TemplateManifestGoalSchema = z.object({
   description: z.string().optional(),
   projectKey: z.string().optional()
 });
+const agentCapabilitiesTextSchema = z.string().max(4000);
+
 export const TemplateManifestAgentSchema = z.object({
   key: z.string().min(1),
   role: z.string().min(1),
   roleKey: AgentRoleKeySchema.optional(),
   title: z.string().nullable().optional(),
+  capabilities: agentCapabilitiesTextSchema.nullable().optional(),
   name: z.string().min(1),
   providerType: z.lazy(() => ProviderTypeSchema).default("shell"),
   heartbeatCron: z.string().default("*/5 * * * *"),
@@ -733,6 +736,7 @@ export const AgentCreateRequestSchema = z.object({
   role: z.string().min(1).optional(),
   roleKey: AgentRoleKeySchema.optional(),
   title: z.string().nullable().optional(),
+  capabilities: agentCapabilitiesTextSchema.nullable().optional(),
   name: z.string().min(1),
   providerType: ProviderTypeSchema,
   heartbeatCron: z.string().min(1),
@@ -749,7 +753,8 @@ export const AgentCreateRequestSchema = z.object({
       requestedName: z.string().nullable().optional(),
       requestedManagerAgentId: z.string().nullable().optional(),
       requestedProviderType: ProviderTypeSchema.nullable().optional(),
-      requestedRuntimeModel: z.string().nullable().optional()
+      requestedRuntimeModel: z.string().nullable().optional(),
+      requestedCapabilities: agentCapabilitiesTextSchema.nullable().optional()
     })
     .optional(),
   requestApproval: z.boolean().default(true),
@@ -763,6 +768,7 @@ export const AgentUpdateRequestSchema = z
     role: z.string().min(1).optional(),
     roleKey: AgentRoleKeySchema.nullable().optional(),
     title: z.string().nullable().optional(),
+    capabilities: agentCapabilitiesTextSchema.nullable().optional(),
     name: z.string().min(1).optional(),
     providerType: ProviderTypeSchema.optional(),
     status: AgentStatusSchema.optional(),
@@ -781,6 +787,7 @@ export const AgentSchema = z.object({
   role: z.string().min(1),
   roleKey: AgentRoleKeySchema.nullable().optional(),
   title: z.string().nullable().optional(),
+  capabilities: agentCapabilitiesTextSchema.nullable().optional(),
   name: z.string().min(1),
   providerType: ProviderTypeSchema,
   status: AgentStatusSchema,

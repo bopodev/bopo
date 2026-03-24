@@ -148,6 +148,7 @@ export function CreateAgentModal({
     role: string;
     roleKey?: AgentRoleKey | null;
     title?: string | null;
+    capabilities?: string | null;
     managerAgentId?: string | null;
     providerType: ProviderType;
     heartbeatCron?: string;
@@ -193,6 +194,7 @@ export function CreateAgentModal({
   const [name, setName] = useState(agent?.name ?? "");
   const [roleKey, setRoleKey] = useState<AgentRoleKey>(normalizeRoleKey(agent?.roleKey, agent?.role));
   const [title, setTitle] = useState(agent?.title ?? "");
+  const [capabilities, setCapabilities] = useState(agent?.capabilities ?? "");
   const [managerAgentId, setManagerAgentId] = useState<string | null>(agent?.managerAgentId ?? null);
   const [budget, setBudget] = useState(agent?.monthlyBudgetUsd?.toString() ?? "30");
   const [providerType, setProviderType] = useState<ProviderType>(agent?.providerType ?? "claude_code");
@@ -457,6 +459,7 @@ export function CreateAgentModal({
       setName(agent.name);
       setRoleKey(normalizeRoleKey(agent.roleKey, agent.role));
       setTitle(agent.title ?? "");
+      setCapabilities(agent.capabilities ?? "");
       setManagerAgentId(agent.managerAgentId ?? null);
       setProviderType(agent.providerType);
       setHeartbeatIntervalSec(String(heartbeatCronToIntervalSec(agent.heartbeatCron, 300)));
@@ -494,6 +497,7 @@ export function CreateAgentModal({
     setName("");
     setRoleKey("general");
     setTitle("");
+    setCapabilities("");
     setManagerAgentId(null);
     setProviderType(effectiveDefaults.providerType);
     setHeartbeatIntervalSec(effectiveDefaults.heartbeatIntervalSec);
@@ -657,6 +661,7 @@ export function CreateAgentModal({
         const requestedRole = requestedTitle || requestedRoleLabel;
         const requestedName = name.trim();
         const requestedModel = runtimeModel.trim();
+        const requestedCapabilities = capabilities.trim();
         const issueBody = [
           "Please create a new agent with the following profile:",
           "",
@@ -665,6 +670,9 @@ export function CreateAgentModal({
           `- Reports to: ${managerName}`,
           `- Preferred provider: ${providerType}`,
           `- Preferred model: ${requestedModel || "(delegate chooses best model)"}`,
+          requestedCapabilities
+            ? `- Capabilities (set on the new agent record for org chart and delegation): ${requestedCapabilities}`
+            : "- Capabilities: (requester did not specify — you must propose a concise capability line for the new agent.)",
           "",
           "Additional request details:",
           requestNotes || "- None provided."
@@ -682,7 +690,8 @@ export function CreateAgentModal({
               requestedName: requestedName || null,
               requestedManagerAgentId: managerAgentId ?? null,
               requestedProviderType: providerType,
-              requestedRuntimeModel: requestedModel || null
+              requestedRuntimeModel: requestedModel || null,
+              requestedCapabilities: requestedCapabilities || null
             }
           },
           status: "todo",
@@ -782,6 +791,7 @@ export function CreateAgentModal({
           role: title.trim() || AGENT_ROLE_LABELS[roleKey],
           roleKey,
           title: title.trim() || null,
+          capabilities: capabilities.trim() || null,
           managerAgentId: managerAgentId ?? null,
           providerType,
           heartbeatCron: heartbeatIntervalSecToCron(heartbeatIntervalSeconds),
@@ -795,6 +805,7 @@ export function CreateAgentModal({
           role: title.trim() || AGENT_ROLE_LABELS[roleKey],
           roleKey,
           title: title.trim() || null,
+          capabilities: capabilities.trim() || null,
           managerAgentId: managerAgentId ?? undefined,
           providerType,
           heartbeatCron: heartbeatIntervalSecToCron(heartbeatIntervalSeconds),
@@ -931,6 +942,20 @@ export function CreateAgentModal({
                     />
                   </Field>
                   <Field>
+                    <FieldLabelWithHelp
+                      htmlFor="delegate-agent-capabilities"
+                      helpText="Short description of what this agent should do. Shown on the org chart and in team rosters. The hiring agent should copy this into the new agent’s capabilities field (or refine it) when creating the hire.">
+                      Capabilities
+                    </FieldLabelWithHelp>
+                    <Textarea
+                      id="delegate-agent-capabilities"
+                      value={capabilities}
+                      onChange={(e) => setCapabilities(e.target.value)}
+                      placeholder="Describe what this agent can do..."
+                      rows={2}
+                    />
+                  </Field>
+                  <Field>
                     <FieldLabel>Reports to</FieldLabel>
                     <Select value={managerAgentId ?? "__none"} onValueChange={(value) => setManagerAgentId(value === "__none" ? null : value)}>
                       <SelectTrigger className={styles.createAgentModalSelectTrigger}>
@@ -1017,6 +1042,20 @@ export function CreateAgentModal({
                       ))}
                     </SelectContent>
                   </Select>
+                </Field>
+                <Field className="md:col-span-2">
+                  <FieldLabelWithHelp
+                    htmlFor="agent-capabilities"
+                    helpText="Describes what this agent can do. Shown in the org chart and used for task routing.">
+                    Capabilities
+                  </FieldLabelWithHelp>
+                  <Textarea
+                    id="agent-capabilities"
+                    value={capabilities}
+                    onChange={(e) => setCapabilities(e.target.value)}
+                    placeholder="Describe what this agent can do..."
+                    rows={2}
+                  />
                 </Field>
               </FieldGroup>
             </section>

@@ -72,6 +72,7 @@ export const agents = pgTable("agents", {
   role: text("role").notNull(),
   roleKey: text("role_key"),
   title: text("title"),
+  capabilities: text("capabilities"),
   name: text("name").notNull(),
   providerType: text("provider_type").notNull(),
   status: text("status").notNull().default("idle"),

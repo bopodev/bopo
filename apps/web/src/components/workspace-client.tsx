@@ -128,6 +128,7 @@ interface AgentRow {
   role: string;
   roleKey?: AgentRoleKey | null;
   title?: string | null;
+  capabilities?: string | null;
   managerAgentId: string | null;
   status: string;
   providerType: string;

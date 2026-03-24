@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import request from "supertest";
@@ -14,15 +14,21 @@ describe("agent lifecycle routes", { timeout: 30_000 }, () => {
   let companyId: string;
   let client: { close?: () => Promise<void> };
   let agentId: string;
+  const originalInstanceRoot = process.env.BOPO_INSTANCE_ROOT;
+  const originalNodeEnv = process.env.NODE_ENV;
 
   beforeEach(async () => {
     tempDir = await mkdtemp(join(tmpdir(), "bopodev-agent-lifecycle-test-"));
+    process.env.BOPO_INSTANCE_ROOT = join(tempDir, "instances");
+    process.env.NODE_ENV = "development";
     const boot = await bootstrapDatabase(join(tempDir, "test.db"));
     db = boot.db;
     client = boot.client as { close?: () => Promise<void> };
     app = createApp({ db });
     const company = await createCompany(db, { name: "Lifecycle Co", mission: "Agent lifecycle tests." });
     companyId = company.id;
+    const runtimeCwd = join(tempDir, "instances", "workspaces", companyId, "agents", "lifecycle");
+    await mkdir(runtimeCwd, { recursive: true });
     const agent = await createAgent(db, {
       companyId,
       role: "Engineer",
@@ -33,12 +39,14 @@ describe("agent lifecycle routes", { timeout: 30_000 }, () => {
       canHireAgents: false,
       runtimeCommand: "echo",
       runtimeArgs: ['{"summary":"noop","tokenInput":0,"tokenOutput":0,"usdCost":0}'],
-      runtimeCwd: tempDir
+      runtimeCwd
     });
     agentId = agent.id;
   });
 
   afterEach(async () => {
+    process.env.BOPO_INSTANCE_ROOT = originalInstanceRoot;
+    process.env.NODE_ENV = originalNodeEnv;
     await client?.close?.();
     await rm(tempDir, { recursive: true, force: true });
   });
@@ -97,6 +105,21 @@ describe("agent lifecycle routes", { timeout: 30_000 }, () => {
 
     const agents = await listAgents(db, companyId);
     expect(agents.some((agent) => agent.id === agentId)).toBe(false);
+  });
+
+  it("persists capabilities on update and returns them from list", async () => {
+    const putResponse = await request(app)
+      .put(`/agents/${agentId}`)
+      .set("x-company-id", companyId)
+      .send({ capabilities: "Designs APIs and reviews pull requests." });
+    expect(putResponse.status).toBe(200);
+    expect(putResponse.body.data.capabilities).toBe("Designs APIs and reviews pull requests.");
+
+    const listResponse = await request(app).get("/agents").set("x-company-id", companyId);
+    expect(listResponse.status).toBe(200);
+    const agents = listResponse.body.data as Array<{ id: string; capabilities?: string | null }>;
+    const listed = agents.find((a) => a.id === agentId);
+    expect(listed?.capabilities).toBe("Designs APIs and reviews pull requests.");
   });
 
   it("returns not found for missing agent lifecycle actions", async () => {

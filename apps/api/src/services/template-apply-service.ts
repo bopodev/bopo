@@ -62,6 +62,7 @@ export async function applyTemplateManifest(
       role: resolveAgentRoleText(agent.role, agent.roleKey, agent.title),
       roleKey: normalizeRoleKey(agent.roleKey),
       title: normalizeTitle(agent.title),
+      capabilities: normalizeCapabilities(agent.capabilities),
       name: agent.name,
       providerType: agent.providerType,
       heartbeatCron: agent.heartbeatCron,
@@ -148,6 +149,11 @@ function normalizeRoleKey(input: string | null | undefined) {
 }
 
 function normalizeTitle(input: string | null | undefined) {
+  const normalized = input?.trim();
+  return normalized ? normalized : null;
+}
+
+function normalizeCapabilities(input: string | null | undefined) {
   const normalized = input?.trim();
   return normalized ? normalized : null;
 }

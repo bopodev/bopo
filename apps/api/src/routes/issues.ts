@@ -612,10 +612,13 @@ function applyIssueMetadataToBody(
         delegatedHiringIntent?: {
           intentType: "agent_hiring_request";
           requestedRole?: string | null;
+          requestedRoleKey?: string | null;
+          requestedTitle?: string | null;
           requestedName?: string | null;
           requestedManagerAgentId?: string | null;
           requestedProviderType?: string | null;
           requestedRuntimeModel?: string | null;
+          requestedCapabilities?: string | null;
         };
       }
     | undefined

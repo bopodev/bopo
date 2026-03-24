@@ -104,6 +104,10 @@
   @apply truncate text-sm text-muted-foreground mt-2;
 }
 
+.orgCardCapabilities {
+  @apply mt-1 line-clamp-2 text-xs text-muted-foreground;
+}
+
 .orgCardDetails {
   @apply truncate text-base text-muted-foreground;
 }

@@ -38,7 +38,7 @@ import {
   projects,
   sql
 } from "bopodev-db";
-import { appendAuditEvent, appendCost } from "bopodev-db";
+import { appendAuditEvent, appendCost, listAgents } from "bopodev-db";
 import { parseRuntimeConfigFromAgentRow } from "../../lib/agent-config";
 import { bootstrapRepositoryWorkspace, ensureIsolatedGitWorktree, GitRuntimeError } from "../../lib/git-runtime";
 import {
@@ -2182,6 +2182,22 @@ async function buildHeartbeatContext(
   const isCommentOrderWake = input.wakeContext?.reason === "issue_comment_recipient";
   const promptMode = resolveHeartbeatPromptMode();
 
+  const companyAgentRows = await listAgents(db, companyId);
+  const teamRoster = companyAgentRows
+    .filter((row) => row.status !== "terminated")
+    .sort((a, b) => {
+      const byName = a.name.localeCompare(b.name);
+      return byName !== 0 ? byName : a.id.localeCompare(b.id);
+    })
+    .map((row) => ({
+      id: row.id,
+      name: row.name,
+      role: row.role,
+      title: row.title ?? null,
+      capabilities: row.capabilities ?? null,
+      status: row.status
+    }));
+
   return {
     companyId,
     agentId: input.agentId,
@@ -2197,6 +2213,7 @@ async function buildHeartbeatContext(
       role: input.agentRole,
       managerAgentId: input.managerAgentId
     },
+    teamRoster,
     state: input.state,
     memoryContext: input.memoryContext,
     runtime: input.runtime,

@@ -24,9 +24,10 @@ If permission is missing, escalate to a manager/board actor.
 2. Compare existing agent configurations from `GET /agents` for reusable patterns.
 3. Choose role, provider, reporting line, and runtime heartbeat profile.
 4. Draft agent prompt/instructions with role-scoped responsibilities.
-5. Submit hire request and capture approval linkage.
-6. Track approval state and post follow-up comments with links.
-7. On approval wake, close or update linked issues accordingly.
+5. Set `capabilities` (required for every hire): a short plain-language line for the org chart and heartbeat team roster—what this agent does for delegation. If the request came from a delegated hiring issue, prefer `delegationIntent.requestedCapabilities` or the issue metadata `delegatedHiringIntent.requestedCapabilities` when present; otherwise write one from the role and brief.
+6. Submit hire request and capture approval linkage.
+7. Track approval state and post follow-up comments with links.
+8. On approval wake, close or update linked issues accordingly.
 
 ## Payload checklist
 
@@ -39,6 +40,7 @@ Before submission, ensure payload includes:
 - `monthlyBudgetUsd`
 - optional `managerAgentId`
 - optional `canHireAgents`
+- `capabilities` (short description for org chart and team roster; include on every hire)
 - optional `bootstrapPrompt` (extra standing instructions only; operating docs are injected via heartbeat env) or supported `runtimeConfig`
 - `requestApproval` (defaults to `true`; keep `true` for routine hires)
 
@@ -57,6 +59,7 @@ For a Codex hire, prefer this shape:
 {
   "name": "Founding Engineer",
   "role": "Founding Engineer",
+  "capabilities": "Ships product changes with tests, clear handoffs, and accurate issue updates.",
   "providerType": "codex",
   "managerAgentId": "<manager-agent-id>",
   "heartbeatCron": "*/5 * * * *",

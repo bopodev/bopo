@@ -2712,9 +2712,43 @@ function composeBootstrapPreamble(context: HeartbeatContext): string {
   return operating ? `${operating}${user}\n\n` : `${user}\n\n`;
 }
 
+function formatTeamRosterSection(context: HeartbeatContext): string {
+  const roster = context.teamRoster;
+  if (!roster?.length) {
+    return "";
+  }
+  const mode = resolveHeartbeatPromptModeForPrompt(context);
+  const isCompact = mode === "compact";
+  const clipCapabilities = (raw: string | null | undefined) => {
+    const t = raw?.trim();
+    if (!t) {
+      return null;
+    }
+    if (isCompact && t.length > 200) {
+      return `${t.slice(0, 200)}…`;
+    }
+    return t;
+  };
+  const lines = roster.map((member) => {
+    const caps = clipCapabilities(member.capabilities);
+    const parts = [member.id, member.name, member.role];
+    const titled = member.title?.trim();
+    if (titled) {
+      parts.push(`title: ${titled}`);
+    }
+    if (caps) {
+      parts.push(`capabilities: ${caps}`);
+    }
+    const you = member.id === context.agentId ? " (you)" : "";
+    return `- ${parts.join(" | ")}${you}`;
+  });
+  return ["Team roster (for delegation):", ...lines, ""].join("\n");
+}
+
 function buildIdleMicroPrompt(context: HeartbeatContext): string {
   const preamble = composeBootstrapPreamble(context);
-  return `${preamble}Idle heartbeat (micro prompt): agent ${context.agentId} (${context.agent.name}) has no assigned issues this run. Summarize readiness in \`employee_comment\`; leave \`results\` empty unless you completed verifiable work. Use \`BOPODEV_*\` for control-plane API calls when needed.
+  const rosterBlock = formatTeamRosterSection(context);
+  return `${preamble}${rosterBlock}Idle heartbeat (micro prompt): agent ${context.agentId} (${context.agent.name}) has no assigned issues this run. Summarize readiness in \`employee_comment\`; leave \`results\` empty unless you completed verifiable work. Use \`BOPODEV_*\` for control-plane API calls when needed.
 
 ${HEARTBEAT_JSON_SCHEMA_FOOTER}
 `;
@@ -2856,6 +2890,8 @@ export function createPrompt(context: HeartbeatContext) {
       : "- BOPODEV_REQUEST_HEADERS_JSON is missing. Report this as blocker."
   ].join("\n");
 
+  const teamRosterBlock = formatTeamRosterSection(context);
+
   const executionDirectives = [
     "Execution directives:",
     "- You are running inside a BopoDev heartbeat for local repository work.",
@@ -2897,7 +2933,7 @@ Company:
 - Name: ${context.company.name}
 - Mission: ${context.company.mission ?? "No mission set"}
 
-Goal context:
+${teamRosterBlock}Goal context:
 Company goals:
 ${companyGoals}
 Project goals:

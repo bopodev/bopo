@@ -1,3 +1,5 @@
+import type { AgentRoleKey } from "bopodev-contracts";
+
 export interface IssueRow {
   id: string;
   companyId: string;
@@ -19,6 +21,9 @@ export interface AgentRow {
   name: string;
   avatarSeed?: string | null;
   role: string;
+  roleKey?: AgentRoleKey | null;
+  title?: string | null;
+  capabilities?: string | null;
   managerAgentId: string | null;
   status: string;
   providerType: string;

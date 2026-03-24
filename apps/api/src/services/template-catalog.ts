@@ -9,7 +9,8 @@ import {
   createTemplate,
   createTemplateVersion,
   getTemplateBySlug,
-  getTemplateVersionByVersion
+  getTemplateVersionByVersion,
+  updateTemplate
 } from "bopodev-db";
 
 type BuiltinTemplateDefinition = {
@@ -28,7 +29,7 @@ const builtinTemplateDefinitions: BuiltinTemplateDefinition[] = [
     slug: "founder-startup-basic",
     name: "Founder Startup Basic",
     description: "Baseline operating company for solo founders launching and shipping with AI agents.",
-    version: "1.0.0",
+    version: "1.0.1",
     status: "published",
     visibility: "company",
     variables: [
@@ -78,6 +79,10 @@ const builtinTemplateDefinitions: BuiltinTemplateDefinition[] = [
         {
           key: "founder-ceo",
           role: "CEO",
+          roleKey: "ceo",
+          title: "Founder CEO",
+          capabilities:
+            "Sets company priorities, runs leadership cadence, hires and coordinates agents toward mission outcomes.",
           name: "Founder CEO",
           providerType: "codex",
           heartbeatCron: "*/15 * * * *",
@@ -119,6 +124,10 @@ const builtinTemplateDefinitions: BuiltinTemplateDefinition[] = [
         {
           key: "founding-engineer",
           role: "Founding Engineer",
+          roleKey: "engineer",
+          title: "Founding Engineer",
+          capabilities:
+            "Ships product improvements with small reviewable changes, tests, and clear handoffs to stakeholders.",
           name: "Founding Engineer",
           managerAgentKey: "founder-ceo",
           providerType: "codex",
@@ -152,6 +161,10 @@ const builtinTemplateDefinitions: BuiltinTemplateDefinition[] = [
         {
           key: "growth-operator",
           role: "Growth Operator",
+          roleKey: "general",
+          title: "Growth Operator",
+          capabilities:
+            "Runs growth experiments, measures funnel impact, and feeds learnings back to leadership with clear next steps.",
           name: "Growth Operator",
           managerAgentKey: "founder-ceo",
           providerType: "codex",
@@ -225,7 +238,7 @@ const builtinTemplateDefinitions: BuiltinTemplateDefinition[] = [
     slug: "marketing-content-engine",
     name: "Marketing Content Engine",
     description: "Content marketing operating template for publishing, distribution, and analytics loops.",
-    version: "1.0.0",
+    version: "1.0.1",
     status: "published",
     visibility: "company",
     variables: [
@@ -276,6 +289,10 @@ const builtinTemplateDefinitions: BuiltinTemplateDefinition[] = [
         {
           key: "head-of-marketing",
           role: "Head of Marketing",
+          roleKey: "cmo",
+          title: "Head of Marketing",
+          capabilities:
+            "Owns marketing narrative, cross-functional alignment, and weekly performance decisions for pipeline growth.",
           name: "Head of Marketing",
           providerType: "codex",
           heartbeatCron: "*/20 * * * *",
@@ -308,6 +325,10 @@ const builtinTemplateDefinitions: BuiltinTemplateDefinition[] = [
         {
           key: "content-strategist",
           role: "Content Strategist",
+          roleKey: "general",
+          title: "Content Strategist",
+          capabilities:
+            "Builds editorial calendars, briefs, and topic architecture tied to audience segments and revenue goals.",
           name: "Content Strategist",
           managerAgentKey: "head-of-marketing",
           providerType: "codex",
@@ -337,6 +358,10 @@ const builtinTemplateDefinitions: BuiltinTemplateDefinition[] = [
         {
           key: "content-writer",
           role: "Content Writer",
+          roleKey: "general",
+          title: "Content Writer",
+          capabilities:
+            "Produces channel-ready drafts, headline and CTA options, and repurposing notes aligned to campaign intent.",
           name: "Content Writer",
           managerAgentKey: "head-of-marketing",
           providerType: "codex",
@@ -367,6 +392,10 @@ const builtinTemplateDefinitions: BuiltinTemplateDefinition[] = [
         {
           key: "distribution-manager",
           role: "Distribution Manager",
+          roleKey: "general",
+          title: "Distribution Manager",
+          capabilities:
+            "Distributes and repurposes assets across channels with tracking discipline and weekly performance reporting.",
           name: "Distribution Manager",
           managerAgentKey: "head-of-marketing",
           providerType: "codex",
@@ -481,6 +510,11 @@ export async function ensureCompanyBuiltinTemplateDefaults(db: BopoDb, companyId
         templateId: template.id,
         version: definition.version,
         manifestJson: JSON.stringify(manifest)
+      });
+      await updateTemplate(db, {
+        companyId,
+        id: template.id,
+        currentVersion: definition.version
       });
     }
   }
