@@ -37,6 +37,7 @@ describe("adapter module contracts", () => {
       "opencode",
       "openai-api",
       "anthropic-api",
+      "openclaw-gateway",
       "http",
       "shell"
     ];

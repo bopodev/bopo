@@ -8,6 +8,7 @@ export type RuntimeProviderType =
   | "gemini_cli"
   | "openai_api"
   | "anthropic_api"
+  | "openclaw_gateway"
   | "http"
   | "shell";
 

@@ -16,6 +16,7 @@ import { openaiapiAdapterModule } from "../../adapters/openai-api/src";
 import { anthropicapiAdapterModule } from "../../adapters/anthropic-api/src";
 import { httpAdapterModule } from "../../adapters/http/src";
 import { shellAdapterModule } from "../../adapters/shell/src";
+import { openclawGatewayAdapterModule } from "../../adapters/openclaw-gateway/src";
 
 const adapterModules: Record<AgentProviderType, AdapterModule> = {
   claude_code: claudecodeAdapterModule,
@@ -25,6 +26,7 @@ const adapterModules: Record<AgentProviderType, AdapterModule> = {
   gemini_cli: geminiCliAdapterModule,
   openai_api: openaiapiAdapterModule,
   anthropic_api: anthropicapiAdapterModule,
+  openclaw_gateway: openclawGatewayAdapterModule,
   http: httpAdapterModule,
   shell: shellAdapterModule
 };
@@ -61,6 +63,10 @@ const adapters: Record<AgentProviderType, AgentAdapter> = {
   anthropic_api: {
     providerType: "anthropic_api",
     execute: (context) => adapterModules.anthropic_api.server.execute(context)
+  },
+  openclaw_gateway: {
+    providerType: "openclaw_gateway",
+    execute: (context) => adapterModules.openclaw_gateway.server.execute(context)
   },
   http: {
     providerType: "http",

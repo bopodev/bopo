@@ -1041,6 +1041,7 @@ export async function createAgent(
       | "gemini_cli"
       | "openai_api"
       | "anthropic_api"
+      | "openclaw_gateway"
       | "http"
       | "shell";
     heartbeatCron: string;
@@ -1116,6 +1117,7 @@ export async function updateAgent(
       | "gemini_cli"
       | "openai_api"
       | "anthropic_api"
+      | "openclaw_gateway"
       | "http"
       | "shell";
     status?: string;

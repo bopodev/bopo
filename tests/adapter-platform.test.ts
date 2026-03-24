@@ -18,6 +18,12 @@ describe("adapter platform contracts", () => {
     expect(metadata.some((entry) => entry.providerType === "opencode")).toBe(true);
     expect(metadata.some((entry) => entry.providerType === "openai_api")).toBe(true);
     expect(metadata.some((entry) => entry.providerType === "anthropic_api")).toBe(true);
+    expect(metadata.some((entry) => entry.providerType === "openclaw_gateway")).toBe(true);
+  });
+
+  it("lists no catalog models for OpenClaw Gateway adapter", async () => {
+    const models = await getAdapterModels("openclaw_gateway");
+    expect(models).toEqual([]);
   });
 
   it("surfaces missing-key preflight checks for direct API adapters", async () => {

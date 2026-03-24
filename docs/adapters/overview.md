@@ -83,16 +83,22 @@ The `cli/` directory owns adapter-specific terminal formatting for command-line 
 - `opencode`
 - `openai_api`
 - `anthropic_api`
+- `openclaw_gateway`
 - `http`
 - `shell`
 
 `openai_api` and `anthropic_api` are first-class direct API adapters for server environments where local Codex/Claude CLIs are unavailable.
+
+`openclaw_gateway` connects to a self-hosted [OpenClaw](https://docs.openclaw.ai/) gateway over the documented WebSocket protocol (`agent` / `agent.wait`). Package: `packages/adapters/openclaw-gateway/`. After a successful `agent.wait`, the adapter calls OpenClaw `sessions.list` (and falls back to `sessions.usage` when the session row has not picked up token totals yet) so heartbeat runs can record resolved model, input/output tokens, cache-read tokens when available, and gateway-estimated USD cost where present.
+
+Dedicated guide: [`openclaw-gateway.md`](./openclaw-gateway.md).
 
 ## Provider selection quick guide
 
 - Use `codex` / `claude_code` when you want CLI-native behavior on hosts where those CLIs are installed.
 - Use `opencode` when you want OpenCode CLI execution; configure `runtimeModel` in `provider/model` format.
 - Use `openai_api` / `anthropic_api` for direct provider API execution with API keys only.
+- Use `openclaw_gateway` when heartbeats should invoke OpenClaw’s gateway (see [Gateway](https://docs.openclaw.ai/gateway) and [protocol](https://docs.openclaw.ai/gateway/protocol)); configure a `ws://` / `wss://` URL and gateway credentials on the agent.
 - Use `http` / `shell` for custom worker commands or bespoke runtime wrappers.
 
 ## Runtime contract
@@ -131,7 +137,7 @@ When adding a new adapter:
 3. Add the full `root/server/ui/cli` file structure.
 4. Export `AdapterModule` in `src/index.ts`.
 5. Register the module in `packages/agent-sdk/src/registry.ts`.
-6. Add/extend tests in `tests/adapter-platform.test.ts` and `tests/adapter-module-contract.test.ts`.
+6. Add/extend tests in `tests/adapter-platform.test.ts`, `tests/adapter-module-contract.test.ts`, and adapter-specific tests (for example `tests/openclaw-gateway.test.ts` for `openclaw_gateway`).
 7. Verify metadata/models/preflight endpoints in API.
 
 ## Reliability expectations
@@ -153,3 +159,4 @@ When adding a new adapter:
 - API route details: [`docs/developer/api-reference.md`](../developer/api-reference.md)
 - Config and environment variables: [`docs/developer/configuration-reference.md`](../developer/configuration-reference.md)
 - Adapter implementation steps: [`docs/adapter-authoring.md`](../adapter-authoring.md)
+- OpenClaw Gateway adapter: [`adapters/openclaw-gateway.md`](./openclaw-gateway.md)

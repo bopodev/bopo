@@ -62,6 +62,7 @@ type ProviderType =
   | "gemini_cli"
   | "openai_api"
   | "anthropic_api"
+  | "openclaw_gateway"
   | "http"
   | "shell";
 
@@ -87,13 +88,20 @@ type ProjectOption = {
   name: string;
 };
 
-const EDIT_AGENT_VISIBLE_PROVIDER_TYPES: ProviderType[] = ["claude_code", "codex", "opencode", "gemini_cli"];
+const EDIT_AGENT_VISIBLE_PROVIDER_TYPES: ProviderType[] = [
+  "claude_code",
+  "codex",
+  "opencode",
+  "gemini_cli",
+  "openclaw_gateway"
+];
 
 const defaultVisibleProviders: ProviderOption[] = [
   { providerType: "claude_code", label: "Claude Code" },
   { providerType: "codex", label: "Codex" },
   { providerType: "opencode", label: "OpenCode" },
-  { providerType: "gemini_cli", label: "Gemini CLI" }
+  { providerType: "gemini_cli", label: "Gemini CLI" },
+  { providerType: "openclaw_gateway", label: "OpenClaw Gateway" }
 ];
 
 function normalizeRoleKey(roleKey: AgentRoleKey | null | undefined, legacyRole: string | null | undefined): AgentRoleKey {
@@ -363,8 +371,10 @@ export function CreateAgentModal({
       value === "codex" ||
       value === "cursor" ||
       value === "opencode" ||
+      value === "gemini_cli" ||
       value === "openai_api" ||
       value === "anthropic_api" ||
+      value === "openclaw_gateway" ||
       value === "http" ||
       value === "shell"
     );
@@ -522,7 +532,8 @@ export function CreateAgentModal({
       setRuntimeModel(defaultId && allowedValues.includes(defaultId) ? defaultId : allowedValues[0] ?? "");
       return;
     }
-    const requiresNamedModel = providerType !== "http" && providerType !== "shell";
+    const requiresNamedModel =
+      providerType !== "http" && providerType !== "shell" && providerType !== "openclaw_gateway";
     if (requiresNamedModel && !runtimeModel && allowedValues.length > 0) {
       const defaultId = getDefaultModelForProvider(providerType);
       setRuntimeModel(defaultId && allowedValues.includes(defaultId) ? defaultId : allowedValues[0] ?? "");
@@ -624,9 +635,29 @@ export function CreateAgentModal({
           setError("OpenCode model is required and must use provider/model format (for example: openai/gpt-5).");
           return;
         }
-      } else if (providerType !== "http" && providerType !== "shell" && !runtimeModel.trim()) {
+      } else if (
+        providerType !== "http" &&
+        providerType !== "shell" &&
+        providerType !== "openclaw_gateway" &&
+        !runtimeModel.trim()
+      ) {
         setError("Select a named model before saving this agent.");
         return;
+      }
+
+      if (providerType === "openclaw_gateway") {
+        const wsUrl = runtimeCommand.trim() || parsedRuntimeEnv.OPENCLAW_GATEWAY_URL?.trim() || "";
+        if (!wsUrl.startsWith("ws://") && !wsUrl.startsWith("wss://")) {
+          setError("OpenClaw Gateway requires a ws:// or wss:// URL in Command or OPENCLAW_GATEWAY_URL.");
+          return;
+        }
+        const hasToken =
+          Boolean(parsedRuntimeEnv.OPENCLAW_GATEWAY_TOKEN?.trim()) ||
+          Boolean(parsedRuntimeEnv.OPENCLAW_GATEWAY_PASSWORD?.trim());
+        if (!hasToken) {
+          setError("Set OPENCLAW_GATEWAY_TOKEN or OPENCLAW_GATEWAY_PASSWORD in runtime environment.");
+          return;
+        }
       }
 
       const shouldRunPreflight = providerMetadata?.supportsEnvironmentTest ?? providerType !== "http";
@@ -970,7 +1001,9 @@ export function CreateAgentModal({
                     id="agent-runtime-command"
                     value={runtimeCommand}
                     onChange={(e) => setRuntimeCommand(e.target.value)}
-                    placeholder="codex"
+                    placeholder={
+                      providerType === "openclaw_gateway" ? "ws://127.0.0.1:18789" : "codex"
+                    }
                   />
                 </Field>
               </FieldGroup>
@@ -1107,7 +1140,11 @@ export function CreateAgentModal({
                 <Field>
                   <FieldLabelWithHelp
                     htmlFor="agent-runtime-env"
-                    helpText="One KEY=value per line, passed into the agent process. Do not paste secrets into shared screenshots; use your secret store when possible.">
+                    helpText={
+                      providerType === "openclaw_gateway"
+                        ? "OpenClaw: OPENCLAW_GATEWAY_TOKEN or OPENCLAW_GATEWAY_PASSWORD (required). Optional: OPENCLAW_GATEWAY_URL if Command is empty, OPENCLAW_AGENT_ID, OPENCLAW_SESSION_KEY, OPENCLAW_SESSION_KEY_STRATEGY (issue|run|fixed), OPENCLAW_AGENT_WAIT_MS, OPENCLAW_DEVICE_PRIVATE_KEY_PEM, BOPO_OPENCLAW_DISABLE_DEVICE_AUTH=1. See https://docs.openclaw.ai/gateway and https://docs.openclaw.ai/gateway/protocol"
+                        : "One KEY=value per line, passed into the agent process. Do not paste secrets into shared screenshots; use your secret store when possible."
+                    }>
                     Environment variables
                   </FieldLabelWithHelp>
                   <Textarea

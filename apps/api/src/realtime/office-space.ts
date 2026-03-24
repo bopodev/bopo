@@ -437,6 +437,7 @@ function normalizeProviderType(value: string): OfficeOccupant["providerType"] {
     value === "gemini_cli" ||
     value === "openai_api" ||
     value === "anthropic_api" ||
+    value === "openclaw_gateway" ||
     value === "http" ||
     value === "shell"
     ? value

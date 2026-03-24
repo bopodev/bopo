@@ -1,7 +1,16 @@
 import { heartbeatCronToIntervalSec } from "@/lib/agent-runtime-options";
 
 export interface AgentRuntimeDefaults {
-  providerType: "claude_code" | "codex" | "opencode" | "gemini_cli" | "openai_api" | "anthropic_api" | "http" | "shell";
+  providerType:
+    | "claude_code"
+    | "codex"
+    | "opencode"
+    | "gemini_cli"
+    | "openai_api"
+    | "anthropic_api"
+    | "openclaw_gateway"
+    | "http"
+    | "shell";
   heartbeatIntervalSec: string;
   monthlyBudgetUsd: string;
   runtimeCommand: string;
@@ -116,6 +125,7 @@ function isProviderType(value: unknown): value is AgentRuntimeDefaults["provider
     value === "gemini_cli" ||
     value === "openai_api" ||
     value === "anthropic_api" ||
+    value === "openclaw_gateway" ||
     value === "http" ||
     value === "shell"
   );

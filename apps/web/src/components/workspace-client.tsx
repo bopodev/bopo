@@ -154,6 +154,7 @@ type RuntimeDefaultsProviderType =
   | "opencode"
   | "openai_api"
   | "anthropic_api"
+  | "openclaw_gateway"
   | "http"
   | "shell";
 
@@ -164,6 +165,7 @@ function isRuntimeDefaultsProviderType(value: unknown): value is RuntimeDefaults
     value === "opencode" ||
     value === "openai_api" ||
     value === "anthropic_api" ||
+    value === "openclaw_gateway" ||
     value === "http" ||
     value === "shell"
   );
@@ -452,6 +454,7 @@ const KNOWN_COST_PROVIDER_TITLES: Record<string, string> = {
   gemini_api: "Gemini API",
   openai_api: "OpenAI API",
   anthropic_api: "Anthropic API",
+  openclaw_gateway: "OpenClaw Gateway",
   http: "HTTP",
   shell: "Shell"
 };

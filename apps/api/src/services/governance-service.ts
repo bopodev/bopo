@@ -67,7 +67,18 @@ const hireAgentPayloadSchema = AgentCreateRequestSchema.extend({
       requestedName: z.string().nullable().optional(),
       requestedManagerAgentId: z.string().nullable().optional(),
       requestedProviderType: z
-        .enum(["claude_code", "codex", "cursor", "opencode", "gemini_cli", "openai_api", "anthropic_api", "http", "shell"])
+        .enum([
+          "claude_code",
+          "codex",
+          "cursor",
+          "opencode",
+          "gemini_cli",
+          "openai_api",
+          "anthropic_api",
+          "openclaw_gateway",
+          "http",
+          "shell"
+        ])
         .nullable()
         .optional(),
       requestedRuntimeModel: z.string().nullable().optional()

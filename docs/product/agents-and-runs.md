@@ -54,10 +54,14 @@ Built-in adapters:
 - `codex`
 - `cursor`
 - `opencode`
+- `gemini_cli`
+- `openai_api`
+- `anthropic_api`
+- `openclaw_gateway`
 - `http`
 - `shell`
 
-For adapter internals, see [`../adapters/overview.md`](../adapters/overview.md).
+For adapter internals, see [`../adapters/overview.md`](../adapters/overview.md). For the OpenClaw WebSocket gateway adapter, see [`../adapters/openclaw-gateway.md`](../adapters/openclaw-gateway.md).
 
 ## Heartbeat Runs
 

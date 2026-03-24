@@ -43,6 +43,7 @@ Treat [`docs-coverage-matrix.md`](./docs-coverage-matrix.md) as the canonical so
 - [`developer/contributing.md`](./developer/contributing.md)
 - Adapter docs:
   - [`adapters/overview.md`](./adapters/overview.md)
+  - [`adapters/openclaw-gateway.md`](./adapters/openclaw-gateway.md) (OpenClaw WebSocket gateway)
   - [`adapter-authoring.md`](./adapter-authoring.md)
 
 ## Operations Docs

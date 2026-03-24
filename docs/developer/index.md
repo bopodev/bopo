@@ -25,5 +25,6 @@ Use this section to understand internals, APIs, and extension points.
 - Agent heartbeat protocol (full vs compact prompts, cost notes, `GET /issues/:id` hydration): [`../guides/agent-heartbeat-protocol.md`](../guides/agent-heartbeat-protocol.md)
 - Setup guide: [`../getting-started-and-dev.md`](../getting-started-and-dev.md)
 - Adapter overview: [`../adapters/overview.md`](../adapters/overview.md)
+- OpenClaw Gateway adapter: [`../adapters/openclaw-gateway.md`](../adapters/openclaw-gateway.md)
 - Adapter authoring: [`../adapter-authoring.md`](../adapter-authoring.md)
 - Adapter package structure: adapters now follow a package-local `root/server/ui/cli` layout documented in the overview and authoring guides.

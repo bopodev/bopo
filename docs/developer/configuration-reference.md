@@ -54,6 +54,21 @@ Give contributors and operators one reference for key environment variables and 
 | `BOPO_CODEX_ALLOW_HOME_SEED` | `false` | Controls managed Codex home initialization behavior. |
 | `BOPO_OPENCODE_MODEL` | unset | Optional OpenCode model for onboarding seed. If unset, onboarding attempts to auto-select from `opencode models`. |
 
+## OpenClaw Gateway adapter (per-agent runtime)
+
+Configure on the **agent** (runtime command + runtime environment), not as API process defaults. OpenClaw itself is documented at [docs.openclaw.ai](https://docs.openclaw.ai/) (see [Gateway](https://docs.openclaw.ai/gateway) and [Gateway protocol](https://docs.openclaw.ai/gateway/protocol)). For behavior (session keys, usage/cost, limitations), see [`../adapters/openclaw-gateway.md`](../adapters/openclaw-gateway.md).
+
+| Key | Required | Notes |
+| --- | --- | --- |
+| Command or `OPENCLAW_GATEWAY_URL` | yes | WebSocket URL (`ws://` / `wss://`), e.g. local default port `18789`. |
+| `OPENCLAW_GATEWAY_TOKEN` or `OPENCLAW_GATEWAY_PASSWORD` | yes | Matches gateway auth configuration. |
+| `OPENCLAW_AGENT_ID` | no | Target agent id on the gateway. |
+| `OPENCLAW_SESSION_KEY` | no | Fixed session key when using `OPENCLAW_SESSION_KEY_STRATEGY=fixed`. |
+| `OPENCLAW_SESSION_KEY_STRATEGY` | no | `issue` (default), `run`, or `fixed` — Bopo derives a session key for OpenClaw where applicable. |
+| `OPENCLAW_AGENT_WAIT_MS` | no | `agent.wait` timeout in milliseconds (defaults to at least the runtime timeout or 15 minutes). |
+| `OPENCLAW_DEVICE_PRIVATE_KEY_PEM` | no | Stable Ed25519 private key (PEM); use `\\n` for newlines in env text. Without it, a new ephemeral identity is used each run (pairing may be required). |
+| `BOPO_OPENCLAW_DISABLE_DEVICE_AUTH` | no | When `1`/`true`/`yes`, omit device identity on `connect` (only if the gateway is configured to allow that mode; see OpenClaw security docs). |
+
 ## Heartbeat and Scheduler Controls
 
 | Variable | Default | Notes |

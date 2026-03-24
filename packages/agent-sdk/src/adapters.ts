@@ -687,6 +687,15 @@ const staticMetadata: AdapterMetadata[] = [
     requiresRuntimeCwd: false
   },
   {
+    providerType: "openclaw_gateway",
+    label: "OpenClaw Gateway",
+    supportsModelSelection: false,
+    supportsEnvironmentTest: true,
+    supportsWebSearch: false,
+    supportsThinkingEffort: false,
+    requiresRuntimeCwd: false
+  },
+  {
     providerType: "http",
     label: "HTTP",
     supportsModelSelection: false,
@@ -708,7 +717,7 @@ const staticMetadata: AdapterMetadata[] = [
 
 const metadataByProviderType = new Map(staticMetadata.map((entry) => [entry.providerType, entry] as const));
 
-const modelCatalog: Record<Exclude<AgentProviderType, "http" | "shell">, AdapterModelOption[]> = {
+const modelCatalog: Record<Exclude<AgentProviderType, "http" | "shell" | "openclaw_gateway">, AdapterModelOption[]> = {
   codex: [
     { id: "gpt-5.3-codex", label: "GPT-5.3 Codex" },
     { id: "gpt-5.4", label: "GPT-5.4" },
@@ -771,7 +780,7 @@ export async function listAdapterModels(
   providerType: AgentProviderType,
   runtime?: AgentRuntimeConfig
 ): Promise<AdapterModelOption[]> {
-  if (providerType === "http" || providerType === "shell") {
+  if (providerType === "http" || providerType === "shell" || providerType === "openclaw_gateway") {
     return [];
   }
   if (providerType === "cursor") {
@@ -900,7 +909,10 @@ export async function testAdapterEnvironment(
 
 function detectProviderCommandMismatch(providerType: AgentProviderType, command: string) {
   const normalized = basename(command).toLowerCase();
-  const known: Record<Exclude<AgentProviderType, "http" | "shell" | "openai_api" | "anthropic_api">, string[]> = {
+  const known: Record<
+    Exclude<AgentProviderType, "http" | "shell" | "openai_api" | "anthropic_api" | "openclaw_gateway">,
+    string[]
+  > = {
     claude_code: ["claude", "claude.exe", "claude.cmd"],
     codex: ["codex", "codex.exe", "codex.cmd"],
     cursor: ["cursor", "cursor.exe", "cursor.cmd"],

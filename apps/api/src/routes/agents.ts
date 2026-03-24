@@ -82,6 +82,7 @@ const runtimePreflightSchema = z.object({
     "gemini_cli",
     "openai_api",
     "anthropic_api",
+    "openclaw_gateway",
     "http",
     "shell"
   ]),
@@ -135,7 +136,7 @@ function toAgentResponse(agent: Record<string, unknown>) {
 }
 
 function providerRequiresNamedModel(providerType: string) {
-  return providerType !== "http" && providerType !== "shell";
+  return providerType !== "http" && providerType !== "shell" && providerType !== "openclaw_gateway";
 }
 
 const agentResponseSchema = AgentSchema.extend({
@@ -251,6 +252,7 @@ export function createAgentsRouter(ctx: AppContext) {
       | "gemini_cli"
       | "openai_api"
       | "anthropic_api"
+      | "openclaw_gateway"
       | "http"
       | "shell";
     const models = await getAdapterModels(typedProviderType, {

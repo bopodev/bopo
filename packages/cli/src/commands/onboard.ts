@@ -34,7 +34,15 @@ interface OnboardSeedResult {
   templateId?: string | null;
 }
 
-type AgentProvider = "codex" | "claude_code" | "gemini_cli" | "opencode" | "openai_api" | "anthropic_api" | "shell";
+type AgentProvider =
+  | "codex"
+  | "claude_code"
+  | "gemini_cli"
+  | "opencode"
+  | "openai_api"
+  | "anthropic_api"
+  | "openclaw_gateway"
+  | "shell";
 
 interface OnboardDeps {
   installDependencies: (workspaceRoot: string) => Promise<void>;
@@ -723,6 +731,7 @@ function parseAgentProvider(value: unknown): AgentProvider | null {
     value === "opencode" ||
     value === "openai_api" ||
     value === "anthropic_api" ||
+    value === "openclaw_gateway" ||
     value === "shell"
   ) {
     return value;
@@ -748,6 +757,9 @@ function formatAgentProvider(provider: AgentProvider) {
   }
   if (provider === "anthropic_api") {
     return "Anthropic API (direct)";
+  }
+  if (provider === "openclaw_gateway") {
+    return "OpenClaw Gateway";
   }
   return "Shell Runtime";
 }

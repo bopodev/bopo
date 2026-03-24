@@ -50,7 +50,16 @@ const DEFAULT_COMPANY_ID_ENV = "BOPO_DEFAULT_COMPANY_ID";
 const DEFAULT_AGENT_PROVIDER_ENV = "BOPO_DEFAULT_AGENT_PROVIDER";
 const DEFAULT_AGENT_MODEL_ENV = "BOPO_DEFAULT_AGENT_MODEL";
 const DEFAULT_TEMPLATE_ENV = "BOPO_DEFAULT_TEMPLATE_ID";
-type AgentProvider = "codex" | "claude_code" | "cursor" | "gemini_cli" | "opencode" | "openai_api" | "anthropic_api" | "shell";
+type AgentProvider =
+  | "codex"
+  | "claude_code"
+  | "cursor"
+  | "gemini_cli"
+  | "opencode"
+  | "openai_api"
+  | "anthropic_api"
+  | "openclaw_gateway"
+  | "shell";
 const CEO_BOOTSTRAP_SUMMARY = "ceo bootstrap heartbeat";
 const STARTUP_PROJECT_NAME = "Leadership Setup";
 const CEO_STARTUP_TASK_TITLE = "Set up CEO operating files and hire founding engineer";
@@ -399,6 +408,7 @@ function parseAgentProvider(value: unknown): AgentProvider | null {
     value === "opencode" ||
     value === "openai_api" ||
     value === "anthropic_api" ||
+    value === "openclaw_gateway" ||
     value === "shell"
   ) {
     return value;

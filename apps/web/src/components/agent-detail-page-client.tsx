@@ -282,6 +282,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   gemini_cli: "Gemini CLI",
   openai_api: "OpenAI API",
   anthropic_api: "Anthropic API",
+  openclaw_gateway: "OpenClaw Gateway",
   http: "HTTP",
   shell: "Shell"
 };
@@ -297,6 +298,7 @@ function normalizeRuntimeProvider(providerType: string): RuntimeProviderType | n
     providerType === "gemini_cli" ||
     providerType === "openai_api" ||
     providerType === "anthropic_api" ||
+    providerType === "openclaw_gateway" ||
     providerType === "http" ||
     providerType === "shell"
   ) {
@@ -319,7 +321,7 @@ function getModelLabel(providerType: string, modelId: string) {
 }
 
 function providerRequiresNamedModel(providerType: RuntimeProviderType) {
-  return providerType !== "http" && providerType !== "shell";
+  return providerType !== "http" && providerType !== "shell" && providerType !== "openclaw_gateway";
 }
 
 function parseStateBlob(raw: string | undefined) {
@@ -1167,8 +1169,10 @@ export function AgentDetailPageClient({
             | "codex"
             | "cursor"
             | "opencode"
+            | "gemini_cli"
             | "openai_api"
             | "anthropic_api"
+            | "openclaw_gateway"
             | "http"
             | "shell",
           heartbeatCron: agent.heartbeatCron,

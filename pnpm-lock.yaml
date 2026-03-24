@@ -230,6 +230,16 @@ importers:
 
   packages/adapters/openai-api: {}
 
+  packages/adapters/openclaw-gateway:
+    dependencies:
+      ws:
+        specifier: ^8.19.0
+        version: 8.19.0
+    devDependencies:
+      '@types/ws':
+        specifier: ^8.18.1
+        version: 8.18.1
+
   packages/adapters/opencode: {}
 
   packages/adapters/shell: {}
