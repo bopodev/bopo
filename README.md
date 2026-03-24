@@ -4,7 +4,7 @@
 
 **Run your AI company without the chaos.** [Bopo](https://bopo.dev/) is **open source and self-hosted**. It helps developer-led teams run agent work like a real company: **clear goals, assigned roles, budgets, approvals, and full task history**—so you are not babysitting agents across tabs, scripts, and lost context.
 
-If a coding agent is an employee, Bopo is the operating system around that employee.
+If a coding agent is an employee, Bopo is the company around that employee.
 
 ---
 
