@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { AGENT_ROLE_KEYS, AGENT_ROLE_LABELS, type AgentRoleKey } from "bopodev-contracts";
 import { ApiError, apiDelete, apiGet, apiPost, apiPut } from "@/lib/api";
+import { fetchAdapterModelsForProvider } from "@/lib/adapter-models-api";
 import { formatArgsInput, formatEnvInput, parseArgsInput, parseEnvInput } from "@/lib/agent-config-form";
 import { agentDefaultsStorageKey, readAgentRuntimeDefaults } from "@/lib/agent-defaults";
 import {
@@ -11,10 +12,10 @@ import {
   heartbeatIntervalSecToCron
 } from "@/lib/agent-runtime-options";
 import {
-  buildRegistryModelOptions,
+  buildModelPickerOptions,
   getDefaultModelForProvider,
-  getRegistryModelValuesForRuntimeProvider,
-  type ModelRegistryRow
+  getModelPickerAllowedIds,
+  type ServerAdapterModelEntry
 } from "@/lib/model-registry-options";
 import { showThinkingEffortControlForProvider } from "@/lib/provider-runtime-ui";
 import { Button } from "@/components/ui/button";
@@ -87,6 +88,12 @@ type ProjectOption = {
   id: string;
   name: string;
 };
+
+type AdapterModelsFetchState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "error" }
+  | { status: "ok"; models: ServerAdapterModelEntry[] };
 
 const EDIT_AGENT_VISIBLE_PROVIDER_TYPES: ProviderType[] = [
   "claude_code",
@@ -219,7 +226,9 @@ export function CreateAgentModal({
       >
     >
   >({});
-  const modelRegistryRows: ModelRegistryRow[] = [];
+  const [adapterModelsFetch, setAdapterModelsFetch] = useState<AdapterModelsFetchState>({ status: "idle" });
+  /** While refetching, keep showing the previous list for this provider so we do not fall back to the client allowlist and reset runtimeModel. */
+  const adapterModelsStaleByProviderRef = useRef<Partial<Record<ProviderType, ServerAdapterModelEntry[]>>>({});
   const providerMetadata = adapterMetadataByProvider[providerType];
   const visibleProviders: ProviderOption[] = (
     Object.values(adapterMetadataByProvider).filter(Boolean).length > 0
@@ -241,17 +250,36 @@ export function CreateAgentModal({
     providerType === "opencode" ||
     providerType === "shell"
   );
+  const serverModelsForPicker = useMemo(() => {
+    if (adapterModelsFetch.status === "ok") {
+      return adapterModelsFetch.models;
+    }
+    if (adapterModelsFetch.status === "loading") {
+      const stale = adapterModelsStaleByProviderRef.current[providerType];
+      if (stale && stale.length > 0) {
+        return stale;
+      }
+    }
+    return undefined;
+  }, [adapterModelsFetch, providerType]);
   const modelOptions = useMemo(
     () =>
-      buildRegistryModelOptions({
-        rows: modelRegistryRows,
+      buildModelPickerOptions({
+        rows: [],
         providerType,
+        serverModels: serverModelsForPicker,
         currentModel: runtimeModel,
         includeDefault: false
       }),
-    [modelRegistryRows, providerType, runtimeModel]
+    [providerType, runtimeModel, serverModelsForPicker]
   );
   const visibleModelOptions = providerType === "opencode" ? modelOptions.filter((option) => option.value.trim().length > 0) : modelOptions;
+  const modelSelectPlaceholder =
+    adapterModelsFetch.status === "loading"
+      ? "Loading models…"
+      : adapterModelsFetch.status === "error"
+        ? "Select a model (offline list)"
+        : "Select a model";
   const providerSupportsWebSearch = providerMetadata?.supportsWebSearch ?? providerType === "codex";
   const sandboxPermissionLabel = providerType === "claude_code" ? "Skip permissions" : "Bypass approvals and sandbox";
   const managerOptions = useMemo(() => {
@@ -381,7 +409,7 @@ export function CreateAgentModal({
   }
 
   useEffect(() => {
-    if (!open) {
+    if (!dialogOpen) {
       return;
     }
     if (isEditing && agent) {
@@ -496,10 +524,10 @@ export function CreateAgentModal({
           // Silent fallback: keep field empty when suggestion lookup fails.
         });
     }
-  }, [open, isEditing, agent, suggestedRuntimeCwd, companyId, fallbackDefaults, projects]);
+  }, [dialogOpen, isEditing, agent, suggestedRuntimeCwd, companyId, fallbackDefaults, projects]);
 
   useEffect(() => {
-    if (!open) {
+    if (!dialogOpen) {
       return;
     }
     void apiGet<AdapterMetadataResponse>("/agents/adapter-metadata", companyId)
@@ -511,7 +539,7 @@ export function CreateAgentModal({
       .catch(() => {
         // Fall back to local defaults if metadata endpoint fails.
       });
-  }, [open, companyId]);
+  }, [dialogOpen, companyId]);
 
   useEffect(() => {
     if (providerType !== "codex" && allowWebSearch) {
@@ -526,7 +554,71 @@ export function CreateAgentModal({
   }, [providerType]);
 
   useEffect(() => {
-    const allowedValues = getRegistryModelValuesForRuntimeProvider(modelRegistryRows, providerType);
+    if (!dialogOpen || !companyId) {
+      adapterModelsStaleByProviderRef.current = {};
+      setAdapterModelsFetch({ status: "idle" });
+      return;
+    }
+    setAdapterModelsFetch({ status: "loading" });
+    const parsedEnv = parseEnvInput(runtimeEnv);
+    const parsedArgs = parseArgsInput(runtimeArgs);
+    const body = {
+      runtimeConfig: {
+        runtimeCommand: runtimeCommand || undefined,
+        runtimeArgs: parsedArgs,
+        runtimeCwd: runtimeCwd || undefined,
+        runtimeEnv: parsedEnv,
+        runtimeThinkingEffort,
+        bootstrapPrompt: bootstrapPrompt || undefined,
+        runtimeTimeoutSec: Number(runtimeTimeoutSec || "0"),
+        interruptGraceSec: Number(interruptGraceSec || "15"),
+        runPolicy: { sandboxMode, allowWebSearch }
+      }
+    };
+    void fetchAdapterModelsForProvider(companyId, providerType, body)
+      .then((models) => {
+        adapterModelsStaleByProviderRef.current = {
+          ...adapterModelsStaleByProviderRef.current,
+          [providerType]: models
+        };
+        setAdapterModelsFetch({ status: "ok", models });
+      })
+      .catch(() => setAdapterModelsFetch({ status: "error" }));
+  }, [
+    dialogOpen,
+    companyId,
+    providerType,
+    runtimeCommand,
+    runtimeArgs,
+    runtimeCwd,
+    runtimeEnv,
+    runtimeThinkingEffort,
+    runtimeTimeoutSec,
+    interruptGraceSec,
+    sandboxMode,
+    allowWebSearch,
+    bootstrapPrompt
+  ]);
+
+  useEffect(() => {
+    const serverModels =
+      adapterModelsFetch.status === "ok"
+        ? adapterModelsFetch.models
+        : adapterModelsFetch.status === "loading"
+          ? (() => {
+              const stale = adapterModelsStaleByProviderRef.current[providerType];
+              return stale && stale.length > 0 ? stale : undefined;
+            })()
+          : undefined;
+    const allowedValues = getModelPickerAllowedIds({
+      rows: [],
+      providerType,
+      serverModels
+    });
+    const serverResolved = serverModels !== undefined;
+    if (serverResolved && allowedValues.length === 0) {
+      return;
+    }
     if (runtimeModel && !allowedValues.includes(runtimeModel)) {
       const defaultId = getDefaultModelForProvider(providerType);
       setRuntimeModel(defaultId && allowedValues.includes(defaultId) ? defaultId : allowedValues[0] ?? "");
@@ -538,7 +630,7 @@ export function CreateAgentModal({
       const defaultId = getDefaultModelForProvider(providerType);
       setRuntimeModel(defaultId && allowedValues.includes(defaultId) ? defaultId : allowedValues[0] ?? "");
     }
-  }, [modelRegistryRows, providerType, runtimeModel]);
+  }, [adapterModelsFetch, providerType, runtimeModel]);
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -959,12 +1051,13 @@ export function CreateAgentModal({
                     helpText="The language model the provider uses when it supports explicit model selection. Options depend on your registry and provider.">
                     Model
                   </FieldLabelWithHelp>
-                  <Select
-                    value={runtimeModel || undefined}
-                    onValueChange={(value) => setRuntimeModel(value)}
-                  >
-                    <SelectTrigger id="agent-runtime-model" className={styles.createAgentModalSelectTrigger}>
-                      <SelectValue placeholder="Select a model" />
+                  <Select value={runtimeModel || undefined} onValueChange={(value) => setRuntimeModel(value)}>
+                    <SelectTrigger
+                      id="agent-runtime-model"
+                      className={styles.createAgentModalSelectTrigger}
+                      aria-busy={adapterModelsFetch.status === "loading"}
+                    >
+                      <SelectValue placeholder={modelSelectPlaceholder} />
                     </SelectTrigger>
                     <SelectContent>
                       {visibleModelOptions.map((option) => (

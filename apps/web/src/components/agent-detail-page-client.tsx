@@ -21,8 +21,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ApiError, apiGet, apiPost, apiPut } from "@/lib/api";
 import { agentAvatarSeed } from "@/lib/agent-avatar";
 import { parseRuntimeFromAgentColumns } from "@/lib/agent-detail-logic";
+import { buildAdapterModelsRequestBody, fetchAdapterModelsForProvider } from "@/lib/adapter-models-api";
 import { getModelOptionsForProvider, heartbeatCronToIntervalSec } from "@/lib/agent-runtime-options";
-import { getDefaultModelForProvider, type RuntimeProviderType } from "@/lib/model-registry-options";
+import {
+  buildModelPickerOptions,
+  getDefaultModelForProvider,
+  type RuntimeProviderType,
+  type ServerAdapterModelEntry
+} from "@/lib/model-registry-options";
 import { showThinkingEffortControlForProvider } from "@/lib/provider-runtime-ui";
 import { formatSmartDateTime } from "@/lib/smart-date";
 import { getStatusBadgeClassName } from "@/lib/status-presentation";
@@ -81,6 +87,12 @@ interface CostRow {
   tokenOutput: number;
   usdCost: number;
 }
+
+type SidebarAdapterModelsState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "error" }
+  | { status: "ok"; models: ServerAdapterModelEntry[] };
 
 interface RunDetailsPayload {
   result?: string;
@@ -483,6 +495,7 @@ export function AgentDetailPageClient({
   const avgCostPerCompletedIssue = completedIssues.length > 0 ? costSummary.usd / completedIssues.length : 0;
   const [selectedProviderType, setSelectedProviderType] = useState(agent.providerType);
   const [selectedModelId, setSelectedModelId] = useState(configuredModelId);
+  const [sidebarAdapterModels, setSidebarAdapterModels] = useState<SidebarAdapterModelsState>({ status: "idle" });
   const providerOptions = useMemo(() => {
     const options = SIDEBAR_VISIBLE_PROVIDER_TYPES.map((providerType) => ({
       value: providerType,
@@ -495,11 +508,18 @@ export function AgentDetailPageClient({
   }, [selectedProviderType]);
   const modelOptions = useMemo(() => {
     const provider = normalizeRuntimeProvider(selectedProviderType);
-    if (!provider) {
+    if (!provider || !providerRequiresNamedModel(provider)) {
       return [];
     }
-    return getModelOptionsForProvider(provider, selectedModelId).filter((option) => option.value.trim().length > 0);
-  }, [selectedProviderType, selectedModelId]);
+    const serverModels = sidebarAdapterModels.status === "ok" ? sidebarAdapterModels.models : undefined;
+    return buildModelPickerOptions({
+      rows: [],
+      providerType: provider,
+      serverModels,
+      currentModel: selectedModelId,
+      includeDefault: false
+    }).filter((option) => option.value.trim().length > 0);
+  }, [selectedProviderType, selectedModelId, sidebarAdapterModels]);
   const completedIssueColumns = useMemo<ColumnDef<IssueRow>[]>(
     () => [
       {
@@ -644,6 +664,33 @@ export function AgentDetailPageClient({
   useEffect(() => {
     setSelectedModelId(configuredModelId);
   }, [configuredModelId]);
+
+  useEffect(() => {
+    const provider = normalizeRuntimeProvider(selectedProviderType);
+    if (!provider || !providerRequiresNamedModel(provider)) {
+      setSidebarAdapterModels({ status: "idle" });
+      return;
+    }
+    setSidebarAdapterModels({ status: "loading" });
+    const body = buildAdapterModelsRequestBody(agent);
+    void fetchAdapterModelsForProvider(companyId, provider, body)
+      .then((models) => setSidebarAdapterModels({ status: "ok", models }))
+      .catch(() => setSidebarAdapterModels({ status: "error" }));
+  }, [
+    companyId,
+    selectedProviderType,
+    agent.id,
+    agent.runtimeCommand,
+    agent.runtimeArgsJson,
+    agent.runtimeCwd,
+    agent.runtimeEnvJson,
+    agent.runtimeModel,
+    agent.runtimeThinkingEffort,
+    agent.bootstrapPrompt,
+    agent.runtimeTimeoutSec,
+    agent.interruptGraceSec,
+    agent.runPolicyJson
+  ]);
 
   useEffect(() => {
     setSelectedThinkingEffort(configuredThinkingEffort);

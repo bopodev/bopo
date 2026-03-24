@@ -1,3 +1,4 @@
+import { dedupeModels } from "./adapters";
 import type {
   AdapterEnvironmentResult,
   AdapterMetadata,
@@ -86,11 +87,19 @@ export async function getAdapterModels(
   providerType: AgentProviderType,
   runtime?: AgentRuntimeConfig
 ): Promise<AdapterModelOption[]> {
-  const fromModule = await adapterModules[providerType].server.listModels?.(runtime);
-  if (fromModule) {
-    return fromModule;
+  const mod = adapterModules[providerType];
+  const staticModels: AdapterModelOption[] = mod.models ? [...mod.models] : [];
+  const listModels = mod.server.listModels;
+  if (!listModels) {
+    return staticModels;
   }
-  return adapterModules[providerType].models ? [...adapterModules[providerType].models] : [];
+  const discovered = await listModels(runtime);
+  const disc = Array.isArray(discovered) ? discovered : [];
+  if (disc.length > 0) {
+    return dedupeModels([...disc, ...staticModels]);
+  }
+  // Empty discovery (CLI missing, auth, timeout): keep static catalog so UIs are not stuck on client-only allowlists.
+  return staticModels.length > 0 ? staticModels : disc;
 }
 
 export function getAdapterMetadata(): AdapterMetadata[] {

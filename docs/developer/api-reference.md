@@ -123,7 +123,8 @@ Adapter and runtime support:
 
 - `GET /agents/runtime-default-cwd`
 - `GET /agents/adapter-metadata`
-- `GET /agents/adapter-models/:providerType`
+- `GET /agents/adapter-models/:providerType` — resolves models using the company’s default runtime cwd only (request bodies are not applied on GET).
+- `POST /agents/adapter-models/:providerType` — same response shape as GET; body matches runtime preflight extras (`runtimeConfig` plus optional top-level `runtimeCommand`, `runtimeCwd`, `runtimeEnv`, etc.) so CLI-backed adapters can discover models for the configured cwd/command/env.
 - `POST /agents/runtime-preflight`
 
 Hiring request lineage:

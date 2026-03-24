@@ -3,13 +3,14 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { ApiError, apiPost } from "@/lib/api";
+import { fetchAdapterModelsForProvider } from "@/lib/adapter-models-api";
 import { readAgentRuntimeDefaults } from "@/lib/agent-defaults";
 import {
-  buildRegistryModelOptions,
+  buildModelPickerOptions,
   getDefaultModelForProvider,
-  getRegistryModelValuesForRuntimeProvider,
-  type ModelRegistryRow,
-  type RuntimeProviderType
+  getModelPickerAllowedIds,
+  type RuntimeProviderType,
+  type ServerAdapterModelEntry
 } from "@/lib/model-registry-options";
 import { Button } from "@/components/ui/button";
 import {
@@ -33,6 +34,12 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import styles from "./create-company-modal.module.scss";
 
+type CompanyModalAdapterModelsState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "error" }
+  | { status: "ok"; models: ServerAdapterModelEntry[] };
+
 export function CreateCompanyModal({
   companyId,
   trigger,
@@ -46,27 +53,49 @@ export function CreateCompanyModal({
   const defaults = useMemo(() => readAgentRuntimeDefaults(), []);
   const allowedProviders: RuntimeProviderType[] = ["claude_code", "codex", "opencode", "gemini_cli"];
   const initialProviderType = allowedProviders.includes(defaults.providerType) ? defaults.providerType : "claude_code";
-  const modelRegistryRows: ModelRegistryRow[] = [];
   const [open, setOpen] = useState(false);
+  const [adapterModelsFetch, setAdapterModelsFetch] = useState<CompanyModalAdapterModelsState>({ status: "idle" });
   const [name, setName] = useState("");
   const [mission, setMission] = useState("");
   const [providerType, setProviderType] = useState<RuntimeProviderType>(initialProviderType);
   const [runtimeModel, setRuntimeModel] = useState(defaults.runtimeModel || "");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const serverModelsForPicker =
+    adapterModelsFetch.status === "ok" ? adapterModelsFetch.models : undefined;
   const modelOptions = useMemo(
     () =>
-      buildRegistryModelOptions({
-        rows: modelRegistryRows,
+      buildModelPickerOptions({
+        rows: [],
         providerType,
+        serverModels: serverModelsForPicker,
         currentModel: runtimeModel,
         includeDefault: false
       }),
-    [modelRegistryRows, providerType, runtimeModel]
+    [providerType, runtimeModel, serverModelsForPicker]
   );
 
   useEffect(() => {
-    const allowedValues = getRegistryModelValuesForRuntimeProvider(modelRegistryRows, providerType);
+    if (!open) {
+      setAdapterModelsFetch({ status: "idle" });
+      return;
+    }
+    setAdapterModelsFetch({ status: "loading" });
+    void fetchAdapterModelsForProvider(companyId, providerType, { runtimeConfig: {} })
+      .then((models) => setAdapterModelsFetch({ status: "ok", models }))
+      .catch(() => setAdapterModelsFetch({ status: "error" }));
+  }, [open, companyId, providerType]);
+
+  useEffect(() => {
+    const serverOk = adapterModelsFetch.status === "ok";
+    const allowedValues = getModelPickerAllowedIds({
+      rows: [],
+      providerType,
+      serverModels: serverOk ? adapterModelsFetch.models : undefined
+    });
+    if (serverOk && allowedValues.length === 0) {
+      return;
+    }
     const defaultId = getDefaultModelForProvider(providerType);
     const preferred = defaultId && allowedValues.includes(defaultId) ? defaultId : allowedValues[0] ?? defaultId ?? "";
     if (runtimeModel && !allowedValues.includes(runtimeModel)) {
@@ -78,7 +107,7 @@ export function CreateCompanyModal({
       return;
     }
     setRuntimeModel(preferred);
-  }, [modelRegistryRows, providerType, runtimeModel]);
+  }, [adapterModelsFetch, providerType, runtimeModel]);
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();

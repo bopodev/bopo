@@ -5,7 +5,8 @@ import * as cli from "./cli/index";
 
 export const type = "opencode" as const;
 export const label = "OpenCode";
-export const models = [] as const;
+/** Shown when `opencode models` is empty (e.g. CLI missing on the API host). Discovery merges on top of this. */
+export const models = [{ id: "opencode/big-pickle", label: "Big Pickle" }] as const;
 export const agentConfigurationDoc = `Use when:
 - You need OpenCode CLI execution with provider/model selection.
 - You want OpenCode session reuse.

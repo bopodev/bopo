@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   agentDefaultsStorageKey,
   defaultAgentRuntimeDefaults,
@@ -31,11 +31,14 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
+import { parseArgsInput, parseEnvInput } from "@/lib/agent-config-form";
+import { fetchAdapterModelsForProvider } from "@/lib/adapter-models-api";
 import {
-  buildRegistryModelOptions,
+  buildModelPickerOptions,
   getDefaultModelForProvider,
-  getRegistryModelValuesForRuntimeProvider,
-  type ModelRegistryRow
+  getModelPickerAllowedIds,
+  type RuntimeProviderType,
+  type ServerAdapterModelEntry
 } from "@/lib/model-registry-options";
 import { showThinkingEffortControlForProvider } from "@/lib/provider-runtime-ui";
 
@@ -57,15 +60,28 @@ export function AgentRuntimeDefaultsCard({
   onDeleteCompany?: () => Promise<void>;
   deleteActionPending?: boolean;
 }) {
+  type DefaultsAdapterModelsState =
+    | { status: "idle" }
+    | { status: "loading" }
+    | { status: "error" }
+    | { status: "ok"; models: ServerAdapterModelEntry[] };
+
   const [defaults, setDefaults] = useState<AgentRuntimeDefaults>(defaultAgentRuntimeDefaults);
   const [saved, setSaved] = useState(false);
-  const modelRegistryRows: ModelRegistryRow[] = [];
-  const modelOptions = buildRegistryModelOptions({
-    rows: modelRegistryRows,
-    providerType: defaults.providerType,
-    currentModel: defaults.runtimeModel,
-    includeDefault: false
-  });
+  const [adapterModelsFetch, setAdapterModelsFetch] = useState<DefaultsAdapterModelsState>({ status: "idle" });
+  const serverModelsForPicker =
+    adapterModelsFetch.status === "ok" ? adapterModelsFetch.models : undefined;
+  const modelOptions = useMemo(
+    () =>
+      buildModelPickerOptions({
+        rows: [],
+        providerType: defaults.providerType as RuntimeProviderType,
+        serverModels: serverModelsForPicker,
+        currentModel: defaults.runtimeModel,
+        includeDefault: false
+      }),
+    [defaults.providerType, defaults.runtimeModel, serverModelsForPicker]
+  );
 
   useEffect(() => {
     const stored = readAgentRuntimeDefaults();
@@ -87,8 +103,55 @@ export function AgentRuntimeDefaultsCard({
   }
 
   useEffect(() => {
-    const allowedValues = getRegistryModelValuesForRuntimeProvider(modelRegistryRows, defaults.providerType);
-    const defaultId = getDefaultModelForProvider(defaults.providerType);
+    if (!companyId) {
+      setAdapterModelsFetch({ status: "idle" });
+      return;
+    }
+    setAdapterModelsFetch({ status: "loading" });
+    const parsedEnv = parseEnvInput(defaults.runtimeEnv);
+    const parsedArgs = parseArgsInput(defaults.runtimeArgs);
+    void fetchAdapterModelsForProvider(companyId, defaults.providerType, {
+      runtimeConfig: {
+        runtimeCommand: defaults.runtimeCommand || undefined,
+        runtimeArgs: parsedArgs,
+        runtimeCwd: defaults.runtimeCwd || undefined,
+        runtimeEnv: parsedEnv,
+        runtimeThinkingEffort: defaults.runtimeThinkingEffort,
+        bootstrapPrompt: defaults.bootstrapPrompt || undefined,
+        runtimeTimeoutSec: Number(defaults.runtimeTimeoutSec || "0"),
+        interruptGraceSec: Number(defaults.interruptGraceSec || "15"),
+        runPolicy: { sandboxMode: defaults.sandboxMode, allowWebSearch: defaults.allowWebSearch }
+      }
+    })
+      .then((models) => setAdapterModelsFetch({ status: "ok", models }))
+      .catch(() => setAdapterModelsFetch({ status: "error" }));
+  }, [
+    companyId,
+    defaults.providerType,
+    defaults.runtimeCommand,
+    defaults.runtimeArgs,
+    defaults.runtimeCwd,
+    defaults.runtimeEnv,
+    defaults.runtimeThinkingEffort,
+    defaults.bootstrapPrompt,
+    defaults.runtimeTimeoutSec,
+    defaults.interruptGraceSec,
+    defaults.sandboxMode,
+    defaults.allowWebSearch
+  ]);
+
+  useEffect(() => {
+    const providerType = defaults.providerType as RuntimeProviderType;
+    const serverOk = adapterModelsFetch.status === "ok";
+    const allowedValues = getModelPickerAllowedIds({
+      rows: [],
+      providerType,
+      serverModels: serverOk ? adapterModelsFetch.models : undefined
+    });
+    if (serverOk && allowedValues.length === 0) {
+      return;
+    }
+    const defaultId = getDefaultModelForProvider(providerType);
     const preferred = defaultId && allowedValues.includes(defaultId) ? defaultId : allowedValues[0] ?? "";
     if (defaults.runtimeModel && !allowedValues.includes(defaults.runtimeModel)) {
       setDefaults((current) => ({ ...current, runtimeModel: preferred }));
@@ -101,7 +164,7 @@ export function AgentRuntimeDefaultsCard({
     }
     setDefaults((current) => ({ ...current, runtimeModel: preferred }));
     setSaved(false);
-  }, [defaults.providerType, defaults.runtimeModel, modelRegistryRows]);
+  }, [adapterModelsFetch, defaults.providerType, defaults.runtimeModel]);
 
   useEffect(() => {
     if (!showThinkingEffortControlForProvider(defaults.providerType)) {

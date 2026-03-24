@@ -150,7 +150,8 @@ When adding a new adapter:
 ## API endpoints
 
 - `GET /agents/adapter-metadata`
-- `GET /agents/adapter-models/:providerType`
+- `GET /agents/adapter-models/:providerType` (default company cwd only; no request body)
+- `POST /agents/adapter-models/:providerType` (pass runtime fields in the body for accurate CLI model discovery)
 - `POST /agents/runtime-preflight`
 
 ## Related docs

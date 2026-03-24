@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Response } from "express";
 import { mkdir } from "node:fs/promises";
 import { z } from "zod";
 import {
@@ -89,6 +89,12 @@ const runtimePreflightSchema = z.object({
   runtimeConfig: z.record(z.string(), z.unknown()).optional(),
   ...legacyRuntimeConfigSchema.shape
 });
+
+/** Body for POST /agents/adapter-models/:providerType (runtime for CLI discovery). */
+const adapterModelsBodySchema = z.object({
+  runtimeConfig: z.record(z.string(), z.unknown()).optional(),
+  ...legacyRuntimeConfigSchema.shape
+});
 const UPDATE_AGENT_ALLOWED_KEYS = new Set([
   "managerAgentId",
   "role",
@@ -148,6 +154,66 @@ function ensureNamedRuntimeModel(providerType: string, runtimeModel: string | un
     return true;
   }
   return hasText(runtimeModel);
+}
+
+type AdapterModelsProviderType = NonNullable<z.infer<typeof runtimePreflightSchema>["providerType"]>;
+
+async function handleAdapterModelsRequest(
+  ctx: AppContext,
+  res: Response,
+  companyId: string,
+  providerType: string,
+  parsedBody: z.infer<typeof adapterModelsBodySchema> | null
+) {
+  if (!runtimePreflightSchema.shape.providerType.safeParse(providerType).success) {
+    return sendError(res, `Unsupported provider type: ${providerType}`, 422);
+  }
+  const defaultRuntimeCwd = await resolveDefaultRuntimeCwdForCompany(ctx.db, companyId);
+  let runtimeConfig: ReturnType<typeof normalizeRuntimeConfig>;
+  try {
+    if (parsedBody) {
+      runtimeConfig = normalizeRuntimeConfig({
+        runtimeConfig: parsedBody.runtimeConfig,
+        legacy: {
+          runtimeCommand: parsedBody.runtimeCommand,
+          runtimeArgs: parsedBody.runtimeArgs,
+          runtimeCwd: parsedBody.runtimeCwd,
+          runtimeTimeoutMs: parsedBody.runtimeTimeoutMs,
+          runtimeModel: parsedBody.runtimeModel,
+          runtimeThinkingEffort: parsedBody.runtimeThinkingEffort,
+          bootstrapPrompt: parsedBody.bootstrapPrompt,
+          runtimeTimeoutSec: parsedBody.runtimeTimeoutSec,
+          interruptGraceSec: parsedBody.interruptGraceSec,
+          runtimeEnv: parsedBody.runtimeEnv,
+          runPolicy: parsedBody.runPolicy
+        },
+        defaultRuntimeCwd
+      });
+    } else {
+      runtimeConfig = normalizeRuntimeConfig({ defaultRuntimeCwd });
+    }
+    runtimeConfig = enforceRuntimeCwdPolicy(companyId, runtimeConfig);
+  } catch (error) {
+    return sendError(res, String(error), 422);
+  }
+
+  if (parsedBody && runtimeConfig.runtimeCwd) {
+    await mkdir(runtimeConfig.runtimeCwd, { recursive: true });
+  }
+
+  const typedProviderType = providerType as AdapterModelsProviderType;
+  const models = await getAdapterModels(typedProviderType, {
+    command: runtimeConfig.runtimeCommand,
+    args: runtimeConfig.runtimeArgs,
+    cwd: runtimeConfig.runtimeCwd,
+    env: runtimeConfig.runtimeEnv,
+    model: runtimeConfig.runtimeModel,
+    thinkingEffort: runtimeConfig.runtimeThinkingEffort,
+    timeoutMs: runtimeConfig.runtimeTimeoutSec > 0 ? runtimeConfig.runtimeTimeoutSec * 1000 : undefined,
+    interruptGraceSec: runtimeConfig.interruptGraceSec,
+    runPolicy: runtimeConfig.runPolicy
+  });
+  return sendOk(res, { providerType: typedProviderType, models });
 }
 
 export function createAgentsRouter(ctx: AppContext) {
@@ -230,43 +296,16 @@ export function createAgentsRouter(ctx: AppContext) {
 
   router.get("/adapter-models/:providerType", async (req, res) => {
     const providerType = req.params.providerType;
-    if (!runtimePreflightSchema.shape.providerType.safeParse(providerType).success) {
-      return sendError(res, `Unsupported provider type: ${providerType}`, 422);
+    return handleAdapterModelsRequest(ctx, res, req.companyId!, providerType, null);
+  });
+
+  router.post("/adapter-models/:providerType", async (req, res) => {
+    const providerType = req.params.providerType;
+    const parsed = adapterModelsBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return sendError(res, parsed.error.message, 422);
     }
-    const defaultRuntimeCwd = await resolveDefaultRuntimeCwdForCompany(ctx.db, req.companyId!);
-    let runtimeConfig: ReturnType<typeof normalizeRuntimeConfig>;
-    try {
-      runtimeConfig = normalizeRuntimeConfig({
-        runtimeConfig: req.body?.runtimeConfig,
-        defaultRuntimeCwd
-      });
-      runtimeConfig = enforceRuntimeCwdPolicy(req.companyId!, runtimeConfig);
-    } catch (error) {
-      return sendError(res, String(error), 422);
-    }
-    const typedProviderType = providerType as
-      | "claude_code"
-      | "codex"
-      | "cursor"
-      | "opencode"
-      | "gemini_cli"
-      | "openai_api"
-      | "anthropic_api"
-      | "openclaw_gateway"
-      | "http"
-      | "shell";
-    const models = await getAdapterModels(typedProviderType, {
-      command: runtimeConfig.runtimeCommand,
-      args: runtimeConfig.runtimeArgs,
-      cwd: runtimeConfig.runtimeCwd,
-      env: runtimeConfig.runtimeEnv,
-      model: runtimeConfig.runtimeModel,
-      thinkingEffort: runtimeConfig.runtimeThinkingEffort,
-      timeoutMs: runtimeConfig.runtimeTimeoutSec > 0 ? runtimeConfig.runtimeTimeoutSec * 1000 : undefined,
-      interruptGraceSec: runtimeConfig.interruptGraceSec,
-      runPolicy: runtimeConfig.runPolicy
-    });
-    return sendOk(res, { providerType: typedProviderType, models });
+    return handleAdapterModelsRequest(ctx, res, req.companyId!, providerType, parsed.data);
   });
 
   router.post("/runtime-preflight", async (req, res) => {

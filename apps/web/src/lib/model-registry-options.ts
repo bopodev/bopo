@@ -23,6 +23,12 @@ export type ModelOption = {
   label: string;
 };
 
+/** Server-reported model entry from `POST /agents/adapter-models/:providerType`. */
+export type ServerAdapterModelEntry = {
+  id: string;
+  label: string;
+};
+
 const MODEL_LABEL_OVERRIDES: Record<string, string> = {
   "opencode/big-pickle": "Big Pickle"
 };
@@ -122,6 +128,74 @@ export function getRegistryModelValuesForRuntimeProvider(
     return [...allowed];
   }
   return [];
+}
+
+/**
+ * When `serverModels` is set (including an empty array), IDs come only from the API — no client allowlist.
+ * When `serverModels` is undefined, falls back to registry rows / `ALLOWED_MODEL_IDS_BY_PROVIDER`.
+ */
+export function getModelPickerAllowedIds(input: {
+  rows: ModelRegistryRow[];
+  providerType: RuntimeProviderType;
+  serverModels: ServerAdapterModelEntry[] | undefined;
+}): string[] {
+  if (input.serverModels !== undefined) {
+    const ids = input.serverModels
+      .map((m) => normalizeModelIdForRuntimeProvider(input.providerType, m.id))
+      .filter((id) => id.length > 0);
+    return Array.from(new Set(ids)).sort((a, b) => a.localeCompare(b, "en", { numeric: true, sensitivity: "base" }));
+  }
+  return getRegistryModelValuesForRuntimeProvider(input.rows, input.providerType);
+}
+
+/**
+ * Builds select options: uses `serverModels` when defined (even if empty); otherwise offline catalog via `buildRegistryModelOptions`.
+ */
+export function buildModelPickerOptions(input: {
+  rows: ModelRegistryRow[];
+  providerType: RuntimeProviderType;
+  serverModels: ServerAdapterModelEntry[] | undefined;
+  currentModel?: string | null;
+  includeDefault?: boolean;
+}): ModelOption[] {
+  if (input.serverModels === undefined) {
+    return buildRegistryModelOptions({
+      rows: input.rows,
+      providerType: input.providerType,
+      currentModel: input.currentModel,
+      includeDefault: input.includeDefault
+    });
+  }
+  const includeDefault = input.includeDefault ?? false;
+  const options: ModelOption[] = [];
+  if (includeDefault) {
+    options.push({ value: "", label: "Default" });
+  }
+  const labelById = new Map<string, string>();
+  for (const m of input.serverModels) {
+    const id = normalizeModelIdForRuntimeProvider(input.providerType, m.id);
+    if (!id) {
+      continue;
+    }
+    const label = m.label?.trim() || id;
+    labelById.set(id, label);
+  }
+  const sortedIds = Array.from(labelById.keys()).sort((a, b) =>
+    a.localeCompare(b, "en", { numeric: true, sensitivity: "base" })
+  );
+  for (const id of sortedIds) {
+    options.push({
+      value: id,
+      label: MODEL_LABEL_OVERRIDES[id] ?? labelById.get(id) ?? id
+    });
+  }
+  const currentModel = input.currentModel
+    ? normalizeModelIdForRuntimeProvider(input.providerType, input.currentModel)
+    : undefined;
+  if (currentModel && !options.some((entry) => entry.value === currentModel)) {
+    options.push({ value: currentModel, label: `${currentModel} (current)` });
+  }
+  return options;
 }
 
 export function buildRegistryModelOptions(input: {
