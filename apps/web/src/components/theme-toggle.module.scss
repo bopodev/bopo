@@ -1,15 +1,20 @@
 @reference "../app/globals.css";
 
 .themeToggle {
-  @apply inline-flex shrink-0 items-center gap-0 rounded-md border border-sidebar-border bg-sidebar-accent/25 p-px;
+  @apply inline-flex shrink-0 cursor-pointer items-center gap-0 rounded-md border border-sidebar-border bg-sidebar-accent/25 p-px outline-none;
+  @apply focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background;
+
+  &:hover .themeToggleBtn:not(.themeToggleBtnActive) {
+    @apply bg-sidebar-accent/45 text-sidebar-foreground;
+  }
 }
 
 .themeToggleBtn {
-  @apply size-7 rounded-[0.2rem] text-sidebar-foreground/65 hover:bg-sidebar-accent/45 hover:text-sidebar-foreground;
+  @apply flex size-7 items-center justify-center rounded-[0.2rem] text-sidebar-foreground/65;
 }
 
 .themeToggleBtnActive {
-  @apply bg-sidebar-accent text-sidebar-foreground shadow-none hover:bg-sidebar-accent hover:text-sidebar-foreground;
+  @apply bg-sidebar-accent text-sidebar-foreground shadow-none;
 }
 
 .themeToggleIcon {
