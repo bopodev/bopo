@@ -454,6 +454,14 @@ body {
   @apply max-w-[60%] wrap-break-word text-right text-sidebar-foreground;
 }
 
+.ui-config-kv-column {
+  @apply flex flex-col gap-2;
+}
+
+.ui-config-kv-column-value {
+  @apply wrap-break-word text-base text-sidebar-foreground;
+}
+
 .ui-alert-margin {
   @apply mb-4;
 }
@@ -1619,7 +1627,7 @@ body {
 }
 
 .ui-project-workspace-mode-active {
-  @apply border-primary bg-primary/5 dark:text-muted-foreground;
+  @apply border-primary/40 dark:bg-primary/10;
 }
 
 .ui-project-workspace-mode-title {

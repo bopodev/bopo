@@ -483,3 +483,63 @@
 .attentionDialogActionGroup {
   @apply flex items-center gap-6;
 }
+
+.agentsViewToggleGroup {
+  @apply shrink-0;
+}
+
+.agentsViewToggleButton {
+  @apply h-9 rounded-md px-4 text-sidebar-foreground;
+}
+
+.agentsViewToggleButton[data-variant="outline"].agentsViewToggleButtonActive {
+  @apply border-border/60 bg-muted text-sidebar-foreground hover:bg-muted;
+}
+
+.agentsDirectoryCardGrid {
+  @apply grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3;
+}
+
+.agentsDirectoryCardLink {
+  @apply block h-full min-w-0 rounded-xl text-inherit no-underline outline-none transition-colors hover:no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring;
+}
+
+.agentsDirectoryCard {
+  @apply h-full transition-colors hover:border-primary/40;
+}
+
+.agentsDirectoryCardHeader {
+  @apply flex flex-row items-start gap-6 space-y-0 pb-3;
+}
+
+.agentsDirectoryCardAvatar {
+  @apply size-9 shrink-0 rounded-full bg-background bg-cover bg-center bg-no-repeat;
+}
+
+.agentsDirectoryCardTitleBlock {
+  @apply min-w-0 flex-1 space-y-0.5 pr-1;
+}
+
+.agentsDirectoryCardName {
+  @apply text-base font-semibold leading-tight;
+}
+
+.agentsDirectoryCardRole {
+  @apply line-clamp-2 text-sm text-muted-foreground;
+}
+
+.agentsDirectoryCardBody {
+  @apply space-y-2 pt-0 text-sm;
+}
+
+.agentsDirectoryCardMetaRow {
+  @apply flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5;
+}
+
+.agentsDirectoryCardMetaLabel {
+  @apply shrink-0 text-muted-foreground;
+}
+
+.agentsDirectoryCardMetaValue {
+  @apply min-w-0 text-right break-all text-sidebar-foreground tabular-nums sm:break-normal;
+}

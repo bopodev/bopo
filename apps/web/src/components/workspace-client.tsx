@@ -28,10 +28,19 @@ import type { SectionLabel } from "@/lib/sections";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ButtonGroup } from "@/components/ui/button-group";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import { DataTable } from "@/components/ui/data-table";
 import { DataTableColumnHeader } from "@/components/ui/data-table-column-header";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerTrigger
+} from "@/components/ui/drawer";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, FieldDescription, FieldGroup } from "@/components/ui/field";
 import { FieldLabelWithHelp } from "@/components/ui/field-label-with-help";
@@ -52,6 +61,7 @@ import {
   XAxis,
   YAxis
 } from "recharts";
+import { SlidersHorizontal } from "lucide-react";
 import { AGENT_ROLE_LABELS, AGENT_ROLE_KEYS, type AgentRoleKey } from "bopodev-contracts";
 import styles from "./workspace-client.module.scss";
 import {
@@ -892,6 +902,8 @@ export function WorkspaceClient({
   const [agentsReportToFilter, setAgentsReportToFilter] = useState<string>("all");
   const [agentsModelFilter, setAgentsModelFilter] = useState<string>("all");
   const [agentsQuery, setAgentsQuery] = useState("");
+  const [agentsViewMode, setAgentsViewMode] = useState<"table" | "cards">("table");
+  const [agentsMobileFiltersOpen, setAgentsMobileFiltersOpen] = useState(false);
   const [inboxQuery, setInboxQuery] = useState("");
   const [inboxStateFilter, setInboxStateFilter] = useState<"all" | "pending" | "resolved">("all");
   const [inboxSeenFilter, setInboxSeenFilter] = useState<"all" | "seen" | "unseen">("all");
@@ -2425,6 +2437,106 @@ export function WorkspaceClient({
       );
     });
   }, [agents, agentsModelFilter, agentsProviderFilter, agentsQuery, agentsReportToFilter, agentsStatusFilter, isAgentsNav]);
+  const agentsToolbarFilters = useMemo(
+    () => (
+      <div className="ui-toolbar-filters">
+        <Input
+          value={agentsQuery}
+          onChange={(event) => setAgentsQuery(event.target.value)}
+          placeholder="Search name, role/title, status, or provider..."
+          className="ui-toolbar-filter-input"
+        />
+        <Select value={agentsStatusFilter} onValueChange={setAgentsStatusFilter}>
+          <SelectTrigger className="ui-toolbar-filter-select">
+            <SelectValue placeholder="Status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All statuses</SelectItem>
+            {agentStatusOptions.map((status) => (
+              <SelectItem key={status} value={status}>
+                {status}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={agentsProviderFilter} onValueChange={setAgentsProviderFilter}>
+          <SelectTrigger className="ui-toolbar-filter-select">
+            <SelectValue placeholder="Provider" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All providers</SelectItem>
+            {agentProviderOptions.map((provider) => (
+              <SelectItem key={provider} value={provider}>
+                {provider}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={agentsReportToFilter} onValueChange={setAgentsReportToFilter}>
+          <SelectTrigger className="ui-toolbar-filter-select">
+            <SelectValue placeholder="Report to" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All managers</SelectItem>
+            <SelectItem value="none">No manager</SelectItem>
+            {agentReportToOptions.map((manager) => (
+              <SelectItem key={manager.value} value={manager.value}>
+                {manager.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={agentsModelFilter} onValueChange={setAgentsModelFilter}>
+          <SelectTrigger className="ui-toolbar-filter-select">
+            <SelectValue placeholder="Model" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All models</SelectItem>
+            {agentModelOptions.map((model) => (
+              <SelectItem key={model} value={model}>
+                {model === "unconfigured" ? "Unconfigured" : model}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    ),
+    [
+      agentModelOptions,
+      agentProviderOptions,
+      agentReportToOptions,
+      agentStatusOptions,
+      agentsModelFilter,
+      agentsProviderFilter,
+      agentsQuery,
+      agentsReportToFilter,
+      agentsStatusFilter
+    ]
+  );
+  const agentsViewToggle = (
+    <ButtonGroup className={styles.agentsViewToggleGroup}>
+      <Button
+        variant="outline"
+        className={cn(
+          styles.agentsViewToggleButton,
+          agentsViewMode === "table" ? styles.agentsViewToggleButtonActive : undefined
+        )}
+        onClick={() => setAgentsViewMode("table")}
+      >
+        Table
+      </Button>
+      <Button
+        variant="outline"
+        className={cn(
+          styles.agentsViewToggleButton,
+          agentsViewMode === "cards" ? styles.agentsViewToggleButtonActive : undefined
+        )}
+        onClick={() => setAgentsViewMode("cards")}
+      >
+        Cards
+      </Button>
+    </ButtonGroup>
+  );
   const pluginKindOptions = useMemo(
     () => Array.from(new Set(plugins.map((plugin) => plugin.kind))).sort((a, b) => a.localeCompare(b)),
     [plugins]
@@ -4459,75 +4571,112 @@ export function WorkspaceClient({
               }
             />
             <>
-              <DataTable
-                columns={agentColumns}
-                data={filteredAgents}
-                emptyMessage="No agents match current filters."
-                showHorizontalScrollbarOnHover
-                toolbarActions={
-                  <div className="ui-toolbar-filters">
-                    <Input
-                      value={agentsQuery}
-                      onChange={(event) => setAgentsQuery(event.target.value)}
-                      placeholder="Search name, role/title, status, or provider..."
-                      className="ui-toolbar-filter-input"
-                    />
-                    <Select value={agentsStatusFilter} onValueChange={setAgentsStatusFilter}>
-                      <SelectTrigger className="ui-toolbar-filter-select">
-                        <SelectValue placeholder="Status" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All statuses</SelectItem>
-                        {agentStatusOptions.map((status) => (
-                          <SelectItem key={status} value={status}>
-                            {status}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Select value={agentsProviderFilter} onValueChange={setAgentsProviderFilter}>
-                      <SelectTrigger className="ui-toolbar-filter-select">
-                        <SelectValue placeholder="Provider" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All providers</SelectItem>
-                        {agentProviderOptions.map((provider) => (
-                          <SelectItem key={provider} value={provider}>
-                            {provider}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Select value={agentsReportToFilter} onValueChange={setAgentsReportToFilter}>
-                      <SelectTrigger className="ui-toolbar-filter-select">
-                        <SelectValue placeholder="Report to" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All managers</SelectItem>
-                        <SelectItem value="none">No manager</SelectItem>
-                        {agentReportToOptions.map((manager) => (
-                          <SelectItem key={manager.value} value={manager.value}>
-                            {manager.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Select value={agentsModelFilter} onValueChange={setAgentsModelFilter}>
-                      <SelectTrigger className="ui-toolbar-filter-select">
-                        <SelectValue placeholder="Model" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All models</SelectItem>
-                        {agentModelOptions.map((model) => (
-                          <SelectItem key={model} value={model}>
-                            {model === "unconfigured" ? "Unconfigured" : model}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+              {agentsViewMode === "table" ? (
+                <DataTable
+                  columns={agentColumns}
+                  data={filteredAgents}
+                  emptyMessage="No agents match current filters."
+                  showHorizontalScrollbarOnHover
+                  toolbarActions={agentsToolbarFilters}
+                  toolbarTrailing={agentsViewToggle}
+                />
+              ) : (
+                <div className="ui-data-table">
+                  <div className="ui-data-table-toolbar">
+                    <div className="ui-data-table-toolbar-actions ui-data-table-toolbar-actions-inline">{agentsToolbarFilters}</div>
+                    <div className="ui-data-table-toolbar-actions ui-data-table-toolbar-actions-mobile">
+                      <Drawer open={agentsMobileFiltersOpen} onOpenChange={setAgentsMobileFiltersOpen}>
+                        <DrawerTrigger asChild>
+                          <Button variant="outline" size="sm" className="ui-data-table-mobile-actions-trigger">
+                            <SlidersHorizontal />
+                            Filters
+                          </Button>
+                        </DrawerTrigger>
+                        <DrawerContent className="ui-mobile-safe-bottom">
+                          <DrawerHeader>
+                            <DrawerTitle>Filters</DrawerTitle>
+                            <DrawerDescription>Refine agents with quick mobile controls.</DrawerDescription>
+                          </DrawerHeader>
+                          <div className="space-y-3 pb-2">{agentsToolbarFilters}</div>
+                        </DrawerContent>
+                      </Drawer>
+                    </div>
+                    <div className="ui-data-table-toolbar-right">{agentsViewToggle}</div>
                   </div>
-                }
-              />
+                  {filteredAgents.length === 0 ? (
+                    <div className="ui-data-table-surface">
+                      <div className="ui-data-table-empty-cell flex min-h-24 items-center justify-center px-4 py-8">
+                        No agents match current filters.
+                      </div>
+                    </div>
+                  ) : (
+                    <div className={styles.agentsDirectoryCardGrid}>
+                      {filteredAgents.map((agent) => {
+                        const managerId = agent.managerAgentId;
+                        const managerName = managerId ? agentNameById.get(managerId) : undefined;
+                        const model = resolveNamedModelForAgent(agent);
+                        const cap = agent.monthlyBudgetUsd ?? 0;
+                        const used = agent.usedBudgetUsd ?? 0;
+                        const budgetLine =
+                          cap > 0 ? `${formatUsdCost(used)} of ${formatUsdCost(cap)}` : `${formatUsdCost(used)} spent · no monthly cap`;
+                        return (
+                          <Link
+                            key={agent.id}
+                            href={`/agents/${agent.id}?companyId=${companyId || ""}` as Route}
+                            className={styles.agentsDirectoryCardLink}
+                          >
+                            <Card className={styles.agentsDirectoryCard}>
+                              <CardHeader className={styles.agentsDirectoryCardHeader}>
+                                <AgentAvatar
+                                  seed={agentAvatarSeed(agent.id, agent.name, agent.avatarSeed)}
+                                  name={agent.name}
+                                  className={styles.agentsDirectoryCardAvatar}
+                                  size={56}
+                                />
+                                <div className={styles.agentsDirectoryCardTitleBlock}>
+                                  <CardTitle className={styles.agentsDirectoryCardName}>{agent.name}</CardTitle>
+                                  <CardDescription className={styles.agentsDirectoryCardRole}>
+                                    {getAgentDisplayRole(agent)}
+                                  </CardDescription>
+                                </div>
+                                <Badge variant="outline" className={cn("shrink-0", getStatusBadgeClassName(agent.status))}>
+                                  {agent.status}
+                                </Badge>
+                              </CardHeader>
+                              <CardContent className={styles.agentsDirectoryCardBody}>
+                                <div className={styles.agentsDirectoryCardMetaRow}>
+                                  <span className={styles.agentsDirectoryCardMetaLabel}>Provider</span>
+                                  <span className={styles.agentsDirectoryCardMetaValue}>{agent.providerType}</span>
+                                </div>
+                                <div className={styles.agentsDirectoryCardMetaRow}>
+                                  <span className={styles.agentsDirectoryCardMetaLabel}>Model</span>
+                                  <span className={styles.agentsDirectoryCardMetaValue}>{model ?? "—"}</span>
+                                </div>
+                                <div className={styles.agentsDirectoryCardMetaRow}>
+                                  <span className={styles.agentsDirectoryCardMetaLabel}>Report to</span>
+                                  <span className={styles.agentsDirectoryCardMetaValue}>
+                                    {managerId && managerName ? (
+                                      managerName
+                                    ) : managerId ? (
+                                      "Unknown"
+                                    ) : (
+                                      "None"
+                                    )}
+                                  </span>
+                                </div>
+                                <div className={styles.agentsDirectoryCardMetaRow}>
+                                  <span className={styles.agentsDirectoryCardMetaLabel}>Budget</span>
+                                  <span className={styles.agentsDirectoryCardMetaValue}>{budgetLine}</span>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
             </>
           </>
         );

@@ -1176,10 +1176,6 @@ export function AgentDetailPageClient({
         <CardContent className="ui-config-card-stack">
           <ConfigRow label="Agent ID" value={agent.id} />
           <ConfigRow label="Role" value={agent.role ?? "Not set"} />
-          <ConfigRow
-            label="Capabilities"
-            value={agent.capabilities?.trim() ? agent.capabilities.trim() : "Not set"}
-          />
           <ConfigRow label="Status" value={liveStatus} detail={liveStatusDetail} />
           <ConfigRow label="Heartbeat" value={formatHeartbeatCadence(agent.heartbeatCron)} />
         </CardContent>
@@ -1194,6 +1190,15 @@ export function AgentDetailPageClient({
           <ConfigRow label="Budget used (month)" value={`$${usedBudgetUsd.toFixed(2)}`} />
           <ConfigRow label="Input tokens" value={costSummary.input.toLocaleString()} />
           <ConfigRow label="Output tokens" value={costSummary.output.toLocaleString()} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="ui-config-kv-column">
+          <div className="ui-config-kv-label">Capabilities</div>
+          <div className="ui-config-kv-column-value">
+            {agent.capabilities?.trim() ? agent.capabilities.trim() : "Not set"}
+          </div>
         </CardContent>
       </Card>
     </div>
