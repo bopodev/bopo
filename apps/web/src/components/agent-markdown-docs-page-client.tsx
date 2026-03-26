@@ -325,10 +325,6 @@ export function AgentMarkdownDocsPageClient({
 
   const secondaryPane = (
     <div className="run-sidebar-pane">
-      <div className="run-sidebar-title">Documents</div>
-      <p className="ui-agent-docs-sidebar-intro">
-        Operating documents for this agent. Editing structured memory can affect downstream behavior.
-      </p>
       {listsLoading ? null : listsError ? (
         <p className="ui-agent-docs-sidebar-error">{listsError}</p>
       ) : (
