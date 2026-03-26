@@ -1,5 +1,5 @@
 import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
-import { join, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import type { AgentMemoryContext } from "bopodev-agent-sdk";
 import {
   isInsidePath,
@@ -223,6 +223,40 @@ export async function readAgentMemoryFile(input: {
     path: candidate,
     relativePath: relative(root, candidate),
     content,
+    sizeBytes: info.size
+  };
+}
+
+export async function writeAgentMemoryFile(input: {
+  companyId: string;
+  agentId: string;
+  relativePath: string;
+  content: string;
+}) {
+  const root = resolveAgentMemoryRootPath(input.companyId, input.agentId);
+  await mkdir(root, { recursive: true });
+  const normalizedRel = input.relativePath.trim();
+  if (!normalizedRel || normalizedRel.includes("..")) {
+    throw new Error("Invalid relative path.");
+  }
+  const candidate = resolve(root, normalizedRel);
+  if (!isInsidePath(root, candidate)) {
+    throw new Error("Requested memory path is outside of memory root.");
+  }
+  const bytes = Buffer.byteLength(input.content, "utf8");
+  if (bytes > MAX_OBSERVABILITY_FILE_BYTES) {
+    throw new Error("Content exceeds size limit.");
+  }
+  const parent = dirname(candidate);
+  if (!isInsidePath(root, parent)) {
+    throw new Error("Invalid parent directory.");
+  }
+  await mkdir(parent, { recursive: true });
+  await writeFile(candidate, input.content, { encoding: "utf8" });
+  const info = await stat(candidate);
+  return {
+    path: candidate,
+    relativePath: relative(root, candidate),
     sizeBytes: info.size
   };
 }

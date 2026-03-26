@@ -1856,7 +1856,7 @@ body {
 }
 
 .run-sidebar-item--active {
-  @apply border-primary/60 bg-primary/8;
+  @apply border-primary/20 bg-primary/8;
 }
 
 .run-sidebar-item-header {
@@ -1897,6 +1897,71 @@ body {
 
 .run-detail-subtitle {
   @apply text-base text-muted-foreground;
+}
+
+/* Agent markdown docs (/agents/:id/docs) — operating + memory editor */
+.ui-agent-docs-sidebar-intro {
+  @apply pb-2 text-xs text-muted-foreground;
+}
+
+.ui-agent-docs-sidebar-error {
+  @apply px-3 text-sm text-destructive;
+}
+
+.ui-agent-docs-sidebar-section-label {
+  @apply text-sm font-semibold uppercase tracking-wide text-muted-foreground;
+}
+
+.ui-agent-docs-sidebar-section-label--spaced {
+  @apply mt-4;
+}
+
+.ui-agent-docs-sidebar-empty {
+  @apply px-3 py-2 text-xs text-muted-foreground;
+}
+
+.ui-agent-docs-sidebar-item {
+  @apply w-full text-left;
+}
+
+.ui-agent-docs-mobile-panel {
+  @apply lg:hidden rounded-lg border bg-card p-3;
+}
+
+.ui-agent-docs-mobile-panel-title {
+  @apply text-xs uppercase tracking-wide text-muted-foreground;
+}
+
+.ui-agent-docs-mobile-panel-list {
+  @apply mt-2 space-y-2;
+}
+
+.ui-agent-docs-mobile-source {
+  @apply text-muted-foreground;
+}
+
+.ui-agent-docs-header-actions {
+  @apply flex flex-wrap items-center gap-6;
+}
+
+.ui-agent-docs-error {
+  @apply text-sm text-destructive;
+}
+
+.ui-agent-docs-empty-state {
+  @apply text-sm text-muted-foreground;
+}
+
+.ui-agent-docs-editor-shell {
+  @apply flex min-h-[calc(100dvh-7.5rem)] h-[calc(100dvh-7.5rem)] flex-1 flex-col gap-2 mt-2;
+}
+
+.ui-agent-docs-editor-loading {
+  @apply flex flex-1 items-center justify-center rounded-md border border-border bg-muted/30 px-4 py-12 text-sm text-muted-foreground;
+}
+
+.ui-agent-docs-editor {
+  @apply flex-1 overflow-y-auto;
 }
 
 .run-transcript-card-content {

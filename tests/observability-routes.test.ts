@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../apps/api/src/app";
 import {
   resolveAgentMemoryRootPath,
+  resolveAgentOperatingPath,
   resolveCompanyMemoryRootPath,
   resolveProjectMemoryRootPath
 } from "../apps/api/src/lib/instance-paths";
@@ -668,5 +669,114 @@ describe("observability routes", { timeout: 30_000 }, () => {
     await expect(stat(companyMemoryRoot)).rejects.toThrow();
     await expect(stat(projectMemoryRoot)).rejects.toThrow();
     await expect(stat(agentMemoryRoot)).rejects.toThrow();
+  });
+
+  it("lists reads and writes agent operating markdown files", async () => {
+    const agent = await createAgent(db, {
+      companyId,
+      role: "Worker",
+      name: "Operating Docs Agent",
+      providerType: "shell",
+      heartbeatCron: "* * * * *",
+      monthlyBudgetUsd: "25.0000",
+      canHireAgents: false,
+      runtimeCommand: "echo",
+      runtimeArgsJson: '["{}"]'
+    });
+    const operatingRoot = resolveAgentOperatingPath(companyId, agent.id);
+    await mkdir(operatingRoot, { recursive: true });
+    await writeFile(join(operatingRoot, "AGENTS.md"), "# Hello\n", "utf8");
+
+    const listResponse = await request(app)
+      .get(`/observability/agent-operating/${encodeURIComponent(agent.id)}/files`)
+      .set("x-company-id", companyId);
+    expect(listResponse.status).toBe(200);
+    expect(listResponse.body.data.items.some((row: { relativePath: string }) => row.relativePath === "AGENTS.md")).toBe(
+      true
+    );
+
+    const readResponse = await request(app)
+      .get(
+        `/observability/agent-operating/${encodeURIComponent(agent.id)}/file?path=${encodeURIComponent("AGENTS.md")}`
+      )
+      .set("x-company-id", companyId);
+    expect(readResponse.status).toBe(200);
+    expect(readResponse.body.data.content).toContain("Hello");
+
+    const putResponse = await request(app)
+      .put(
+        `/observability/agent-operating/${encodeURIComponent(agent.id)}/file?path=${encodeURIComponent("AGENTS.md")}`
+      )
+      .set("x-company-id", companyId)
+      .send({ content: "# Updated\n" });
+    expect(putResponse.status).toBe(200);
+
+    const readAgain = await request(app)
+      .get(
+        `/observability/agent-operating/${encodeURIComponent(agent.id)}/file?path=${encodeURIComponent("AGENTS.md")}`
+      )
+      .set("x-company-id", companyId);
+    expect(readAgain.body.data.content).toContain("Updated");
+  });
+
+  it("writes agent memory file via PUT", async () => {
+    const agent = await createAgent(db, {
+      companyId,
+      role: "Worker",
+      name: "Memory Write Agent",
+      providerType: "shell",
+      heartbeatCron: "* * * * *",
+      monthlyBudgetUsd: "25.0000",
+      canHireAgents: false,
+      runtimeCommand: "echo",
+      runtimeArgsJson: '["{}"]'
+    });
+    const memoryRoot = resolveAgentMemoryRootPath(companyId, agent.id);
+    await mkdir(join(memoryRoot, "notes"), { recursive: true });
+    await writeFile(join(memoryRoot, "notes", "handbook.md"), "alpha", "utf8");
+
+    const putResponse = await request(app)
+      .put(
+        `/observability/memory/${encodeURIComponent(agent.id)}/file?path=${encodeURIComponent("notes/handbook.md")}`
+      )
+      .set("x-company-id", companyId)
+      .send({ content: "beta" });
+    expect(putResponse.status).toBe(200);
+
+    const readResponse = await request(app)
+      .get(
+        `/observability/memory/${encodeURIComponent(agent.id)}/file?path=${encodeURIComponent("notes/handbook.md")}`
+      )
+      .set("x-company-id", companyId);
+    expect(readResponse.status).toBe(200);
+    expect(readResponse.body.data.content).toBe("beta");
+  });
+
+  it("rejects operating file write with path traversal", async () => {
+    const agent = await createAgent(db, {
+      companyId,
+      role: "Worker",
+      name: "Traversal Agent",
+      providerType: "shell",
+      heartbeatCron: "* * * * *",
+      monthlyBudgetUsd: "25.0000",
+      canHireAgents: false,
+      runtimeCommand: "echo",
+      runtimeArgsJson: '["{}"]'
+    });
+    const putResponse = await request(app)
+      .put(
+        `/observability/agent-operating/${encodeURIComponent(agent.id)}/file?path=${encodeURIComponent("../evil.md")}`
+      )
+      .set("x-company-id", companyId)
+      .send({ content: "x" });
+    expect(putResponse.status).toBe(422);
+  });
+
+  it("returns 404 for agent-operating when agent is missing", async () => {
+    const listResponse = await request(app)
+      .get("/observability/agent-operating/not-a-real-agent-id/files")
+      .set("x-company-id", companyId);
+    expect(listResponse.status).toBe(404);
   });
 });

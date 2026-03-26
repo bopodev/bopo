@@ -183,7 +183,11 @@ Queue route supports filters: `status`, `agentId`, `jobType`, `limit`.
 - `GET /observability/plugins/runs` (supports `pluginId`, `runId`, `limit`)
 - `GET /observability/memory` (supports `agentId` and `limit`)
 - `GET /observability/memory/:agentId/file?path=...`
+- `PUT /observability/memory/:agentId/file?path=...` — JSON body `{ "content": "<utf-8 string>" }`; requires `agents:write`
 - `GET /observability/memory/:agentId/context-preview` (supports `projectIds`, `query`)
+- `GET /observability/agent-operating/:agentId/files` (supports `limit`; lists `*.md` under the agent operating directory)
+- `GET /observability/agent-operating/:agentId/file?path=...`
+- `PUT /observability/agent-operating/:agentId/file?path=...` — JSON body `{ "content": "<utf-8 string>" }`; requires `agents:write` (only `.md` paths)
 
 For memory semantics, see [`../product/agent-memory-workflow.md`](../product/agent-memory-workflow.md).
 For artifact storage/path guardrails, see [`../operations/workspace-path-surface.md`](../operations/workspace-path-surface.md).

@@ -16,7 +16,18 @@ import type { AppContext } from "../context";
 import { sendError, sendOk } from "../http";
 import { resolveRunArtifactAbsolutePath } from "../lib/run-artifact-paths";
 import { requireCompanyScope } from "../middleware/company-scope";
-import { listAgentMemoryFiles, loadAgentMemoryContext, readAgentMemoryFile } from "../services/memory-file-service";
+import { enforcePermission } from "../middleware/request-actor";
+import {
+  listAgentOperatingMarkdownFiles,
+  readAgentOperatingFile,
+  writeAgentOperatingFile
+} from "../services/agent-operating-file-service";
+import {
+  listAgentMemoryFiles,
+  loadAgentMemoryContext,
+  readAgentMemoryFile,
+  writeAgentMemoryFile
+} from "../services/memory-file-service";
 
 export function createObservabilityRouter(ctx: AppContext) {
   const router = Router();
@@ -254,6 +265,117 @@ export function createObservabilityRouter(ctx: AppContext) {
         relativePath
       });
       return sendOk(res, file);
+    } catch (error) {
+      return sendError(res, String(error), 422);
+    }
+  });
+
+  router.put("/memory/:agentId/file", async (req, res) => {
+    if (!enforcePermission(req, res, "agents:write")) {
+      return;
+    }
+    const companyId = req.companyId!;
+    const agentId = req.params.agentId;
+    const relativePath = typeof req.query.path === "string" ? req.query.path.trim() : "";
+    if (!relativePath) {
+      return sendError(res, "Query parameter 'path' is required.", 422);
+    }
+    const body = req.body as { content?: unknown };
+    if (typeof body?.content !== "string") {
+      return sendError(res, "Expected JSON body with string 'content'.", 422);
+    }
+    const agents = await listAgents(ctx.db, companyId);
+    if (!agents.some((entry) => entry.id === agentId)) {
+      return sendError(res, "Agent not found", 404);
+    }
+    try {
+      const result = await writeAgentMemoryFile({
+        companyId,
+        agentId,
+        relativePath,
+        content: body.content
+      });
+      return sendOk(res, result);
+    } catch (error) {
+      return sendError(res, String(error), 422);
+    }
+  });
+
+  router.get("/agent-operating/:agentId/files", async (req, res) => {
+    const companyId = req.companyId!;
+    const agentId = req.params.agentId;
+    const agents = await listAgents(ctx.db, companyId);
+    if (!agents.some((entry) => entry.id === agentId)) {
+      return sendError(res, "Agent not found", 404);
+    }
+    const rawLimit = Number(req.query.limit ?? 100);
+    const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(Math.floor(rawLimit), 1), 500) : 100;
+    try {
+      const files = await listAgentOperatingMarkdownFiles({
+        companyId,
+        agentId,
+        maxFiles: limit
+      });
+      return sendOk(res, {
+        items: files.map((file) => ({
+          relativePath: file.relativePath,
+          path: file.path
+        }))
+      });
+    } catch (error) {
+      return sendError(res, String(error), 422);
+    }
+  });
+
+  router.get("/agent-operating/:agentId/file", async (req, res) => {
+    const companyId = req.companyId!;
+    const agentId = req.params.agentId;
+    const relativePath = typeof req.query.path === "string" ? req.query.path.trim() : "";
+    if (!relativePath) {
+      return sendError(res, "Query parameter 'path' is required.", 422);
+    }
+    const agents = await listAgents(ctx.db, companyId);
+    if (!agents.some((entry) => entry.id === agentId)) {
+      return sendError(res, "Agent not found", 404);
+    }
+    try {
+      const file = await readAgentOperatingFile({
+        companyId,
+        agentId,
+        relativePath
+      });
+      return sendOk(res, file);
+    } catch (error) {
+      return sendError(res, String(error), 422);
+    }
+  });
+
+  router.put("/agent-operating/:agentId/file", async (req, res) => {
+    if (!enforcePermission(req, res, "agents:write")) {
+      return;
+    }
+    const companyId = req.companyId!;
+    const agentId = req.params.agentId;
+    const relativePath = typeof req.query.path === "string" ? req.query.path.trim() : "";
+    if (!relativePath) {
+      return sendError(res, "Query parameter 'path' is required.", 422);
+    }
+    const body = req.body as { content?: unknown };
+    if (typeof body?.content !== "string") {
+      return sendError(res, "Expected JSON body with string 'content'.", 422);
+    }
+    const agents = await listAgents(ctx.db, companyId);
+    if (!agents.some((entry) => entry.id === agentId)) {
+      return sendError(res, "Agent not found", 404);
+    }
+    try {
+      const result = await writeAgentOperatingFile({
+        companyId,
+        agentId,
+        relativePath,
+        content: body.content
+      });
+      return sendOk(res, result);
     } catch (error) {
       return sendError(res, String(error), 422);
     }
