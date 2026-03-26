@@ -15,7 +15,7 @@ Slugs are derived from names and stabilized for the archive; database ids live o
 
 ## Where to use it in the UI
 
-With a company selected, open **Templates** in the workspace and use the **Export** and **Import** tabs (the **Templates** tab holds the template list and metrics). **Export** lists every path, supports search and checkboxes, previews text, and downloads **`company-<id>-export.zip`**. **Import** accepts another Bopo export zip (board role) and creates a **new** company.
+With a company selected, open **Templates** in the workspace and use the **Export** and **Import** tabs (the **Templates** tab holds the template list and metrics). **Export** lists every path, supports search and checkboxes, previews text, and downloads **`company-<id>-export.zip`**. **Import** lets board-role members upload an export zip; the app sends it correctly to the API and creates a **new** company.
 
 ## API
 

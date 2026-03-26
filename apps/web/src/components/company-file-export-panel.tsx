@@ -12,6 +12,63 @@ import { cn } from "@/lib/utils";
 
 type ManifestFile = { path: string; bytes: number; source: string };
 
+const EXPORT_GROUP_ROOT = "__root__";
+
+/** Directory-style bucket for export manifest paths (e.g. agents/ceo, projects/foo). */
+function exportPathGroupKey(path: string): string {
+  const normalized = path.trim().replace(/^\/+/, "");
+  const parts = normalized.split("/").filter(Boolean);
+  if (parts.length <= 1) {
+    return EXPORT_GROUP_ROOT;
+  }
+  const [top, second] = parts;
+  if (top === "agents" && second) {
+    return `agents/${second}`;
+  }
+  if (top === "projects" && second) {
+    return `projects/${second}`;
+  }
+  if (top === "tasks" && second) {
+    return `tasks/${second}`;
+  }
+  if (top === "skills") {
+    return "skills";
+  }
+  return top ?? EXPORT_GROUP_ROOT;
+}
+
+function exportGroupSortRank(key: string): number {
+  if (key === EXPORT_GROUP_ROOT) {
+    return 0;
+  }
+  if (key.startsWith("agents/")) {
+    return 1;
+  }
+  if (key.startsWith("projects/")) {
+    return 2;
+  }
+  if (key.startsWith("tasks/")) {
+    return 3;
+  }
+  if (key === "skills") {
+    return 4;
+  }
+  return 5;
+}
+
+function compareExportGroupKeys(a: string, b: string): number {
+  const ra = exportGroupSortRank(a);
+  const rb = exportGroupSortRank(b);
+  if (ra !== rb) {
+    return ra - rb;
+  }
+  return a.localeCompare(b);
+}
+
+function exportGroupTitle(key: string): string {
+  return key === EXPORT_GROUP_ROOT ? "Root" : key;
+}
+
 export function CompanyFileExportCard({ companyId, companyName }: { companyId: string; companyName: string }) {
   const searchId = useId();
   const [files, setFiles] = useState<ManifestFile[]>([]);
@@ -63,6 +120,28 @@ export function CompanyFileExportCard({ companyId, companyName }: { companyId: s
     }
     return filtered.every((f) => selected.has(f.path));
   }, [filtered, selected]);
+
+  const filteredGrouped = useMemo(() => {
+    const byKey = new Map<string, ManifestFile[]>();
+    for (const f of filtered) {
+      const key = exportPathGroupKey(f.path);
+      const bucket = byKey.get(key);
+      if (bucket) {
+        bucket.push(f);
+      } else {
+        byKey.set(key, [f]);
+      }
+    }
+    for (const list of byKey.values()) {
+      list.sort((a, b) => a.path.localeCompare(b.path));
+    }
+    const keys = [...byKey.keys()].sort(compareExportGroupKeys);
+    return keys.map((key) => ({
+      key,
+      title: exportGroupTitle(key),
+      files: byKey.get(key)!
+    }));
+  }, [filtered]);
 
   const selectedCount = selected.size;
   const totalCount = files.length;
@@ -154,28 +233,35 @@ export function CompanyFileExportCard({ companyId, companyName }: { companyId: s
           {error ? <p className="ui-company-file-export-error">{error}</p> : null}
           <ScrollArea className="ui-company-file-export-file-scroll">
             <ul className="ui-company-file-export-file-list">
-              {filtered.map((f) => (
-                <li key={f.path}>
-                  <label
-                    className={cn(
-                      "ui-company-file-export-file-row",
-                      activePath === f.path && "ui-company-file-export-file-row--active"
-                    )}
-                  >
-                    <Checkbox
-                      checked={selected.has(f.path)}
-                      onCheckedChange={(v) => togglePath(f.path, v === true)}
-                      className="ui-company-file-export-file-checkbox"
-                    />
-                    <button
-                      type="button"
-                      className="ui-company-file-export-file-path"
-                      onClick={() => void openPreview(f.path)}
-                    >
-                      {f.path}
-                      <span className="ui-company-file-export-file-meta">({f.bytes} B)</span>
-                    </button>
-                  </label>
+              {filteredGrouped.map((group) => (
+                <li key={group.key} className="ui-company-file-export-file-group">
+                  <div className="ui-company-file-export-file-group-title">{group.title}</div>
+                  <ul className="ui-company-file-export-file-group-items" aria-label={`Files: ${group.title}`}>
+                    {group.files.map((f) => (
+                      <li key={f.path}>
+                        <label
+                          className={cn(
+                            "ui-company-file-export-file-row",
+                            activePath === f.path && "ui-company-file-export-file-row--active"
+                          )}
+                        >
+                          <Checkbox
+                            checked={selected.has(f.path)}
+                            onCheckedChange={(v) => togglePath(f.path, v === true)}
+                            className="ui-company-file-export-file-checkbox"
+                          />
+                          <button
+                            type="button"
+                            className="ui-company-file-export-file-path"
+                            onClick={() => void openPreview(f.path)}
+                          >
+                            {f.path}
+                            <span className="ui-company-file-export-file-meta">({f.bytes} B)</span>
+                          </button>
+                        </label>
+                      </li>
+                    ))}
+                  </ul>
                 </li>
               ))}
             </ul>
@@ -246,8 +332,9 @@ export function CompanyFileImportCard() {
       <CardHeader>
         <CardTitle>Import company from zip</CardTitle>
         <CardDescription>
-          Board role required. Creates a new company from a Bopo export archive (form field name must be{" "}
-          <code className="ui-company-file-import-code">archive</code>).
+          Only members with the board role can import. Upload a zip from Export, or any archive that matches the Bopo
+          export layout (<code className="ui-company-file-import-code">.bopo.yaml</code> at the root). This creates a new
+          company and does not replace the one you have open.
         </CardDescription>
       </CardHeader>
       <CardContent>
