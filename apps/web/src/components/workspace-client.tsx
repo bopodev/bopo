@@ -16,6 +16,7 @@ import { CreateGoalModal } from "@/components/modals/create-goal-modal";
 import { CreateIssueModal } from "@/components/modals/create-issue-modal";
 import { CreateProjectModal } from "@/components/modals/create-project-modal";
 import { TextActionModal } from "@/components/modals/text-action-modal";
+import { CompanyFileExportCard, CompanyFileImportCard } from "@/components/company-file-export-panel";
 import { ApiError, apiDelete, apiGet, apiPost, apiPut } from "@/lib/api";
 import { agentAvatarSeed } from "@/lib/agent-avatar";
 import { cn } from "@/lib/utils";
@@ -5841,99 +5842,122 @@ export function WorkspaceClient({
               title="Templates"
               description="Portable org templates for reproducible company setup."
             />
-            <div className="ui-stats">
-              <MetricCard label="Templates in scope" value={templatesSummary.total} />
-              <MetricCard label="Published" value={templatesSummary.published} />
-              <MetricCard label="Draft / Archived" value={`${templatesSummary.draft} / ${templatesSummary.archived}`} />
-              <MetricCard
-                label="Company / Private · Variables"
-                value={`${templatesSummary.companyVisible} / ${templatesSummary.privateVisible} · ${templatesSummary.variables}`}
-              />
-            </div>
-            <DataTable
-              columns={templateColumns}
-              data={filteredTemplates}
-              emptyMessage="No templates available yet."
-              toolbarActions={
-                <div className={styles.governanceFiltersCardContent}>
-                  <Input
-                    value={templatesQuery}
-                    onChange={(event) => setTemplatesQuery(event.target.value)}
-                    placeholder="Search template name, slug, version..."
-                    className={styles.governanceFiltersInput}
-                  />
-                  <Select value={templatesStatusFilter} onValueChange={(value) => setTemplatesStatusFilter(value as "all" | TemplateRow["status"])}>
-                    <SelectTrigger className={styles.governanceFiltersSelect}>
-                      <SelectValue placeholder="Status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All statuses</SelectItem>
-                      <SelectItem value="draft">Draft</SelectItem>
-                      <SelectItem value="published">Published</SelectItem>
-                      <SelectItem value="archived">Archived</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Select
-                    value={templatesVisibilityFilter}
-                    onValueChange={(value) => setTemplatesVisibilityFilter(value as "all" | TemplateRow["visibility"])}
-                  >
-                    <SelectTrigger className={styles.governanceFiltersSelect}>
-                      <SelectValue placeholder="Visibility" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All visibility</SelectItem>
-                      <SelectItem value="company">Company</SelectItem>
-                      <SelectItem value="private">Private</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              }
-            />
-            <Dialog open={templateDetailsOpen} onOpenChange={setTemplateDetailsOpen}>
-              <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-3xl">
-                <DialogHeader>
-                  <DialogTitle>{selectedTemplate?.name ?? "Template details"}</DialogTitle>
-                  <DialogDescription>
-                    {selectedTemplate?.description?.trim() || "Portable org template details and manifest."}
-                  </DialogDescription>
-                </DialogHeader>
-                {selectedTemplate ? (
-                  <div className="space-y-4">
-                    <div className="grid gap-2 text-base sm:grid-cols-3">
-                      <div>
-                        <div className="text-muted-foreground">Slug</div>
-                        <div className="font-mono">{selectedTemplate.slug}</div>
-                      </div>
-                      <div>
-                        <div className="text-muted-foreground">Version</div>
-                        <div className="font-mono">{selectedTemplate.currentVersion}</div>
-                      </div>
-                      <div>
-                        <div className="text-muted-foreground">Status</div>
-                        <div>{selectedTemplate.status}</div>
-                      </div>
-                    </div>
-                    <div>
-                      <div className="mb-1 text-base text-muted-foreground">Variables</div>
-                      <pre className="rounded-md border bg-muted p-3 text-base whitespace-pre-wrap break-all">
-                        {JSON.stringify(selectedTemplate.variables ?? [], null, 2)}
-                      </pre>
-                    </div>
-                    <div>
-                      <div className="mb-1 text-base text-muted-foreground">Manifest</div>
-                      <pre className="rounded-md border bg-muted p-3 text-base whitespace-pre-wrap break-all">
-                        {JSON.stringify(selectedTemplate.manifest ?? {}, null, 2)}
-                      </pre>
-                    </div>
-                  </div>
+            <Tabs defaultValue="templates" className="mt-4">
+              <TabsList className="mb-4">
+                <TabsTrigger value="templates">Templates</TabsTrigger>
+                {companyId && activeCompany ? (
+                  <>
+                    <TabsTrigger value="export">Export</TabsTrigger>
+                    <TabsTrigger value="import">Import</TabsTrigger>
+                  </>
                 ) : null}
-                <DialogFooter>
-                  <Button type="button" variant="outline" onClick={() => setTemplateDetailsOpen(false)}>
-                    Close
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+              </TabsList>
+              <TabsContent value="templates" className="mt-0">
+                <div className="ui-stats mb-6">
+                  <MetricCard label="Templates in scope" value={templatesSummary.total} />
+                  <MetricCard label="Published" value={templatesSummary.published} />
+                  <MetricCard label="Draft / Archived" value={`${templatesSummary.draft} / ${templatesSummary.archived}`} />
+                  <MetricCard
+                    label="Company / Private · Variables"
+                    value={`${templatesSummary.companyVisible} / ${templatesSummary.privateVisible} · ${templatesSummary.variables}`}
+                  />
+                </div>
+                <DataTable
+                  columns={templateColumns}
+                  data={filteredTemplates}
+                  emptyMessage="No templates available yet."
+                  toolbarActions={
+                    <div className={styles.governanceFiltersCardContent}>
+                      <Input
+                        value={templatesQuery}
+                        onChange={(event) => setTemplatesQuery(event.target.value)}
+                        placeholder="Search template name, slug, version..."
+                        className={styles.governanceFiltersInput}
+                      />
+                      <Select value={templatesStatusFilter} onValueChange={(value) => setTemplatesStatusFilter(value as "all" | TemplateRow["status"])}>
+                        <SelectTrigger className={styles.governanceFiltersSelect}>
+                          <SelectValue placeholder="Status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All statuses</SelectItem>
+                          <SelectItem value="draft">Draft</SelectItem>
+                          <SelectItem value="published">Published</SelectItem>
+                          <SelectItem value="archived">Archived</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Select
+                        value={templatesVisibilityFilter}
+                        onValueChange={(value) => setTemplatesVisibilityFilter(value as "all" | TemplateRow["visibility"])}
+                      >
+                        <SelectTrigger className={styles.governanceFiltersSelect}>
+                          <SelectValue placeholder="Visibility" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All visibility</SelectItem>
+                          <SelectItem value="company">Company</SelectItem>
+                          <SelectItem value="private">Private</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  }
+                />
+                <Dialog open={templateDetailsOpen} onOpenChange={setTemplateDetailsOpen}>
+                  <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-3xl">
+                    <DialogHeader>
+                      <DialogTitle>{selectedTemplate?.name ?? "Template details"}</DialogTitle>
+                      <DialogDescription>
+                        {selectedTemplate?.description?.trim() || "Portable org template details and manifest."}
+                      </DialogDescription>
+                    </DialogHeader>
+                    {selectedTemplate ? (
+                      <div className="space-y-4">
+                        <div className="grid gap-2 text-base sm:grid-cols-3">
+                          <div>
+                            <div className="text-muted-foreground">Slug</div>
+                            <div className="font-mono">{selectedTemplate.slug}</div>
+                          </div>
+                          <div>
+                            <div className="text-muted-foreground">Version</div>
+                            <div className="font-mono">{selectedTemplate.currentVersion}</div>
+                          </div>
+                          <div>
+                            <div className="text-muted-foreground">Status</div>
+                            <div>{selectedTemplate.status}</div>
+                          </div>
+                        </div>
+                        <div>
+                          <div className="mb-1 text-base text-muted-foreground">Variables</div>
+                          <pre className="rounded-md border bg-muted p-3 text-base whitespace-pre-wrap break-all">
+                            {JSON.stringify(selectedTemplate.variables ?? [], null, 2)}
+                          </pre>
+                        </div>
+                        <div>
+                          <div className="mb-1 text-base text-muted-foreground">Manifest</div>
+                          <pre className="rounded-md border bg-muted p-3 text-base whitespace-pre-wrap break-all">
+                            {JSON.stringify(selectedTemplate.manifest ?? {}, null, 2)}
+                          </pre>
+                        </div>
+                      </div>
+                    ) : null}
+                    <DialogFooter>
+                      <Button type="button" variant="outline" onClick={() => setTemplateDetailsOpen(false)}>
+                        Close
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              </TabsContent>
+              {companyId && activeCompany ? (
+                <>
+                  <TabsContent value="export" className="mt-0">
+                    <CompanyFileExportCard companyId={companyId} companyName={activeCompany.name} />
+                  </TabsContent>
+                  <TabsContent value="import" className="mt-0">
+                    <CompanyFileImportCard />
+                  </TabsContent>
+                </>
+              ) : null}
+            </Tabs>
           </>
         );
       case "Models":

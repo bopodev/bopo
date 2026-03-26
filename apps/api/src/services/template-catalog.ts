@@ -28,8 +28,9 @@ const builtinTemplateDefinitions: BuiltinTemplateDefinition[] = [
   {
     slug: "founder-startup-basic",
     name: "Founder Startup Basic",
-    description: "Baseline operating company for solo founders launching and shipping with AI agents.",
-    version: "1.0.1",
+    description:
+      "Baseline operating company for solo founders launching and shipping with AI agents. Aligns with Bopo company file export (.bopo.yaml, projects/, agents/, tasks/) so operators can download a zip, edit markdown in git, and import a new company from the archive.",
+    version: "1.0.2",
     status: "published",
     visibility: "company",
     variables: [
@@ -117,7 +118,11 @@ const builtinTemplateDefinitions: BuiltinTemplateDefinition[] = [
               "",
               "Quality bar:",
               "- Be concise, specific, and execution-ready.",
-              "- Do not produce generic plans without owners, dates, and measurable outcomes."
+              "- Do not produce generic plans without owners, dates, and measurable outcomes.",
+              "",
+              "Portable company files:",
+              "- Under workspace Templates → Export, the app can produce a zip with .bopo.yaml and per-agent markdown under agents/<slug>/.",
+              "- That tree can be edited in git and re-imported to create another company; keep those files consistent with how you actually run."
             ].join("\n")
           }
         },
@@ -237,8 +242,9 @@ const builtinTemplateDefinitions: BuiltinTemplateDefinition[] = [
   {
     slug: "marketing-content-engine",
     name: "Marketing Content Engine",
-    description: "Content marketing operating template for publishing, distribution, and analytics loops.",
-    version: "1.0.1",
+    description:
+      "Content marketing operating template for publishing, distribution, and analytics loops. Uses the same Bopo company zip layout as file export/import so marketing orgs can be versioned in git and cloned via archive import.",
+    version: "1.0.2",
     status: "published",
     visibility: "company",
     variables: [
@@ -318,7 +324,11 @@ const builtinTemplateDefinitions: BuiltinTemplateDefinition[] = [
               "",
               "Escalation:",
               "- Escalate major brand/positioning shifts, compliance-sensitive claims, or budget overrun risks.",
-              "- If dependencies block publication, create unblock issues within 24h."
+              "- If dependencies block publication, create unblock issues within 24h.",
+              "",
+              "Portable company files:",
+              "- Under workspace Templates → Export, leaders can download a zip with .bopo.yaml and agent markdown under agents/<slug>/.",
+              "- That folder tree can be edited in git and re-imported to stand up a new company; keep exported docs aligned with campaigns you actually ship."
             ].join("\n")
           }
         },
@@ -514,6 +524,9 @@ export async function ensureCompanyBuiltinTemplateDefaults(db: BopoDb, companyId
       await updateTemplate(db, {
         companyId,
         id: template.id,
+        name: definition.name,
+        description: definition.description,
+        variablesJson: JSON.stringify(variables),
         currentVersion: definition.version
       });
     }

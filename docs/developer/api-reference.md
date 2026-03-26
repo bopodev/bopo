@@ -59,6 +59,15 @@ All attention routes are company-scoped and publish realtime updates.
 - `PUT /companies/:companyId`
 - `DELETE /companies/:companyId`
 
+File-oriented company pack (zip folder tree, editable in git):
+
+- `GET /companies/:companyId/export/files/manifest` — JSON `{ files: [{ path, bytes, source }] }`. Query `includeAgentMemory=true` to list agent memory markdown in the manifest.
+- `GET /companies/:companyId/export/files/preview?path=...` — UTF-8 text preview for one manifest path (same `includeAgentMemory` query as manifest).
+- `POST /companies/:companyId/export/files/zip` — body `{ paths?: string[] | null, includeAgentMemory?: boolean }`. When `paths` is omitted or null, all manifest paths are zipped. Response is `application/zip` with entries such as `.bopo.yaml`, `README.md`, `COMPANY.md`, `projects/.../PROJECT.md`, `agents/<slug>/...`, `tasks/<slug>/TASK.md`, `skills/...`.
+- `POST /companies/import/files` — board role; `multipart/form-data` field `archive` (zip). Creates a **new** company from a Bopo export (schema `bopo/company-export/v1` in `.bopo.yaml`). Omit `x-company-id` or use board scope.
+
+Legacy JSON snapshot (redacted rows) remains: `GET /companies/:companyId/export`.
+
 ## Projects
 
 - `GET /projects`

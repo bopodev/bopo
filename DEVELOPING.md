@@ -42,9 +42,17 @@ The dev script uses `scripts/dev-runner.mjs` (see [`docs/getting-started-and-dev
 - `packages/adapters/*` — Provider-specific adapters (`server` / `ui` / `cli` per package)
 - `packages/cli` — Published `bopodev` CLI (`onboard`, `doctor`, `issue shell-env`, …)
 
-## API: company export (portable snapshot)
+## API: company export
 
-Actors who can access a company may download a **redacted** JSON snapshot (agent env and prompts stripped):
+**Zip folder export** (recommended) — human-readable tree (`.bopo.yaml`, markdown, `agents/`, `projects/`, `tasks/`, optional `skills/`):
+
+- Manifest: `GET /companies/YOUR_COMPANY_ID/export/files/manifest`
+- Download zip: `POST /companies/YOUR_COMPANY_ID/export/files/zip` with JSON `{ "includeAgentMemory": false }` (optional `paths` to subset). Response is `application/zip`.
+- Import new company: `POST /companies/import/files` with form field `archive` (board actor).
+
+The workspace **Templates** page includes a file picker, preview, and zip download when a company is selected.
+
+**Legacy JSON snapshot** — redacted rows (agent env and prompts stripped):
 
 ```bash
 curl -sS -H "x-company-id: YOUR_COMPANY_ID" \

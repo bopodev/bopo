@@ -85,7 +85,7 @@ export async function apiPost<T>(path: string, companyId: string, body: Record<s
   return requestWithRetry<T>("POST", path, companyId, body);
 }
 
-export async function apiPostFormData<T>(path: string, companyId: string, body: FormData): Promise<ApiSuccess<T>> {
+export async function apiPostFormData<T>(path: string, companyId: string | null | undefined, body: FormData): Promise<ApiSuccess<T>> {
   return requestWithRetry<T>("POST", path, companyId, body);
 }
 
@@ -104,6 +104,70 @@ export async function apiDelete<T>(path: string, companyId: string): Promise<Api
 /**
  * Fetch raw attachment bytes as UTF-8 text (e.g. markdown). Uses the same auth headers as JSON API calls.
  */
+export async function apiFetchExportPreview(companyId: string, filePath: string, includeAgentMemory: boolean): Promise<string> {
+  const traceId = createTraceId();
+  const startedAt = Date.now();
+  const q = new URLSearchParams({ path: filePath });
+  if (includeAgentMemory) {
+    q.set("includeAgentMemory", "true");
+  }
+  const url = `${apiBase}/companies/${encodeURIComponent(companyId)}/export/files/preview?${q}`;
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      "x-company-id": companyId,
+      "x-client-trace-id": traceId,
+      ...(readActorToken() ? { authorization: `Bearer ${readActorToken()}` } : {})
+    },
+    cache: "no-store"
+  });
+  const requestId = response.headers.get("x-request-id") ?? undefined;
+  const durationMs = Date.now() - startedAt;
+  if (!response.ok) {
+    const message =
+      response.status === 404 ? "Preview not found." : `Request failed with status ${response.status}`;
+    throw new ApiError(message, response.status, { requestId, traceId, durationMs });
+  }
+  return response.text();
+}
+
+export async function apiDownloadExportZip(
+  companyId: string,
+  body: { paths: string[] | null; includeAgentMemory: boolean }
+): Promise<Blob> {
+  const traceId = createTraceId();
+  const startedAt = Date.now();
+  const response = await fetch(`${apiBase}/companies/${encodeURIComponent(companyId)}/export/files/zip`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-company-id": companyId,
+      "x-client-trace-id": traceId,
+      ...(readActorToken() ? { authorization: `Bearer ${readActorToken()}` } : {})
+    },
+    body: JSON.stringify(body),
+    cache: "no-store"
+  });
+  const requestId = response.headers.get("x-request-id") ?? undefined;
+  const durationMs = Date.now() - startedAt;
+  if (!response.ok) {
+    const text = await response.text();
+    let message = `Request failed with status ${response.status}`;
+    try {
+      const j = JSON.parse(text) as { error?: string };
+      if (j.error) {
+        message = j.error;
+      }
+    } catch {
+      if (text.trim()) {
+        message = text.slice(0, 200);
+      }
+    }
+    throw new ApiError(message, response.status, { requestId, traceId, durationMs });
+  }
+  return response.blob();
+}
+
 export async function apiFetchAttachmentText(downloadPath: string, companyId: string): Promise<string> {
   const traceId = createTraceId();
   const startedAt = Date.now();

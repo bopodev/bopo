@@ -1,6 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import type { NextFunction, Request, Response } from "express";
 import { Router } from "express";
+import multer from "multer";
 import { z } from "zod";
 import { CompanySchema } from "bopodev-contracts";
 import { createAgent, createCompany, deleteCompany, listCompanies, updateCompany } from "bopodev-db";
@@ -10,10 +11,28 @@ import { normalizeRuntimeConfig, resolveRuntimeModelForProvider, runtimeConfigTo
 import { buildDefaultCeoBootstrapPrompt } from "../lib/ceo-bootstrap-prompt";
 import { resolveOpencodeRuntimeModel } from "../lib/opencode-model";
 import { resolveDefaultRuntimeCwdForCompany } from "../lib/workspace-policy";
-import { buildCompanyPortabilityExport } from "../services/company-export-service";
 import { canAccessCompany, requireBoardRole, requirePermission } from "../middleware/request-actor";
+import {
+  CompanyFileArchiveError,
+  listCompanyExportManifest,
+  normalizeExportPath,
+  pipeCompanyExportZip,
+  readCompanyExportFileText
+} from "../services/company-file-archive-service";
+import { buildCompanyPortabilityExport } from "../services/company-export-service";
+import { CompanyFileImportError, importCompanyFromZipBuffer } from "../services/company-file-import-service";
 import { ensureCompanyBuiltinPluginDefaults } from "../services/plugin-runtime";
 import { ensureCompanyBuiltinTemplateDefaults } from "../services/template-catalog";
+
+const zipUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 80 * 1024 * 1024 }
+});
+
+const exportZipBodySchema = z.object({
+  paths: z.array(z.string()).nullable().optional(),
+  includeAgentMemory: z.boolean().optional().default(false)
+});
 
 const DEFAULT_AGENT_PROVIDER_ENV = "BOPO_DEFAULT_AGENT_PROVIDER";
 const DEFAULT_AGENT_MODEL_ENV = "BOPO_DEFAULT_AGENT_MODEL";
@@ -52,6 +71,98 @@ export function createCompaniesRouter(ctx: AppContext) {
       companies.filter((company) => visibleCompanyIds.has(company.id)),
       "companies.list.filtered"
     );
+  });
+
+  router.post("/import/files", requireBoardRole, zipUpload.single("archive"), async (req, res) => {
+    const file = req.file;
+    if (!file?.buffer) {
+      return sendError(res, 'Upload a .zip file in field "archive".', 422);
+    }
+    try {
+      const result = await importCompanyFromZipBuffer(ctx.db, file.buffer);
+      return sendOk(res, result);
+    } catch (err) {
+      const message = err instanceof CompanyFileImportError ? err.message : String(err);
+      return sendError(res, message, 422);
+    }
+  });
+
+  router.get("/:companyId/export/files/manifest", async (req, res) => {
+    const companyId = readCompanyIdParam(req);
+    if (!companyId) {
+      return sendError(res, "Missing company id.", 422);
+    }
+    if (!canAccessCompany(req, companyId)) {
+      return sendError(res, "Actor does not have access to this company.", 403);
+    }
+    const includeAgentMemory = req.query.includeAgentMemory === "1" || req.query.includeAgentMemory === "true";
+    try {
+      const files = await listCompanyExportManifest(ctx.db, companyId, { includeAgentMemory });
+      return sendOk(res, { files, includeAgentMemory });
+    } catch (err) {
+      const message = err instanceof CompanyFileArchiveError ? err.message : String(err);
+      return sendError(res, message, 422);
+    }
+  });
+
+  router.get("/:companyId/export/files/preview", async (req, res) => {
+    const companyId = readCompanyIdParam(req);
+    if (!companyId) {
+      return sendError(res, "Missing company id.", 422);
+    }
+    if (!canAccessCompany(req, companyId)) {
+      return sendError(res, "Actor does not have access to this company.", 403);
+    }
+    const pathRaw = typeof req.query.path === "string" ? req.query.path : "";
+    const includeAgentMemory = req.query.includeAgentMemory === "1" || req.query.includeAgentMemory === "true";
+    const normalizedPath = normalizeExportPath(pathRaw);
+    if (!normalizedPath) {
+      return sendError(res, "Invalid or missing path query parameter.", 422);
+    }
+    try {
+      const preview = await readCompanyExportFileText(ctx.db, companyId, normalizedPath, { includeAgentMemory });
+      if (!preview) {
+        return sendError(res, "File not found in export manifest.", 404);
+      }
+      res.setHeader("content-type", "text/plain; charset=utf-8");
+      return res.status(200).send(preview.content);
+    } catch (err) {
+      const message = err instanceof CompanyFileArchiveError ? err.message : String(err);
+      return sendError(res, message, 422);
+    }
+  });
+
+  router.post("/:companyId/export/files/zip", async (req, res) => {
+    const companyId = readCompanyIdParam(req);
+    if (!companyId) {
+      return sendError(res, "Missing company id.", 422);
+    }
+    if (!canAccessCompany(req, companyId)) {
+      return sendError(res, "Actor does not have access to this company.", 403);
+    }
+    const parsed = exportZipBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return sendError(res, parsed.error.message, 422);
+    }
+    try {
+      const stream = await pipeCompanyExportZip(ctx.db, companyId, {
+        paths: parsed.data.paths ?? null,
+        includeAgentMemory: parsed.data.includeAgentMemory
+      });
+      res.setHeader("Content-Type", "application/zip");
+      res.setHeader("Content-Disposition", `attachment; filename="company-${companyId}-export.zip"`);
+      stream.on("error", () => {
+        if (!res.headersSent) {
+          sendError(res, "Zip stream failed.", 500);
+        } else {
+          res.end();
+        }
+      });
+      stream.pipe(res);
+    } catch (err) {
+      const message = err instanceof CompanyFileArchiveError ? err.message : String(err);
+      return sendError(res, message, 422);
+    }
   });
 
   router.get("/:companyId/export", async (req, res) => {
