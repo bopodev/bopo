@@ -2,6 +2,7 @@ export const sectionItems = [
   { slug: "dashboard", label: "Dashboard" },
   { slug: "projects", label: "Projects" },
   { slug: "issues", label: "Issues" },
+  { slug: "loops", label: "Loops" },
   { slug: "goals", label: "Goals" },
   { slug: "agents", label: "Agents" },
   { slug: "org-chart", label: "Organization" },

@@ -669,7 +669,9 @@ export async function runHeartbeatForAgent(
       },
       failClosed: false
     });
-    const isCommentOrderWake = options?.wakeContext?.reason === "issue_comment_recipient";
+    const isCommentOrderWake =
+      options?.wakeContext?.reason === "issue_comment_recipient" ||
+      options?.wakeContext?.reason === "loop_execution";
     const heartbeatIdlePolicy = resolveHeartbeatIdlePolicy();
     const workItems = isCommentOrderWake ? [] : await claimIssuesForAgent(db, companyId, agentId, runId);
     const wakeWorkItems = await loadWakeContextWorkItems(db, companyId, options?.wakeContext?.issueIds);
@@ -1941,7 +1943,10 @@ function resolveExecutionWorkItems(
   wakeContextItems: IssueWorkItemRow[],
   wakeContext?: HeartbeatWakeContext
 ) {
-  if (wakeContext?.reason === "issue_comment_recipient" && wakeContextItems.length > 0) {
+  if (
+    (wakeContext?.reason === "issue_comment_recipient" || wakeContext?.reason === "loop_execution") &&
+    wakeContextItems.length > 0
+  ) {
     return wakeContextItems;
   }
   return mergeContextWorkItems(assigned, wakeContextItems);

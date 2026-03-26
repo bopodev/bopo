@@ -14,6 +14,7 @@ import {
   DialogTitle,
   DialogTrigger
 } from "@/components/ui/dialog";
+import { LazyMarkdownMdxEditor } from "@/components/modals/lazy-markdown-mdx-editor";
 import { Field, FieldContent, FieldGroup } from "@/components/ui/field";
 import { FieldLabelWithHelp } from "@/components/ui/field-label-with-help";
 import { Input } from "@/components/ui/input";
@@ -24,7 +25,6 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import styles from "./create-goal-modal.module.scss";
 
 export function CreateGoalModal({
@@ -60,6 +60,7 @@ export function CreateGoalModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [detailsMdxKey, setDetailsMdxKey] = useState(0);
   const isEditing = Boolean(goal);
 
   function hydrateFormFromProps() {
@@ -140,6 +141,7 @@ export function CreateGoalModal({
         setOpen(nextOpen);
         if (nextOpen) {
           hydrateFormFromProps();
+          setDetailsMdxKey((k) => k + 1);
         }
       }}
     >
@@ -207,12 +209,15 @@ export function CreateGoalModal({
                 <Input id="goal-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Increase delivery throughput" required />
               </Field>
               <Field>
-                <FieldLabelWithHelp
-                  htmlFor="goal-description"
-                  helpText="Context, metrics, time horizon, and links. Helps approvers and agents understand intent beyond the title.">
+                <FieldLabelWithHelp helpText="Context, metrics, time horizon, and links. The markdown editor shows formatted text as you type (headings, lists, links, GFM).">
                   Details
                 </FieldLabelWithHelp>
-                <Textarea id="goal-description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Goal details" />
+                <LazyMarkdownMdxEditor
+                  editorKey={`goal-details-${goal?.id ?? "new"}-${detailsMdxKey}`}
+                  markdown={description}
+                  onChange={setDescription}
+                  placeholder="Goal details"
+                />
               </Field>
               {isEditing ? (
                 <Field>

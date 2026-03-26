@@ -9,6 +9,7 @@ import {
   updatePluginConfig
 } from "bopodev-db";
 import { interpolateTemplateManifest, buildTemplatePreview } from "./template-preview-service";
+import { addWorkLoopTrigger, createWorkLoop } from "./work-loop-service";
 
 export class TemplateApplyError extends Error {
   constructor(message: string) {
@@ -121,6 +122,38 @@ export async function applyTemplateManifest(
       grantedCapabilitiesJson: JSON.stringify(plugin.grantedCapabilities),
       configJson: JSON.stringify(plugin.config)
     });
+  }
+
+  const firstProjectId =
+    renderedManifest.projects.length > 0
+      ? projectIdByKey.get(renderedManifest.projects[0]!.key) ?? null
+      : Array.from(projectIdByKey.values())[0] ?? null;
+  for (const job of renderedManifest.recurrence) {
+    if (job.targetType !== "agent") {
+      continue;
+    }
+    const assigneeAgentId = agentIdByKey.get(job.targetKey) ?? null;
+    if (!assigneeAgentId || !firstProjectId) {
+      continue;
+    }
+    const title =
+      job.instruction?.trim() && job.instruction.trim().length > 0
+        ? job.instruction.trim()
+        : `Recurring work: ${job.targetKey}`;
+    const loop = await createWorkLoop(db, {
+      companyId: input.companyId,
+      projectId: firstProjectId,
+      title,
+      description: job.instruction?.trim() || null,
+      assigneeAgentId
+    });
+    if (loop) {
+      await addWorkLoopTrigger(db, {
+        companyId: input.companyId,
+        workLoopId: loop.id,
+        cronExpression: job.cron
+      });
+    }
   }
 
   const install = await createTemplateInstall(db, {

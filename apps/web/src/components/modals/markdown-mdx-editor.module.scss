@@ -23,7 +23,6 @@
   p {
     @apply text-base mb-6 text-foreground;
   }
-  /* MDXEditor empty state is div[class*="placeholder_"] > p — same tone as .ui-input placeholder */
   :global([class*="placeholder_"]) p {
     @apply mb-0 text-base text-sidebar-foreground/60;
   }
@@ -44,10 +43,10 @@
   }
   code {
     @apply text-base text-foreground;
-  } 
+  }
   pre {
     @apply text-base text-foreground;
-  } 
+  }
   hr {
     @apply text-base text-foreground;
   }
@@ -56,9 +55,14 @@
   }
 }
 
-.mdxeditor-root-contenteditable {
-  @apply min-h-[280px] px-5 py-2;
-  .mdxEditorContent {
-    @apply min-h-[280px] border border-border rounded-md placeholder:text-muted-foreground;
-  }
+.mdxEditorRootCompact {
+  @apply min-h-96 max-h-96 overflow-y-auto px-1 py-0;
+}
+
+.mdxEditorContent {
+  @apply min-h-[280px] placeholder:text-muted-foreground;
+}
+
+.mdxEditorContentCompact {
+  @apply min-h-[180px];
 }

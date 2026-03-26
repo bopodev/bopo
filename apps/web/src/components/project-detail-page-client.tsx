@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ColumnDef } from "@tanstack/react-table";
 import { AppShell } from "@/components/app-shell";
+import { CollapsibleMarkdown } from "@/components/markdown-view";
 import { CreateIssueModal } from "@/components/modals/create-issue-modal";
 import { CreateProjectModal } from "@/components/modals/create-project-modal";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -251,7 +252,7 @@ export function ProjectDetailPageClient({
     ],
     [agentNameById, companyId]
   );
-  const projectDescription = project.description?.trim() ? project.description : "No project description yet.";
+  const projectDescriptionMarkdownMaxPx = 280;
   const workspaceSummary =
     project.workspaces.length > 0
       ? project.workspaces
@@ -413,7 +414,20 @@ export function ProjectDetailPageClient({
       </Card>
       <Card>
         <CardContent className="ui-card-body-stack">
-          <PropertyRow label="Description" value={projectDescription} />
+          <PropertyRow
+            label="Description"
+            value={
+              project.description?.trim() ? (
+                <CollapsibleMarkdown
+                  content={project.description}
+                  className="ui-markdown"
+                  maxHeightPx={projectDescriptionMarkdownMaxPx}
+                />
+              ) : (
+                "No project description yet."
+              )
+            }
+          />
           <PropertyRow label="Goals" value={linkedGoals.length ? linkedGoals.map((goal) => goal.title).join(", ") : "No linked goals"} />
           <PropertyRow label="Planned start" value={formatDate(project.plannedStartAt)} />
           <PropertyRow label="Workspace" value={project.primaryWorkspace?.name ?? "Not set"} />

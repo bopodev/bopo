@@ -36,6 +36,13 @@
       "when": 1742900000000,
       "tag": "0004_agents_capabilities",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1743000000000,
+      "tag": "0005_work_loops",
+      "breakpoints": true
     }
   ]
 }

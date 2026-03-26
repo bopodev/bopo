@@ -34,7 +34,7 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
+import { LazyMarkdownMdxEditor } from "@/components/modals/lazy-markdown-mdx-editor";
 import styles from "./create-project-modal.module.scss";
 
 export type ProjectStatus = "planned" | "active" | "paused" | "blocked" | "completed" | "archived";
@@ -148,6 +148,7 @@ export function CreateProjectModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [descriptionMdxKey, setDescriptionMdxKey] = useState(0);
   const isEditing = Boolean(project);
 
   function hydrateFormFromProps() {
@@ -306,6 +307,7 @@ export function CreateProjectModal({
         setOpen(nextOpen);
         if (nextOpen) {
           hydrateFormFromProps();
+          setDescriptionMdxKey((k) => k + 1);
         }
       }}
     >
@@ -333,17 +335,14 @@ export function CreateProjectModal({
                 <Input id="project-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Growth website" required autoComplete="off" />
               </Field>
               <Field>
-                <FieldLabelWithHelp
-                  htmlFor="project-description"
-                  helpText="What this project delivers, who it’s for, and how success is measured. Helps agents and humans align on scope.">
+                <FieldLabelWithHelp helpText="What this project delivers, who it’s for, and how success is measured. Use the markdown editor for headings, lists, links, and tables; the project page renders the same Markdown.">
                   Description
                 </FieldLabelWithHelp>
-                <Textarea
-                  id="project-description"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
+                <LazyMarkdownMdxEditor
+                  editorKey={`project-desc-${project?.id ?? "new"}-${descriptionMdxKey}`}
+                  markdown={description}
+                  onChange={setDescription}
                   placeholder="What is this project trying to achieve?"
-                  autoComplete="off"
                 />
               </Field>
             </FieldGroup>

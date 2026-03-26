@@ -1,14 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import type { IssuePriority, IssueStatus } from "bopodev-contracts";
 import { AGENT_ROLE_LABELS, AGENT_ROLE_KEYS, type AgentRoleKey } from "bopodev-contracts";
 import { ChevronDownIcon, FileTextIcon } from "lucide-react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { AppShell } from "@/components/app-shell";
+import { CollapsibleMarkdown } from "@/components/markdown-view";
 import { AgentAvatar } from "@/components/agent-avatar";
 import {
   IssueDocumentDialog,
@@ -194,73 +193,6 @@ function PropertyRow({ label, value }: { label: string; value: React.ReactNode }
     <div className="ui-property-field">
       <div className="ui-property-label">{label}</div>
       <div className="ui-property-value">{value}</div>
-    </div>
-  );
-}
-
-function CollapsibleMarkdown({
-  content,
-  className,
-  maxHeightPx
-}: {
-  content: string;
-  className: string;
-  maxHeightPx: number;
-}) {
-  const contentRef = useRef<HTMLDivElement | null>(null);
-  const [isExpanded, setIsExpanded] = useState(false);
-  const [isOverflowing, setIsOverflowing] = useState(false);
-
-  useEffect(() => {
-    setIsExpanded(false);
-  }, [content, maxHeightPx]);
-
-  useEffect(() => {
-    const node = contentRef.current;
-    if (!node) {
-      return;
-    }
-
-    const measureHeight = () => {
-      setIsOverflowing(node.scrollHeight > maxHeightPx + 1);
-    };
-
-    measureHeight();
-
-    if (typeof ResizeObserver === "undefined") {
-      window.addEventListener("resize", measureHeight);
-      return () => window.removeEventListener("resize", measureHeight);
-    }
-
-    const observer = new ResizeObserver(() => {
-      measureHeight();
-    });
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [content, maxHeightPx]);
-
-  const isCollapsed = isOverflowing && !isExpanded;
-  const markdownClassName = isCollapsed ? `${className} ui-markdown-collapsible-content` : className;
-
-  return (
-    <div>
-      <div className="ui-markdown-collapsible-frame">
-        <div ref={contentRef} className={markdownClassName} style={isCollapsed ? { maxHeight: `${maxHeightPx}px` } : undefined}>
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
-        </div>
-        {isCollapsed ? <div className="ui-markdown-collapsible-curtain" aria-hidden /> : null}
-      </div>
-      {isOverflowing ? (
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="ui-markdown-collapsible-toggle"
-          onClick={() => setIsExpanded((current) => !current)}
-        >
-          {isExpanded ? "Show less" : "Show more"}
-        </Button>
-      ) : null}
     </div>
   );
 }

@@ -9,6 +9,7 @@ import { AppShell } from "@/components/app-shell";
 import { AgentAvatar } from "@/components/agent-avatar";
 import { DataTable } from "@/components/ui/data-table";
 import { DataTableColumnHeader } from "@/components/ui/data-table-column-header";
+import { CollapsibleMarkdown } from "@/components/markdown-view";
 import { CreateAgentModal } from "@/components/modals/create-agent-modal";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -1058,6 +1059,20 @@ export function AgentDetailPageClient({
           <MetricCard label="Avg cost/completed issue" value={`$${avgCostPerCompletedIssue.toFixed(2)}`} />
         </div>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Bootstrap prompt</CardTitle>
+          <CardDescription>System-style instructions injected when this agent starts or resumes.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {agent.bootstrapPrompt?.trim() ? (
+            <CollapsibleMarkdown content={agent.bootstrapPrompt} className="ui-markdown" maxHeightPx={280} />
+          ) : (
+            <p className="text-sm text-muted-foreground">No bootstrap prompt configured.</p>
+          )}
+        </CardContent>
+      </Card>
 
       <SectionHeading title="Runs" description="Heartbeat runs scoped to this agent." />
       <DataTable

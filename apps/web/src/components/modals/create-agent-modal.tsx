@@ -42,6 +42,7 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { FieldLabelWithHelp } from "@/components/ui/field-label-with-help";
+import { LazyMarkdownMdxEditor } from "@/components/modals/lazy-markdown-mdx-editor";
 
 type RuntimePreflightResponse = {
   status: "pass" | "warn" | "fail";
@@ -208,6 +209,7 @@ export function CreateAgentModal({
   const [runtimeModel, setRuntimeModel] = useState("");
   const [runtimeThinkingEffort, setRuntimeThinkingEffort] = useState<"auto" | "low" | "medium" | "high">("auto");
   const [bootstrapPrompt, setBootstrapPrompt] = useState("");
+  const [bootstrapEditorNonce, setBootstrapEditorNonce] = useState(0);
   const [runtimeEnv, setRuntimeEnv] = useState("");
   const [runtimeTimeoutSec, setRuntimeTimeoutSec] = useState("0");
   const [interruptGraceSec, setInterruptGraceSec] = useState("15");
@@ -482,6 +484,7 @@ export function CreateAgentModal({
       setAllowWebSearch(runPolicy.allowWebSearch);
       setCreationMode("advanced");
       setError(null);
+      setBootstrapEditorNonce((n) => n + 1);
       return;
     }
     const defaults = readAgentRuntimeDefaults();
@@ -519,6 +522,7 @@ export function CreateAgentModal({
     setDelegateProjectId(projects?.[0]?.id ?? "");
     setDelegateRequest("");
     setError(null);
+    setBootstrapEditorNonce((n) => n + 1);
     if (!initialRuntimeCwd) {
       void apiGet<{ runtimeCwd: string }>("/agents/runtime-default-cwd", companyId)
         .then((result) => {
@@ -1257,15 +1261,13 @@ export function CreateAgentModal({
             <section className={styles.createAgentModalSection}>
               <FieldGroup>
                 <Field>
-                  <FieldLabelWithHelp
-                    htmlFor="agent-bootstrap-prompt"
-                    helpText="System-style instructions injected when the agent starts or resumes. Use it for persona, guardrails, and default working style.">
+                  <FieldLabelWithHelp helpText="System-style instructions injected when the agent starts or resumes. Use the markdown editor for persona, guardrails, and structure (headings, lists); the runtime receives the raw markdown text, and the agent page shows a rendered preview.">
                     Bootstrap prompt
                   </FieldLabelWithHelp>
-                  <Textarea
-                    id="agent-bootstrap-prompt"
-                    value={bootstrapPrompt}
-                    onChange={(e) => setBootstrapPrompt(e.target.value)}
+                  <LazyMarkdownMdxEditor
+                    editorKey={`agent-bootstrap-${agent?.id ?? "new"}-${bootstrapEditorNonce}`}
+                    markdown={bootstrapPrompt}
+                    onChange={setBootstrapPrompt}
                     placeholder="You are an expert developer..."
                   />
                 </Field>

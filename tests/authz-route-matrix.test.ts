@@ -4,6 +4,7 @@ import { join } from "node:path";
 import request, { type Response, type Test } from "supertest";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../apps/api/src/app";
+import { createWorkLoop } from "../apps/api/src/services/work-loop-service/work-loop-service";
 import type { BopoDb } from "../packages/db/src/client";
 import {
   bootstrapDatabase,
@@ -30,6 +31,7 @@ type SeedIds = {
   goalId: string;
   agentId: string;
   approvalId: string;
+  loopId: string;
 };
 
 describe("authorization route matrix", { timeout: 30_000, retry: 1 }, () => {
@@ -120,6 +122,24 @@ describe("authorization route matrix", { timeout: 30_000, retry: 1 }, () => {
       method: "post",
       path: () => "/heartbeats/sweep",
       body: () => ({})
+    },
+    {
+      name: "loops:create",
+      permission: "loops:write",
+      method: "post",
+      path: () => "/loops",
+      body: ({ projectId, agentId }) => ({
+        projectId,
+        title: "Authz Matrix Loop",
+        assigneeAgentId: agentId
+      })
+    },
+    {
+      name: "loops:run",
+      permission: "loops:run",
+      method: "post",
+      path: ({ loopId }) => `/loops/${loopId}/run`,
+      body: () => ({})
     }
   ];
 
@@ -135,6 +155,9 @@ describe("authorization route matrix", { timeout: 30_000, retry: 1 }, () => {
     secondaryCompanyId = secondaryCompany.id;
 
     const project = await createProject(db, { companyId, name: "Seed Project" });
+    if (!project) {
+      throw new Error("Failed to seed project for authz matrix.");
+    }
     const issue = await createIssue(db, { companyId, projectId: project.id, title: "Seed Issue" });
     const goal = await createGoal(db, { companyId, level: "company", title: "Seed Goal" });
     const agent = await createAgent(db, {
@@ -146,7 +169,7 @@ describe("authorization route matrix", { timeout: 30_000, retry: 1 }, () => {
       monthlyBudgetUsd: "25.0000",
       canHireAgents: false,
       runtimeCommand: "echo",
-      runtimeArgs: ['{"summary":"seed","tokenInput":0,"tokenOutput":0,"usdCost":0}'],
+      runtimeArgsJson: JSON.stringify(['{"summary":"seed","tokenInput":0,"tokenOutput":0,"usdCost":0}']),
       runtimeCwd: tempDir
     });
     const approvalId = await createApprovalRequest(db, {
@@ -157,7 +180,16 @@ describe("authorization route matrix", { timeout: 30_000, retry: 1 }, () => {
         title: "Pending activation"
       }
     });
-    ids = { projectId: project.id, issueId: issue.id, goalId: goal.id, agentId: agent.id, approvalId };
+    const loop = await createWorkLoop(db, {
+      companyId,
+      projectId: project.id,
+      title: "Authz Seed Loop",
+      assigneeAgentId: agent.id
+    });
+    if (!loop) {
+      throw new Error("Failed to seed work loop for authz matrix.");
+    }
+    ids = { projectId: project.id, issueId: issue.id, goalId: goal.id, agentId: agent.id, approvalId, loopId: loop.id };
   }, 30_000);
 
   afterEach(async () => {

@@ -122,9 +122,129 @@ export const IssueSchema = z.object({
   assigneeAgentId: EntityIdSchema.nullable(),
   labels: z.array(z.string()).default([]),
   tags: z.array(z.string()).default([]),
+  /** Present when the issue was created from a work loop run. */
+  loopId: EntityIdSchema.nullable().optional(),
+  loopRunId: EntityIdSchema.nullable().optional(),
   createdAt: z.string(),
   updatedAt: z.string()
 });
+
+export const WorkLoopConcurrencyPolicySchema = z.enum(["coalesce_if_active", "skip_if_active", "always_enqueue"]);
+export const WorkLoopCatchUpPolicySchema = z.enum(["skip_missed", "enqueue_missed_with_cap"]);
+export const WorkLoopStatusSchema = z.enum(["active", "paused", "archived"]);
+
+export const WorkLoopSchema = z.object({
+  id: EntityIdSchema,
+  companyId: EntityIdSchema,
+  projectId: EntityIdSchema,
+  parentIssueId: EntityIdSchema.nullable().optional(),
+  goalIds: z.array(EntityIdSchema).default([]),
+  title: z.string(),
+  description: z.string().nullable().optional(),
+  assigneeAgentId: EntityIdSchema,
+  priority: z.string(),
+  status: WorkLoopStatusSchema,
+  concurrencyPolicy: WorkLoopConcurrencyPolicySchema,
+  catchUpPolicy: WorkLoopCatchUpPolicySchema,
+  lastTriggeredAt: z.string().nullable().optional(),
+  createdAt: z.string(),
+  updatedAt: z.string()
+});
+
+export const WorkLoopTriggerSchema = z.object({
+  id: EntityIdSchema,
+  companyId: EntityIdSchema,
+  workLoopId: EntityIdSchema,
+  kind: z.string(),
+  label: z.string().nullable().optional(),
+  enabled: z.boolean(),
+  cronExpression: z.string(),
+  timezone: z.string(),
+  nextRunAt: z.string().nullable().optional(),
+  lastFiredAt: z.string().nullable().optional(),
+  lastResult: z.string().nullable().optional(),
+  createdAt: z.string(),
+  updatedAt: z.string()
+});
+
+export const WorkLoopRunSchema = z.object({
+  id: EntityIdSchema,
+  companyId: EntityIdSchema,
+  workLoopId: EntityIdSchema,
+  triggerId: EntityIdSchema.nullable().optional(),
+  source: z.enum(["schedule", "manual"]),
+  status: z.string(),
+  triggeredAt: z.string(),
+  idempotencyKey: z.string().nullable().optional(),
+  linkedIssueId: EntityIdSchema.nullable().optional(),
+  coalescedIntoRunId: EntityIdSchema.nullable().optional(),
+  failureReason: z.string().nullable().optional(),
+  completedAt: z.string().nullable().optional(),
+  createdAt: z.string(),
+  updatedAt: z.string()
+});
+
+export const WorkLoopCreateRequestSchema = z.object({
+  projectId: EntityIdSchema,
+  parentIssueId: EntityIdSchema.nullable().optional(),
+  goalIds: z.array(EntityIdSchema).optional(),
+  title: z.string().min(1),
+  description: z.string().nullable().optional(),
+  assigneeAgentId: EntityIdSchema,
+  priority: IssuePrioritySchema.optional(),
+  status: WorkLoopStatusSchema.optional(),
+  concurrencyPolicy: WorkLoopConcurrencyPolicySchema.optional(),
+  catchUpPolicy: WorkLoopCatchUpPolicySchema.optional()
+});
+
+export const WorkLoopUpdateRequestSchema = z
+  .object({
+    title: z.string().min(1).optional(),
+    description: z.string().nullable().optional(),
+    assigneeAgentId: EntityIdSchema.optional(),
+    priority: IssuePrioritySchema.optional(),
+    status: WorkLoopStatusSchema.optional(),
+    concurrencyPolicy: WorkLoopConcurrencyPolicySchema.optional(),
+    catchUpPolicy: WorkLoopCatchUpPolicySchema.optional(),
+    parentIssueId: EntityIdSchema.nullable().optional(),
+    goalIds: z.array(EntityIdSchema).optional(),
+    projectId: EntityIdSchema.optional()
+  })
+  .refine((p) => Object.keys(p).length > 0, "At least one field must be provided.");
+
+export const WorkLoopTriggerCronCreateSchema = z.object({
+  mode: z.literal("cron"),
+  cronExpression: z.string().min(1),
+  timezone: z.string().min(1).optional(),
+  label: z.string().nullable().optional(),
+  enabled: z.boolean().optional()
+});
+
+export const WorkLoopTriggerPresetCreateSchema = z.object({
+  mode: z.literal("preset"),
+  preset: z.enum(["daily", "weekly"]),
+  hour24: z.number().int().min(0).max(23),
+  minute: z.number().int().min(0).max(59),
+  /** 0=Sun … 6=Sat; required when preset is weekly */
+  dayOfWeek: z.number().int().min(0).max(6).optional(),
+  timezone: z.string().min(1).optional(),
+  label: z.string().nullable().optional(),
+  enabled: z.boolean().optional()
+});
+
+export const WorkLoopTriggerCreateRequestSchema = z.discriminatedUnion("mode", [
+  WorkLoopTriggerCronCreateSchema,
+  WorkLoopTriggerPresetCreateSchema
+]);
+
+export const WorkLoopTriggerUpdateRequestSchema = z
+  .object({
+    cronExpression: z.string().min(1).optional(),
+    timezone: z.string().min(1).optional(),
+    label: z.string().nullable().optional(),
+    enabled: z.boolean().optional()
+  })
+  .refine((p) => Object.keys(p).length > 0, "At least one field must be provided.");
 
 export const IssueAttachmentSchema = z.object({
   id: EntityIdSchema,

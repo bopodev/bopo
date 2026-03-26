@@ -22,7 +22,7 @@ export function createCorsMiddleware(deploymentMode: DeploymentMode, allowedOrig
       callback(new Error(`CORS origin denied: ${origin}`));
     },
     credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: [
       "content-type",
       "x-company-id",

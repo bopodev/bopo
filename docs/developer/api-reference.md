@@ -95,6 +95,23 @@ Issue ↔ goals:
 
 - `POST /issues` accepts optional `goalIds` (array, default `[]`). `PUT /issues/:issueId` accepts optional `goalIds` to replace the full set (use `[]` to clear). Each goal must belong to the same company; if a goal has a `projectId`, it must match the issue’s project.
 - `GET /issues` and `GET /issues/:issueId` include `goalIds` on each issue.
+- Issues created from a **work loop** include optional `loopId` and `loopRunId` (nullable).
+
+## Work loops (scheduled)
+
+Company-scoped (`x-company-id`). Permissions: `loops:read`, `loops:write`, `loops:run` (manual run).
+
+- `GET /loops` — list work loops.
+- `POST /loops` — create (body: `projectId`, `title`, `assigneeAgentId`, optional `description`, `priority`, `status`, `concurrencyPolicy`, `catchUpPolicy`, `parentIssueId`, `goalIds`).
+- `GET /loops/:loopId` — detail with `triggers[]` and `recentRuns[]`.
+- `PATCH /loops/:loopId` — partial update.
+- `POST /loops/:loopId/run` — manual dispatch (`loops:run`).
+- `GET /loops/:loopId/runs` — run history (`?limit=`).
+- `GET /loops/:loopId/activity` — audit rows for this loop.
+- `POST /loops/:loopId/triggers` — add trigger; body is a discriminated union: `{ mode: "cron", cronExpression, timezone?, label?, enabled? }` or `{ mode: "preset", preset: "daily"|"weekly", hour24, minute, dayOfWeek?, timezone?, label?, enabled? }`.
+- `PATCH /loops/:loopId/triggers/:triggerId` — update trigger fields.
+
+Scheduler env: `BOPO_LOOP_SWEEP_MS`, `BOPO_LOOP_SWEEP_ENABLED` (see [`../../DEVELOPING.md`](../../DEVELOPING.md)).
 
 ## Goals
 

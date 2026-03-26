@@ -23,7 +23,8 @@ import {
   Puzzle,
   LayoutTemplate,
   Menu,
-  Plus
+  Plus,
+  Repeat
 } from "lucide-react";
 import type { SectionLabel, SectionSlug } from "@/lib/sections";
 import {
@@ -66,6 +67,7 @@ const navGroups: Array<{
       { slug: "dashboard", label: "Dashboard", icon: LayoutDashboard },
       { slug: "projects", label: "Projects", icon: BriefcaseBusiness },
       { slug: "issues", label: "Issues", icon: FolderKanban },
+      { slug: "loops", label: "Loops", icon: Repeat },
       { slug: "agents", label: "Agents", icon: Users }
     ]
   },
@@ -192,7 +194,8 @@ export function AppShell({
     next.delete("issueId");
     const issueDetail = pathname.match(/^\/issues\/[^/]+$/);
     const projectDetail = pathname.match(/^\/projects\/[^/]+$/);
-    const basePath = issueDetail ? "/issues" : projectDetail ? "/projects" : pathname;
+    const loopDetail = pathname.match(/^\/loops\/[^/]+$/);
+    const basePath = issueDetail ? "/issues" : projectDetail ? "/projects" : loopDetail ? "/loops" : pathname;
     const href = `${basePath}?${next.toString()}` as Parameters<typeof router.replace>[0];
     router.replace(href);
   }

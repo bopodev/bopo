@@ -1,70 +1,19 @@
 "use client";
 
-import { useMemo } from "react";
-import {
-  MDXEditor,
-  codeBlockPlugin,
-  codeMirrorPlugin,
-  headingsPlugin,
-  linkDialogPlugin,
-  linkPlugin,
-  listsPlugin,
-  markdownShortcutPlugin,
-  quotePlugin,
-  thematicBreakPlugin
-} from "@mdxeditor/editor";
-import "@mdxeditor/editor/style.css";
-
-import { cn } from "@/lib/utils";
-import styles from "./issue-document-mdx-editor.module.scss";
+import type { MarkdownMdxEditorProps } from "./markdown-mdx-editor";
+import { MarkdownMdxEditor } from "./markdown-mdx-editor";
 
 /**
- * Single rich-text markdown surface (no toolbar): type markdown shortcuts like ### for headings,
- * lists, `code`, etc.—formatted inline like a doc editor.
+ * Full-height markdown surface for issue attachments (rich formatting as you type; markdown shortcuts).
  */
-export function IssueDocumentMdxEditor({
-  markdown,
-  onChange,
-  editorKey
-}: {
-  markdown: string;
-  onChange: (value: string) => void;
-  editorKey: string;
-}) {
-  const plugins = useMemo(
-    () => [
-      headingsPlugin(),
-      listsPlugin(),
-      quotePlugin(),
-      linkPlugin(),
-      linkDialogPlugin(),
-      thematicBreakPlugin(),
-      codeBlockPlugin({ defaultCodeBlockLanguage: "txt" }),
-      codeMirrorPlugin({
-        codeBlockLanguages: {
-          txt: "Plain text",
-          js: "JavaScript",
-          ts: "TypeScript",
-          tsx: "TypeScript",
-          json: "JSON",
-          md: "Markdown"
-        }
-      }),
-      markdownShortcutPlugin()
-    ],
-    []
-  );
-
+export function IssueDocumentMdxEditor(
+  props: Pick<MarkdownMdxEditorProps, "markdown" | "onChange" | "editorKey"> & { placeholder?: string }
+) {
   return (
-    <MDXEditor
-      key={editorKey}
-      markdown={markdown}
-      onChange={(next, _initialNormalize) => onChange(next)}
-      plugins={plugins}
-      className={cn("dark-theme", styles.mdxEditorRoot)}
-      contentEditableClassName={styles.mdxEditorContent}
-      placeholder="Write content here..."
-      overlayContainer={typeof document !== "undefined" ? document.body : undefined}
+    <MarkdownMdxEditor
+      {...props}
+      placeholder={props.placeholder ?? "Write content here..."}
+      compact={false}
     />
   );
 }

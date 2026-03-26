@@ -32,7 +32,7 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
+import { LazyMarkdownMdxEditor } from "@/components/modals/lazy-markdown-mdx-editor";
 import styles from "./create-issue-modal.module.scss";
 
 interface ProjectOption {
@@ -130,6 +130,7 @@ export function CreateIssueModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [bodyMdxKey, setBodyMdxKey] = useState(0);
   const isEditing = Boolean(issue);
 
   const applicableGoals = useMemo(() => {
@@ -266,6 +267,7 @@ export function CreateIssueModal({
         setOpen(nextOpen);
         if (nextOpen) {
           hydrateFormFromProps();
+          setBodyMdxKey((k) => k + 1);
         }
       }}
     >
@@ -291,12 +293,15 @@ export function CreateIssueModal({
                 <Input id="issue-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Improve approval latency" required />
               </Field>
               <Field>
-                <FieldLabelWithHelp
-                  htmlFor="issue-description"
-                  helpText="Context, acceptance criteria, and links agents need to execute the work. Markdown-style line breaks are preserved.">
+                <FieldLabelWithHelp helpText="Context, acceptance criteria, and links agents need. The markdown editor shows formatted text as you type; the issue page renders the same Markdown (including GFM: tables, task lists, strikethrough).">
                   Description
                 </FieldLabelWithHelp>
-                <Textarea id="issue-description" value={body} onChange={(e) => setBody(e.target.value)} placeholder="Describe the work and expected outcome." />
+                <LazyMarkdownMdxEditor
+                  editorKey={`issue-body-${issue?.id ?? "new"}-${bodyMdxKey}`}
+                  markdown={body}
+                  onChange={setBody}
+                  placeholder="Describe the work and expected outcome."
+                />
               </Field>
               <Field>
                 <FieldLabelWithHelp helpText="Issues live under a project for grouping, permissions, and reporting. Pick where this work belongs.">

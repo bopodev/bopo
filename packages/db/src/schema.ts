@@ -121,6 +121,75 @@ export const issues = pgTable("issues", {
   externalLink: text("external_link"),
   isClaimed: boolean("is_claimed").notNull().default(false),
   claimedByHeartbeatRunId: text("claimed_by_heartbeat_run_id"),
+  /** Set when issue was created by a scheduled/manual work loop run (FK enforced in SQL migration). */
+  loopId: text("loop_id"),
+  loopRunId: text("loop_run_id"),
+  createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull()
+});
+
+export const workLoops = pgTable("work_loops", {
+  id: text("id").primaryKey(),
+  companyId: text("company_id")
+    .notNull()
+    .references(() => companies.id, { onDelete: "cascade" }),
+  projectId: text("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  parentIssueId: text("parent_issue_id").references(() => issues.id, { onDelete: "set null" }),
+  goalIdsJson: text("goal_ids_json").notNull().default("[]"),
+  title: text("title").notNull(),
+  description: text("description"),
+  assigneeAgentId: text("assignee_agent_id")
+    .notNull()
+    .references(() => agents.id, { onDelete: "restrict" }),
+  priority: text("priority").notNull().default("medium"),
+  status: text("status").notNull().default("active"),
+  concurrencyPolicy: text("concurrency_policy").notNull().default("coalesce_if_active"),
+  catchUpPolicy: text("catch_up_policy").notNull().default("skip_missed"),
+  lastTriggeredAt: timestamp("last_triggered_at", { mode: "date" }),
+  createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull()
+});
+
+export const workLoopTriggers = pgTable("work_loop_triggers", {
+  id: text("id").primaryKey(),
+  companyId: text("company_id")
+    .notNull()
+    .references(() => companies.id, { onDelete: "cascade" }),
+  workLoopId: text("work_loop_id")
+    .notNull()
+    .references(() => workLoops.id, { onDelete: "cascade" }),
+  kind: text("kind").notNull().default("schedule"),
+  label: text("label"),
+  enabled: boolean("enabled").notNull().default(true),
+  cronExpression: text("cron_expression").notNull(),
+  timezone: text("timezone").notNull().default("UTC"),
+  nextRunAt: timestamp("next_run_at", { mode: "date" }),
+  lastFiredAt: timestamp("last_fired_at", { mode: "date" }),
+  lastResult: text("last_result"),
+  createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull()
+});
+
+export const workLoopRuns = pgTable("work_loop_runs", {
+  id: text("id").primaryKey(),
+  companyId: text("company_id")
+    .notNull()
+    .references(() => companies.id, { onDelete: "cascade" }),
+  workLoopId: text("work_loop_id")
+    .notNull()
+    .references(() => workLoops.id, { onDelete: "cascade" }),
+  triggerId: text("trigger_id").references(() => workLoopTriggers.id, { onDelete: "set null" }),
+  source: text("source").notNull(),
+  status: text("status").notNull().default("received"),
+  triggeredAt: timestamp("triggered_at", { mode: "date" }).defaultNow().notNull(),
+  idempotencyKey: text("idempotency_key"),
+  payloadJson: text("payload_json").notNull().default("{}"),
+  linkedIssueId: text("linked_issue_id").references(() => issues.id, { onDelete: "set null" }),
+  coalescedIntoRunId: text("coalesced_into_run_id"),
+  failureReason: text("failure_reason"),
+  completedAt: timestamp("completed_at", { mode: "date" }),
   createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull()
 });
@@ -445,6 +514,9 @@ export const schema = {
   goals,
   agents,
   issues,
+  workLoops,
+  workLoopTriggers,
+  workLoopRuns,
   issueGoals,
   issueComments,
   issueAttachments,

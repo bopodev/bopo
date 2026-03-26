@@ -93,6 +93,10 @@ export async function apiPut<T>(path: string, companyId: string, body: Record<st
   return requestWithRetry<T>("PUT", path, companyId, body);
 }
 
+export async function apiPatch<T>(path: string, companyId: string, body: Record<string, unknown>): Promise<ApiSuccess<T>> {
+  return requestWithRetry<T>("PATCH", path, companyId, body);
+}
+
 export async function apiDelete<T>(path: string, companyId: string): Promise<ApiSuccess<T>> {
   return requestWithRetry<T>("DELETE", path, companyId);
 }
@@ -140,7 +144,7 @@ export function getRealtimeProtocols() {
 }
 
 async function requestWithRetry<T>(
-  method: "GET" | "POST" | "PUT" | "DELETE",
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
   path: string,
   companyId?: string | null,
   body?: Record<string, unknown> | FormData

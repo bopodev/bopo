@@ -10,6 +10,7 @@ import { createGoalsRouter } from "./routes/goals";
 import { createGovernanceRouter } from "./routes/governance";
 import { createHeartbeatRouter } from "./routes/heartbeats";
 import { createIssuesRouter } from "./routes/issues";
+import { createLoopsRouter } from "./routes/loops";
 import { createObservabilityRouter } from "./routes/observability";
 import { createProjectsRouter } from "./routes/projects";
 import { createPluginsRouter } from "./routes/plugins";
@@ -64,6 +65,7 @@ export function createApp(ctx: AppContext) {
   app.use("/companies", createCompaniesRouter(ctx));
   app.use("/projects", createProjectsRouter(ctx));
   app.use("/issues", createIssuesRouter(ctx));
+  app.use("/loops", createLoopsRouter(ctx));
   app.use("/goals", createGoalsRouter(ctx));
   app.use("/agents", createAgentsRouter(ctx));
   app.use("/governance", createGovernanceRouter(ctx));

@@ -71,6 +71,13 @@ Prints `export BOPODEV_*=…` and a suggested `cd` to the project’s primary wo
 - `--company-id` — overrides `BOPODEV_COMPANY_ID`
 - `--json` — machine-readable JSON instead of shell exports
 
+## API: scheduler and work loops
+
+The API process runs periodic sweeps when `BOPO_SCHEDULER_ROLE` is `auto` or `leader` (see `apps/api/src/startup/scheduler-config.ts`).
+
+- `BOPO_LOOP_SWEEP_MS` — interval for **work loop** trigger processing (default `60000`). Set to `0` is invalid; use `BOPO_LOOP_SWEEP_ENABLED=0` to disable.
+- `BOPO_LOOP_SWEEP_ENABLED` — set to `0` to turn off work loop sweeps on this instance.
+
 ## Further reading
 
 - Setup and env details: [`docs/getting-started-and-dev.md`](./docs/getting-started-and-dev.md)

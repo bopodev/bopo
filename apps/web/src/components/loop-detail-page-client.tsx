@@ -1,0 +1,1259 @@
+"use client";
+
+import Link from "next/link";
+import type { Route } from "next";
+import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
+import { AppShell } from "@/components/app-shell";
+import { AgentAvatar } from "@/components/agent-avatar";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { FieldLabelWithHelp } from "@/components/ui/field-label-with-help";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ApiError, apiGet, apiPatch, apiPost } from "@/lib/api";
+import { agentAvatarSeed } from "@/lib/agent-avatar";
+import { formatSmartDateTime } from "@/lib/smart-date";
+import type { WorkspacePageProps } from "@/components/workspace/workspace-page-props";
+import { CollapsibleMarkdown } from "@/components/markdown-view";
+import { LazyMarkdownMdxEditor } from "@/components/modals/lazy-markdown-mdx-editor";
+import { SectionHeading } from "@/components/workspace/shared";
+import { WeekdayMultiSelect } from "@/components/weekday-multi-select";
+import { SCHEDULE_HOUR_OPTIONS, SCHEDULE_MINUTE_OPTIONS } from "@/lib/schedule-picker-options";
+
+type ScheduleKind =
+  | "every_minute"
+  | "every_hour"
+  | "every_day"
+  | "weekdays"
+  | "weekly"
+  | "monthly"
+  | "custom_cron";
+
+type TriggerRow = {
+  id: string;
+  kind: string;
+  enabled: boolean;
+  cronExpression: string;
+  timezone: string;
+  nextRunAt: string | null;
+  lastFiredAt: string | null;
+  lastResult: string | null;
+};
+
+type RunRow = {
+  id: string;
+  status: string;
+  source: string;
+  triggeredAt: string;
+  linkedIssueId: string | null;
+  failureReason: string | null;
+};
+
+type LoopDetail = {
+  id: string;
+  title: string;
+  description: string | null;
+  projectId: string;
+  assigneeAgentId: string;
+  status: string;
+  concurrencyPolicy: string;
+  catchUpPolicy: string;
+  lastTriggeredAt: string | null;
+  triggers: TriggerRow[];
+  recentRuns: RunRow[];
+};
+
+type ActivityRow = {
+  id: string;
+  eventType: string;
+  actorType: string;
+  actorId: string | null;
+  payload: Record<string, unknown>;
+  createdAt: string;
+};
+
+function normalizeCronWeekday(value: number) {
+  return value === 7 ? 0 : value;
+}
+
+function parseWeeklyDaysFromCron(dowField: string): number[] {
+  if (!/^[0-7](,[0-7])*$/.test(dowField)) {
+    return [];
+  }
+  const parsed = dowField
+    .split(",")
+    .map((part) => normalizeCronWeekday(Number(part)))
+    .filter((day) => Number.isInteger(day) && day >= 0 && day <= 6);
+  return [...new Set(parsed)].sort((a, b) => a - b);
+}
+
+function parseTriggerCron(cronExpression: string): {
+  scheduleKind: ScheduleKind;
+  hour24: number;
+  minute: number;
+  weekDays: number[];
+  dayOfMonth: number;
+  customCron: string;
+} {
+  const base = {
+    scheduleKind: "custom_cron" as ScheduleKind,
+    hour24: 9,
+    minute: 0,
+    weekDays: [1],
+    dayOfMonth: 1,
+    customCron: cronExpression
+  };
+
+  const parts = cronExpression.trim().split(/\s+/);
+  if (parts.length !== 5) {
+    return base;
+  }
+  const minuteField = parts[0] ?? "";
+  const hourField = parts[1] ?? "";
+  const dayOfMonthField = parts[2] ?? "";
+  const monthField = parts[3] ?? "";
+  const dayOfWeekField = parts[4] ?? "";
+  const isNumeric = (value: string) => /^\d+$/.test(value);
+
+  if (minuteField === "*" && hourField === "*" && dayOfMonthField === "*" && monthField === "*" && dayOfWeekField === "*") {
+    return { ...base, scheduleKind: "every_minute" };
+  }
+  if (
+    isNumeric(minuteField) &&
+    hourField === "*" &&
+    dayOfMonthField === "*" &&
+    monthField === "*" &&
+    dayOfWeekField === "*"
+  ) {
+    return {
+      ...base,
+      scheduleKind: "every_hour",
+      minute: Math.min(59, Math.max(0, Number(minuteField)))
+    };
+  }
+  if (
+    isNumeric(minuteField) &&
+    isNumeric(hourField) &&
+    dayOfMonthField === "*" &&
+    monthField === "*" &&
+    dayOfWeekField === "*"
+  ) {
+    return {
+      ...base,
+      scheduleKind: "every_day",
+      minute: Math.min(59, Math.max(0, Number(minuteField))),
+      hour24: Math.min(23, Math.max(0, Number(hourField)))
+    };
+  }
+  if (
+    isNumeric(minuteField) &&
+    isNumeric(hourField) &&
+    dayOfMonthField === "*" &&
+    monthField === "*" &&
+    dayOfWeekField === "1-5"
+  ) {
+    return {
+      ...base,
+      scheduleKind: "weekdays",
+      minute: Math.min(59, Math.max(0, Number(minuteField))),
+      hour24: Math.min(23, Math.max(0, Number(hourField)))
+    };
+  }
+  if (
+    isNumeric(minuteField) &&
+    isNumeric(hourField) &&
+    isNumeric(dayOfMonthField) &&
+    monthField === "*" &&
+    dayOfWeekField === "*"
+  ) {
+    return {
+      ...base,
+      scheduleKind: "monthly",
+      minute: Math.min(59, Math.max(0, Number(minuteField))),
+      hour24: Math.min(23, Math.max(0, Number(hourField))),
+      dayOfMonth: Math.min(31, Math.max(1, Number(dayOfMonthField)))
+    };
+  }
+  if (isNumeric(minuteField) && isNumeric(hourField) && dayOfMonthField === "*" && monthField === "*") {
+    const days = parseWeeklyDaysFromCron(dayOfWeekField);
+    if (days.length > 0) {
+      return {
+        ...base,
+        scheduleKind: "weekly",
+        minute: Math.min(59, Math.max(0, Number(minuteField))),
+        hour24: Math.min(23, Math.max(0, Number(hourField))),
+        weekDays: days
+      };
+    }
+  }
+
+  return base;
+}
+
+function formatTime12Hour(hour24: number, minute: number) {
+  const date = new Date(Date.UTC(2000, 0, 1, hour24, minute, 0));
+  return new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    timeZone: "UTC"
+  }).format(date);
+}
+
+function formatScheduleLabel(cronExpression: string) {
+  const parsed = parseTriggerCron(cronExpression);
+  const atTime = formatTime12Hour(parsed.hour24, parsed.minute);
+  const weekdayLabel = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+  if (parsed.scheduleKind === "every_minute") {
+    return "Every minute";
+  }
+  if (parsed.scheduleKind === "every_hour") {
+    return `Every hour at :${String(parsed.minute).padStart(2, "0")}`;
+  }
+  if (parsed.scheduleKind === "every_day") {
+    return `Every day at ${atTime}`;
+  }
+  if (parsed.scheduleKind === "weekdays") {
+    return `Weekdays at ${atTime}`;
+  }
+  if (parsed.scheduleKind === "weekly") {
+    const days = parsed.weekDays.map((d) => weekdayLabel[d] ?? String(d)).join(", ");
+    return `Weekly on ${days} at ${atTime}`;
+  }
+  if (parsed.scheduleKind === "monthly") {
+    return `Monthly on day ${parsed.dayOfMonth} at ${atTime}`;
+  }
+  return cronExpression;
+}
+
+/** Visible fields in the “add trigger” row (excluding custom cron). */
+function addTriggerGridColumnCount(scheduleKind: ScheduleKind): number {
+  if (scheduleKind === "custom_cron") {
+    return 0;
+  }
+  if (scheduleKind === "every_minute") {
+    return 1;
+  }
+  if (scheduleKind === "every_hour") {
+    return 2;
+  }
+  if (scheduleKind === "monthly") {
+    return 4;
+  }
+  if (scheduleKind === "weekly") {
+    return 4;
+  }
+  return 3;
+}
+
+/** Add-trigger count plus the Status field in the edit dialog. */
+function editTriggerGridColumnCount(scheduleKind: ScheduleKind): number {
+  return addTriggerGridColumnCount(scheduleKind) + 1;
+}
+
+function formatTriggerLastResult(raw: string | null, companyId: string | null): ReactNode {
+  if (!raw?.trim()) {
+    return "No result yet.";
+  }
+  if (raw === "Coalesced into an existing open issue") {
+    return "No new issue was opened — this run was merged with an existing open issue from this loop.";
+  }
+  if (raw === "Skipped while an open issue exists") {
+    return "Skipped because an issue from this loop is still open.";
+  }
+  if (raw === "Execution failed") {
+    return "The run failed; no new issue was opened.";
+  }
+  if (raw === "Skipped missed window (catch-up: skip missed)") {
+    return "Skipped: the schedule was too far behind and catch-up is set to skip missed runs.";
+  }
+  const created = /^Created execution issue (.+)$/.exec(raw);
+  if (created) {
+    const issueId = created[1]!;
+    if (companyId) {
+      const href = `/issues/${issueId}?companyId=${encodeURIComponent(companyId)}` as Route;
+      return (
+        <>
+          Opened a new issue:{" "}
+          <Link href={href} className="font-medium text-primary underline underline-offset-2">
+            {issueId}
+          </Link>
+        </>
+      );
+    }
+    return `Opened a new issue (${issueId}).`;
+  }
+  return raw;
+}
+
+function formatLoopRunOutcomeLabel(status: string): string {
+  switch (status) {
+    case "issue_created":
+      return "Opened a new issue";
+    case "coalesced":
+      return "Merged with an existing open issue";
+    case "skipped":
+      return "Skipped — an issue from this loop is still open";
+    case "failed":
+      return "Failed";
+    case "received":
+      return "In progress";
+    default:
+      return status.replaceAll("_", " ");
+  }
+}
+
+function loopRunIssueLink(issueId: string, companyId: string) {
+  const href = `/issues/${issueId}?companyId=${encodeURIComponent(companyId)}` as Route;
+  return (
+    <Link href={href} className="font-medium text-primary underline underline-offset-2 hover:no-underline" title={`Issue ${issueId}`}>
+      View issue
+    </Link>
+  );
+}
+
+/** Same narrative as trigger “Last result”, for the run list subtitle. */
+function formatLoopRunResultDescription(r: RunRow, companyId: string | null): ReactNode {
+  switch (r.status) {
+    case "issue_created": {
+      if (r.linkedIssueId && companyId) {
+        const href = `/issues/${r.linkedIssueId}?companyId=${encodeURIComponent(companyId)}` as Route;
+        return (
+          <>
+            Opened a new issue:{" "}
+            <Link href={href} className="font-medium text-primary underline underline-offset-2 hover:no-underline">
+              {r.linkedIssueId}
+            </Link>
+          </>
+        );
+      }
+      if (r.linkedIssueId) {
+        return `Opened a new issue (${r.linkedIssueId}).`;
+      }
+      return "Opened a new issue.";
+    }
+    case "coalesced":
+      return (
+        <>
+          No new issue was opened — this run was merged with an existing open issue from this loop.
+          {r.linkedIssueId && companyId ? (
+            <>
+              {" "}
+              {loopRunIssueLink(r.linkedIssueId, companyId)}
+            </>
+          ) : null}
+        </>
+      );
+    case "skipped":
+      return (
+        <>
+          Skipped because an issue from this loop is still open.
+          {r.linkedIssueId && companyId ? (
+            <>
+              {" "}
+              {loopRunIssueLink(r.linkedIssueId, companyId)}
+            </>
+          ) : null}
+        </>
+      );
+    case "failed":
+      return "The run failed; no new issue was opened.";
+    case "received":
+      return "This run is still in progress.";
+    default:
+      return (
+        <>
+          {formatLoopRunOutcomeLabel(r.status)}
+          {r.linkedIssueId && companyId ? (
+            <>
+              {" "}
+              {loopRunIssueLink(r.linkedIssueId, companyId)}
+            </>
+          ) : r.linkedIssueId ? (
+            <span className="text-muted-foreground" title={r.linkedIssueId}>
+              {" "}
+              (Issue {r.linkedIssueId})
+            </span>
+          ) : null}
+        </>
+      );
+  }
+}
+
+export function LoopDetailPageClient(
+  props: WorkspacePageProps & {
+    loopId: string;
+  }
+) {
+  const { companyId, companies, projects, agents, loopId } = props;
+  const router = useRouter();
+  const [detail, setDetail] = useState<LoopDetail | null>(null);
+  const [activity, setActivity] = useState<ActivityRow[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [running, setRunning] = useState(false);
+  const [scheduleKind, setScheduleKind] = useState<ScheduleKind>("every_day");
+  const [hour24, setHour24] = useState(9);
+  const [minute, setMinute] = useState(0);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editInstructionsMdxKey, setEditInstructionsMdxKey] = useState(0);
+  const [editBusy, setEditBusy] = useState(false);
+  const [editTitle, setEditTitle] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editConcurrencyPolicy, setEditConcurrencyPolicy] = useState("coalesce_if_active");
+  const [editCatchUpPolicy, setEditCatchUpPolicy] = useState("skip_missed");
+  const [editingTriggerId, setEditingTriggerId] = useState<string | null>(null);
+  const [triggerEditBusy, setTriggerEditBusy] = useState(false);
+  const [triggerEditScheduleKind, setTriggerEditScheduleKind] = useState<ScheduleKind>("every_day");
+  const [triggerEditHour24, setTriggerEditHour24] = useState(9);
+  const [triggerEditMinute, setTriggerEditMinute] = useState(0);
+  const [triggerEditWeekDays, setTriggerEditWeekDays] = useState<number[]>([1]);
+  const [triggerEditDayOfMonth, setTriggerEditDayOfMonth] = useState(1);
+  const [triggerEditCustomCron, setTriggerEditCustomCron] = useState("0 9 * * *");
+  const [triggerEditEnabled, setTriggerEditEnabled] = useState<"enabled" | "disabled">("enabled");
+  /** Cron DOW 0–6 (Sun–Sat); default Monday only */
+  const [weekDays, setWeekDays] = useState<number[]>([1]);
+  const [dayOfMonth, setDayOfMonth] = useState(1);
+  const [customCron, setCustomCron] = useState("0 9 * * *");
+  const [addTriggerBusy, setAddTriggerBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    if (!companyId) {
+      return;
+    }
+    setError(null);
+    try {
+      const res = await apiGet<{ data: LoopDetail }>(`/loops/${loopId}`, companyId);
+      setDetail(res.data.data);
+      const act = await apiGet<{ data: ActivityRow[] }>(`/loops/${loopId}/activity`, companyId);
+      setActivity(act.data.data ?? []);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Failed to load loop.");
+      setDetail(null);
+    }
+  }, [companyId, loopId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  useEffect(() => {
+    if (!detail) {
+      return;
+    }
+    setEditTitle(detail.title);
+    setEditDescription(detail.description ?? "");
+    setEditConcurrencyPolicy(detail.concurrencyPolicy);
+    setEditCatchUpPolicy(detail.catchUpPolicy);
+  }, [detail]);
+
+  const projectName = projects.find((p) => p.id === detail?.projectId)?.name;
+  const agent = agents.find((a) => a.id === detail?.assigneeAgentId);
+  const editingTrigger = detail?.triggers.find((t) => t.id === editingTriggerId) ?? null;
+
+  async function setActive(next: boolean) {
+    if (!companyId || !detail) {
+      return;
+    }
+    try {
+      await apiPatch(`/loops/${detail.id}`, companyId, { status: next ? "active" : "paused" });
+      await load();
+      router.refresh();
+    } catch {
+      setError("Failed to update status.");
+    }
+  }
+
+  async function runNow() {
+    if (!companyId || !detail) {
+      return;
+    }
+    setRunning(true);
+    setError(null);
+    try {
+      await apiPost(`/loops/${detail.id}/run`, companyId, {});
+      await load();
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Run failed.");
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  async function saveLoopEdits(e: FormEvent) {
+    e.preventDefault();
+    if (!companyId || !detail || !editTitle.trim()) {
+      return;
+    }
+    setEditBusy(true);
+    setError(null);
+    try {
+      const nextTitle = editTitle.trim();
+      const nextDescription = editDescription.trim() || null;
+      const patch: Record<string, unknown> = {};
+      if (nextTitle !== detail.title) {
+        patch.title = nextTitle;
+      }
+      if (nextDescription !== (detail.description ?? null)) {
+        patch.description = nextDescription;
+      }
+      if (editConcurrencyPolicy !== detail.concurrencyPolicy) {
+        patch.concurrencyPolicy = editConcurrencyPolicy;
+      }
+      if (editCatchUpPolicy !== detail.catchUpPolicy) {
+        patch.catchUpPolicy = editCatchUpPolicy;
+      }
+
+      if (Object.keys(patch).length === 0) {
+        setEditOpen(false);
+        return;
+      }
+
+      const res = await apiPatch<{ data?: Partial<LoopDetail> }>(`/loops/${detail.id}`, companyId, patch);
+      const updated = res.data?.data;
+      setDetail((prev) =>
+        prev
+          ? {
+              ...prev,
+              title: typeof updated?.title === "string" ? updated.title : nextTitle,
+              description:
+                updated && "description" in updated
+                  ? (updated.description as string | null)
+                  : nextDescription,
+              concurrencyPolicy:
+                typeof updated?.concurrencyPolicy === "string" ? updated.concurrencyPolicy : editConcurrencyPolicy,
+              catchUpPolicy: typeof updated?.catchUpPolicy === "string" ? updated.catchUpPolicy : editCatchUpPolicy
+            }
+          : prev
+      );
+      setEditOpen(false);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : e instanceof Error ? e.message : "Failed to update loop.");
+    } finally {
+      setEditBusy(false);
+    }
+  }
+
+  function openTriggerEdit(trigger: TriggerRow) {
+    const parsed = parseTriggerCron(trigger.cronExpression);
+    setEditingTriggerId(trigger.id);
+    setTriggerEditScheduleKind(parsed.scheduleKind);
+    setTriggerEditHour24(parsed.hour24);
+    setTriggerEditMinute(parsed.minute);
+    setTriggerEditWeekDays(parsed.weekDays);
+    setTriggerEditDayOfMonth(parsed.dayOfMonth);
+    setTriggerEditCustomCron(parsed.customCron);
+    setTriggerEditEnabled(trigger.enabled ? "enabled" : "disabled");
+  }
+
+  async function saveTriggerEdits(e: FormEvent) {
+    e.preventDefault();
+    if (!companyId || !detail || !editingTriggerId || !editingTrigger) {
+      return;
+    }
+    let nextCron = "";
+    if (triggerEditScheduleKind === "custom_cron") {
+      nextCron = triggerEditCustomCron.trim();
+    } else if (triggerEditScheduleKind === "every_minute") {
+      nextCron = "* * * * *";
+    } else if (triggerEditScheduleKind === "every_hour") {
+      nextCron = `${triggerEditMinute} * * * *`;
+    } else if (triggerEditScheduleKind === "every_day") {
+      nextCron = `${triggerEditMinute} ${triggerEditHour24} * * *`;
+    } else if (triggerEditScheduleKind === "weekdays") {
+      nextCron = `${triggerEditMinute} ${triggerEditHour24} * * 1-5`;
+    } else if (triggerEditScheduleKind === "weekly") {
+      const days = [...new Set(triggerEditWeekDays.filter((d) => d >= 0 && d <= 6))].sort((a, b) => a - b);
+      if (days.length === 0) {
+        setError("Select at least one day of the week.");
+        return;
+      }
+      nextCron = `${triggerEditMinute} ${triggerEditHour24} * * ${days.join(",")}`;
+    } else if (triggerEditScheduleKind === "monthly") {
+      nextCron = `${triggerEditMinute} ${triggerEditHour24} ${triggerEditDayOfMonth} * *`;
+    }
+    if (!nextCron) {
+      setError("Cron expression is required.");
+      return;
+    }
+
+    const patch: Record<string, unknown> = {};
+    if (nextCron !== editingTrigger.cronExpression) {
+      patch.cronExpression = nextCron;
+    }
+    const nextEnabled = triggerEditEnabled === "enabled";
+    if (nextEnabled !== editingTrigger.enabled) {
+      patch.enabled = nextEnabled;
+    }
+    if (Object.keys(patch).length === 0) {
+      setEditingTriggerId(null);
+      return;
+    }
+
+    setTriggerEditBusy(true);
+    setError(null);
+    try {
+      const res = await apiPatch<{ data?: Partial<TriggerRow> }>(
+        `/loops/${detail.id}/triggers/${editingTriggerId}`,
+        companyId,
+        patch
+      );
+      const updated = res.data?.data;
+      setDetail((prev) => {
+        if (!prev) {
+          return prev;
+        }
+        return {
+          ...prev,
+          triggers: prev.triggers.map((trigger) =>
+            trigger.id !== editingTriggerId
+              ? trigger
+              : {
+                  ...trigger,
+                  cronExpression:
+                    typeof updated?.cronExpression === "string"
+                      ? updated.cronExpression
+                      : (patch.cronExpression as string | undefined) ?? trigger.cronExpression,
+                  enabled:
+                    typeof updated?.enabled === "boolean"
+                      ? updated.enabled
+                      : (patch.enabled as boolean | undefined) ?? trigger.enabled,
+                  timezone:
+                    typeof updated?.timezone === "string"
+                      ? updated.timezone
+                      : trigger.timezone
+                }
+          )
+        };
+      });
+      setEditingTriggerId(null);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : e instanceof Error ? e.message : "Failed to update trigger.");
+    } finally {
+      setTriggerEditBusy(false);
+    }
+  }
+
+  async function addTrigger(e: FormEvent) {
+    e.preventDefault();
+    if (!companyId || !detail) {
+      return;
+    }
+    const timezone = "UTC";
+    setAddTriggerBusy(true);
+    setError(null);
+    try {
+      if (scheduleKind === "custom_cron") {
+        await apiPost(`/loops/${detail.id}/triggers`, companyId, {
+          mode: "cron",
+          cronExpression: customCron.trim(),
+          timezone,
+          enabled: true
+        });
+      } else if (scheduleKind === "every_minute") {
+        await apiPost(`/loops/${detail.id}/triggers`, companyId, {
+          mode: "cron",
+          cronExpression: "* * * * *",
+          timezone,
+          enabled: true
+        });
+      } else if (scheduleKind === "every_hour") {
+        await apiPost(`/loops/${detail.id}/triggers`, companyId, {
+          mode: "cron",
+          cronExpression: `${minute} * * * *`,
+          timezone,
+          enabled: true
+        });
+      } else if (scheduleKind === "every_day") {
+        await apiPost(`/loops/${detail.id}/triggers`, companyId, {
+          mode: "preset",
+          preset: "daily",
+          hour24,
+          minute,
+          timezone,
+          enabled: true
+        });
+      } else if (scheduleKind === "weekdays") {
+        await apiPost(`/loops/${detail.id}/triggers`, companyId, {
+          mode: "cron",
+          cronExpression: `${minute} ${hour24} * * 1-5`,
+          timezone,
+          enabled: true
+        });
+      } else if (scheduleKind === "weekly") {
+        const days = [...new Set(weekDays.filter((d) => d >= 0 && d <= 6))].sort((a, b) => a - b);
+        if (days.length === 0) {
+          setError("Select at least one day of the week.");
+          return;
+        }
+        if (days.length === 1) {
+          await apiPost(`/loops/${detail.id}/triggers`, companyId, {
+            mode: "preset",
+            preset: "weekly",
+            hour24,
+            minute,
+            dayOfWeek: days[0],
+            timezone,
+            enabled: true
+          });
+        } else {
+          await apiPost(`/loops/${detail.id}/triggers`, companyId, {
+            mode: "cron",
+            cronExpression: `${minute} ${hour24} * * ${days.join(",")}`,
+            timezone,
+            enabled: true
+          });
+        }
+      } else if (scheduleKind === "monthly") {
+        await apiPost(`/loops/${detail.id}/triggers`, companyId, {
+          mode: "cron",
+          cronExpression: `${minute} ${hour24} ${dayOfMonth} * *`,
+          timezone,
+          enabled: true
+        });
+      }
+      await load();
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to add trigger.");
+    } finally {
+      setAddTriggerBusy(false);
+    }
+  }
+
+  return (
+    <AppShell
+      leftPane={
+        <div className="ui-page-stack min-h-0 overflow-auto">
+          {error ? (
+            <p className="text-sm text-destructive" role="alert">
+              {error}
+            </p>
+          ) : null}
+          {!detail ? null : (
+            <>
+              <div className="ui-page-section-gap-sm">
+                <div className="ui-page-header-row">
+                  <div className="ui-page-header-intro">
+                    <SectionHeading title={detail.title} description="Loop details and scheduling controls." />
+                  </div>
+                  <div className="ui-page-header-actions">
+                    {agent ? (
+                      <AgentAvatar
+                        seed={agentAvatarSeed(agent.id, agent.name, agent.avatarSeed ?? undefined)}
+                        name={agent.name}
+                        className="h-7 w-7"
+                        size={56}
+                      />
+                    ) : null}
+                    <Dialog
+                      open={editOpen}
+                      onOpenChange={(next) => {
+                        setEditOpen(next);
+                        if (next) {
+                          setEditInstructionsMdxKey((k) => k + 1);
+                        }
+                      }}
+                    >
+                    {detail.status === "archived" ? (
+                      <Badge variant="outline" className="shrink-0">
+                        Archived
+                      </Badge>
+                    ) : (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => void setActive(detail.status !== "active")}
+                        aria-pressed={detail.status === "active"}
+                      >
+                        {detail.status === "active" ? "Pause" : "Resume"}
+                      </Button>
+                    )}
+                      <DialogTrigger asChild>
+                        <Button type="button" size="sm" variant="outline">
+                          Edit
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Edit loop</DialogTitle>
+                        </DialogHeader>
+                        <form onSubmit={saveLoopEdits}>
+                          <FieldGroup>
+                            <Field>
+                              <FieldLabel>Title</FieldLabel>
+                              <Input value={editTitle} onChange={(ev) => setEditTitle(ev.target.value)} required />
+                            </Field>
+                            <Field>
+                              <FieldLabelWithHelp helpText="Becomes the new issue body when the loop runs. The markdown editor shows formatted text as you type; the loop and issue pages render the same Markdown.">
+                                Instructions
+                              </FieldLabelWithHelp>
+                              <LazyMarkdownMdxEditor
+                                editorKey={`loop-edit-instructions-${loopId}-${editInstructionsMdxKey}`}
+                                markdown={editDescription}
+                                onChange={setEditDescription}
+                                placeholder="Instructions for each run…"
+                              />
+                            </Field>
+                            <Field>
+                              <FieldLabel>If another run is already open</FieldLabel>
+                              <Select value={editConcurrencyPolicy} onValueChange={setEditConcurrencyPolicy}>
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="coalesce_if_active">Reuse the existing open item</SelectItem>
+                                  <SelectItem value="skip_if_active">Skip this run</SelectItem>
+                                  <SelectItem value="always_enqueue">Create a new item anyway</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </Field>
+                            <Field>
+                              <FieldLabel>If some scheduled runs were missed</FieldLabel>
+                              <Select value={editCatchUpPolicy} onValueChange={setEditCatchUpPolicy}>
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="skip_missed">Ignore missed runs</SelectItem>
+                                  <SelectItem value="enqueue_missed_with_cap">Catch up missed runs (limited)</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </Field>
+                          </FieldGroup>
+                          <DialogFooter>
+                            <Button type="submit" disabled={editBusy || !editTitle.trim()}>
+                              {editBusy ? "Saving…" : "Save changes"}
+                            </Button>
+                          </DialogFooter>
+                        </form>
+                      </DialogContent>
+                    </Dialog>
+                    <Button type="button" size="sm" variant="default" disabled={running} onClick={() => void runNow()}>
+                      {running ? "Running…" : "Run now"}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              <Card>
+                <CardContent className="ui-detail-sidebar-section">
+                  {detail.description?.trim() ? (
+                    <CollapsibleMarkdown
+                      content={detail.description}
+                      className="ui-markdown"
+                      maxHeightPx={280}
+                    />
+                  ) : (
+                    <span className="ui-issue-muted-text">No instructions provided.</span>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Tabs defaultValue="triggers" className="gap-0">
+                <TabsList>
+                  <TabsTrigger value="triggers">Triggers</TabsTrigger>
+                  <TabsTrigger value="runs">Runs</TabsTrigger>
+                  <TabsTrigger value="activity">Activity</TabsTrigger>
+                </TabsList>
+                <TabsContent value="triggers">
+                  <Card>
+                    <form onSubmit={addTrigger}>
+                      <CardContent className="pb-10">
+                        {scheduleKind === "custom_cron" ? (
+                          <FieldGroup>
+                              <Field>
+                                <FieldLabel>Schedule</FieldLabel>
+                                <Select
+                                  value={scheduleKind}
+                                  onValueChange={(v) => setScheduleKind(v as ScheduleKind)}>
+                                  <SelectTrigger>
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="every_minute">Every minute</SelectItem>
+                                    <SelectItem value="every_hour">Every hour</SelectItem>
+                                    <SelectItem value="every_day">Every day</SelectItem>
+                                    <SelectItem value="weekdays">Weekdays</SelectItem>
+                                    <SelectItem value="weekly">Weekly</SelectItem>
+                                    <SelectItem value="monthly">Monthly</SelectItem>
+                                    <SelectItem value="custom_cron">Custom (cron)</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </Field>
+                            <Field>
+                              <FieldLabel>Cron expression</FieldLabel>
+                              <Textarea
+                                value={customCron}
+                                onChange={(ev) => setCustomCron(ev.target.value)}
+                                placeholder="minute hour day-of-month month day-of-week"
+                                rows={2}
+                                className="font-mono text-sm"
+                              />
+                              <p className="text-xs text-muted-foreground">
+                                Five fields: minute, hour, day of month, month, day of week (cron syntax).
+                              </p>
+                            </Field>
+                          </FieldGroup>
+                        ) : (
+                          <div
+                            className="grid w-full min-w-0 items-end gap-6"
+                            style={{
+                              gridTemplateColumns: `repeat(${addTriggerGridColumnCount(scheduleKind)}, minmax(0, 1fr))`
+                            }}
+                          >
+                            <Field className="min-w-0">
+                              <FieldLabel>Schedule</FieldLabel>
+                              <Select
+                                value={scheduleKind}
+                                onValueChange={(v) => setScheduleKind(v as ScheduleKind)}>
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="every_minute">Every minute</SelectItem>
+                                  <SelectItem value="every_hour">Every hour</SelectItem>
+                                  <SelectItem value="every_day">Every day</SelectItem>
+                                  <SelectItem value="weekdays">Weekdays</SelectItem>
+                                  <SelectItem value="weekly">Weekly</SelectItem>
+                                  <SelectItem value="monthly">Monthly</SelectItem>
+                                  <SelectItem value="custom_cron">Custom (cron)</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </Field>
+                            {scheduleKind === "monthly" ? (
+                              <Field className="min-w-0">
+                                <FieldLabel>Day</FieldLabel>
+                                <Select value={String(dayOfMonth)} onValueChange={(v) => setDayOfMonth(Number(v))}>
+                                  <SelectTrigger>
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+                                      <SelectItem key={d} value={String(d)}>
+                                        {d}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </Field>
+                            ) : null}
+                            {scheduleKind === "every_minute" ? null : scheduleKind === "every_hour" ? (
+                              <>
+                                <Field className="min-w-0">
+                                  <FieldLabel>Minute</FieldLabel>
+                                  <Select value={String(minute)} onValueChange={(v) => setMinute(Number(v))}>
+                                    <SelectTrigger>
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent className="max-h-60">
+                                      {SCHEDULE_MINUTE_OPTIONS.map((opt) => (
+                                        <SelectItem key={opt.value} value={opt.value}>
+                                          {opt.label}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </Field>
+                              </>
+                            ) : (
+                              <>
+                                <Field className="min-w-0">
+                                  <FieldLabel>Hour</FieldLabel>
+                                  <Select value={String(hour24)} onValueChange={(v) => setHour24(Number(v))}>
+                                    <SelectTrigger>
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent className="max-h-60">
+                                      {SCHEDULE_HOUR_OPTIONS.map((opt) => (
+                                        <SelectItem key={opt.value} value={opt.value}>
+                                          {opt.label}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </Field>
+                                <Field className="min-w-0">
+                                  <FieldLabel>Minute</FieldLabel>
+                                  <Select value={String(minute)} onValueChange={(v) => setMinute(Number(v))}>
+                                    <SelectTrigger>
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent className="max-h-60">
+                                      {SCHEDULE_MINUTE_OPTIONS.map((opt) => (
+                                        <SelectItem key={opt.value} value={opt.value}>
+                                          {opt.label}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </Field>
+                              </>
+                            )}
+                            {scheduleKind === "weekly" ? (
+                              <Field className="min-w-0">
+                                <FieldLabel className="justify-start text-left">Days</FieldLabel>
+                                <WeekdayMultiSelect value={weekDays} onChange={setWeekDays} />
+                              </Field>
+                            ) : null}
+                          </div>
+                        )}
+                      </CardContent>
+                      <CardFooter className="border-t items-end justify-end">
+                        <Button type="submit" size="sm" disabled={addTriggerBusy}>
+                          {addTriggerBusy ? "Adding…" : "Add trigger"}
+                        </Button>
+                      </CardFooter>
+                    </form>
+                  </Card>
+                  <div className="mt-6">
+                    {detail.triggers.length === 0 ? (
+                      <p className="text-muted-foreground">No triggers yet.</p>
+                    ) : (
+                      detail.triggers.map((t) => (
+                        <Card key={t.id}>
+                          <CardContent className="space-y-2">
+                            <div className="grid grid-cols-[110px_1fr] gap-2">
+                              <span className="text-muted-foreground">Schedule</span>
+                              <span>{formatScheduleLabel(t.cronExpression)}</span>
+                            </div>
+                            <div className="grid grid-cols-[110px_1fr] gap-2">
+                              <span className="text-muted-foreground">Next run</span>
+                              <span>{t.nextRunAt ? formatSmartDateTime(t.nextRunAt) : "Not scheduled"}</span>
+                            </div>
+                            <div className="grid grid-cols-[110px_1fr] gap-2">
+                              <span className="text-muted-foreground">Last fired</span>
+                              <span>{t.lastFiredAt ? formatSmartDateTime(t.lastFiredAt) : "Never"}</span>
+                            </div>
+                            <div className="grid grid-cols-[110px_1fr] gap-2">
+                              <span className="text-muted-foreground">Last result</span>
+                              <span className="wrap-break-word text-sidebar-foreground">
+                                {formatTriggerLastResult(t.lastResult, companyId)}
+                              </span>
+                            </div>
+                          </CardContent>
+                          <CardFooter className="border-t items-end justify-end">
+                            <Button type="button" size="sm" variant="outline" onClick={() => openTriggerEdit(t)}>Edit</Button>
+                          </CardFooter>
+                        </Card>
+                      ))
+                    )}
+                  </div>
+                  <Dialog open={!!editingTriggerId} onOpenChange={(open) => (!open ? setEditingTriggerId(null) : undefined)}>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Edit trigger</DialogTitle>
+                      </DialogHeader>
+                      <form onSubmit={saveTriggerEdits}>
+                        {triggerEditScheduleKind === "custom_cron" ? (
+                          <FieldGroup>
+                            <Field>
+                              <FieldLabel>Schedule</FieldLabel>
+                              <Select
+                                value={triggerEditScheduleKind}
+                                onValueChange={(v) => setTriggerEditScheduleKind(v as ScheduleKind)}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="every_minute">Every minute</SelectItem>
+                                  <SelectItem value="every_hour">Every hour</SelectItem>
+                                  <SelectItem value="every_day">Every day</SelectItem>
+                                  <SelectItem value="weekdays">Weekdays</SelectItem>
+                                  <SelectItem value="weekly">Weekly</SelectItem>
+                                  <SelectItem value="monthly">Monthly</SelectItem>
+                                  <SelectItem value="custom_cron">Custom (cron)</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </Field>
+                            <Field>
+                              <FieldLabel>Cron expression</FieldLabel>
+                              <Textarea
+                                value={triggerEditCustomCron}
+                                onChange={(ev) => setTriggerEditCustomCron(ev.target.value)}
+                                placeholder="minute hour day-of-month month day-of-week"
+                                rows={2}
+                                className="font-mono text-sm"
+                              />
+                              <p className="text-xs text-muted-foreground">
+                                Five fields: minute, hour, day of month, month, day of week (cron syntax).
+                              </p>
+                            </Field>
+                          </FieldGroup>
+                        ) : (
+                          <div
+                            className="grid w-full min-w-0 items-end gap-6"
+                            style={{
+                              gridTemplateColumns: `repeat(${editTriggerGridColumnCount(triggerEditScheduleKind)}, minmax(0, 1fr))`
+                            }}
+                          >
+                            <Field className="min-w-0">
+                              <FieldLabel>Schedule</FieldLabel>
+                              <Select
+                                value={triggerEditScheduleKind}
+                                onValueChange={(v) => setTriggerEditScheduleKind(v as ScheduleKind)}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="every_minute">Every minute</SelectItem>
+                                  <SelectItem value="every_hour">Every hour</SelectItem>
+                                  <SelectItem value="every_day">Every day</SelectItem>
+                                  <SelectItem value="weekdays">Weekdays</SelectItem>
+                                  <SelectItem value="weekly">Weekly</SelectItem>
+                                  <SelectItem value="monthly">Monthly</SelectItem>
+                                  <SelectItem value="custom_cron">Custom (cron)</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </Field>
+                            {triggerEditScheduleKind === "monthly" ? (
+                              <Field className="min-w-0">
+                                <FieldLabel>Day</FieldLabel>
+                                <Select value={String(triggerEditDayOfMonth)} onValueChange={(v) => setTriggerEditDayOfMonth(Number(v))}>
+                                  <SelectTrigger>
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+                                      <SelectItem key={d} value={String(d)}>
+                                        {d}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </Field>
+                            ) : null}
+                            {triggerEditScheduleKind === "every_minute" ? null : triggerEditScheduleKind === "every_hour" ? (
+                              <Field className="min-w-0">
+                                <FieldLabel>Minute</FieldLabel>
+                                <Select value={String(triggerEditMinute)} onValueChange={(v) => setTriggerEditMinute(Number(v))}>
+                                  <SelectTrigger>
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent className="max-h-60">
+                                    {SCHEDULE_MINUTE_OPTIONS.map((opt) => (
+                                      <SelectItem key={opt.value} value={opt.value}>
+                                        {opt.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </Field>
+                            ) : (
+                              <>
+                                <Field className="min-w-0">
+                                  <FieldLabel>Hour</FieldLabel>
+                                  <Select value={String(triggerEditHour24)} onValueChange={(v) => setTriggerEditHour24(Number(v))}>
+                                    <SelectTrigger>
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent className="max-h-60">
+                                      {SCHEDULE_HOUR_OPTIONS.map((opt) => (
+                                        <SelectItem key={opt.value} value={opt.value}>
+                                          {opt.label}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </Field>
+                                <Field className="min-w-0">
+                                  <FieldLabel>Minute</FieldLabel>
+                                  <Select value={String(triggerEditMinute)} onValueChange={(v) => setTriggerEditMinute(Number(v))}>
+                                    <SelectTrigger>
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent className="max-h-60">
+                                      {SCHEDULE_MINUTE_OPTIONS.map((opt) => (
+                                        <SelectItem key={opt.value} value={opt.value}>
+                                          {opt.label}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </Field>
+                              </>
+                            )}
+                            {triggerEditScheduleKind === "weekly" ? (
+                              <Field className="min-w-0">
+                                <FieldLabel className="justify-start text-left">Days</FieldLabel>
+                                <WeekdayMultiSelect value={triggerEditWeekDays} onChange={setTriggerEditWeekDays} />
+                              </Field>
+                            ) : null}
+                            <Field className="min-w-0">
+                              <FieldLabel>Status</FieldLabel>
+                              <Select value={triggerEditEnabled} onValueChange={(v) => setTriggerEditEnabled(v as "enabled" | "disabled")}>
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="enabled">Active</SelectItem>
+                                  <SelectItem value="disabled">Paused</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </Field>
+                          </div>
+                        )}
+                        <DialogFooter>
+                          <Button type="submit" disabled={triggerEditBusy}>
+                            {triggerEditBusy ? "Saving…" : "Save trigger"}
+                          </Button>
+                        </DialogFooter>
+                      </form>
+                    </DialogContent>
+                  </Dialog>
+                </TabsContent>
+                <TabsContent value="runs">
+                  {detail.recentRuns.length === 0 ? (
+                    <p className="text-muted-foreground">No runs yet.</p>
+                  ) : (
+                    detail.recentRuns.map((r) => (
+                      <Card key={r.id} className="mb-6">
+                        <CardHeader>
+                          <CardTitle>{formatSmartDateTime(r.triggeredAt)}</CardTitle>
+                          <div className="text-sm leading-relaxed text-muted-foreground [&_a]:text-primary [&_a]:underline-offset-2">
+                            {formatLoopRunResultDescription(r, companyId)}
+                          </div>
+                        </CardHeader>
+                        {r.failureReason ? (
+                          <CardContent className="text-xs text-destructive">{r.failureReason}</CardContent>
+                        ) : null}
+                      </Card>
+                    ))
+                  )}
+                </TabsContent>
+                <TabsContent value="activity">
+                  {activity.length === 0 ? (
+                    <p className="text-muted-foreground">No activity yet.</p>
+                  ) : (
+                    activity.map((a) => (
+                      <div key={a.id} className="rounded-md border px-4 py-3 mb-6">
+                        <div className="font-medium">{a.eventType}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {formatSmartDateTime(a.createdAt)} · {a.actorType}
+                          {a.actorId ? ` · ${a.actorId}` : ""}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </TabsContent>
+              </Tabs>
+            </>
+          )}
+        </div>
+      }
+      activeNav="Loops"
+      companies={companies}
+      activeCompanyId={companyId}
+    />
+  );
+}

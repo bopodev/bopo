@@ -4,6 +4,8 @@ This page covers agent lifecycle management and heartbeat execution behavior.
 
 For **heartbeat prompt modes** (`full` vs `compact`), **cost expectations**, and **API hydration** (`GET /issues/:id`), see [`../guides/agent-heartbeat-protocol.md`](../guides/agent-heartbeat-protocol.md).
 
+For **scheduled recurring work** that opens dedicated issues (separate from the agent’s periodic heartbeat cadence), see [`loops.md`](./loops.md).
+
 ### Web UI: “Thinking effort” and Codex
 
 - **Claude Code** agents show a **Thinking effort** control; Bopo forwards it to the CLI as `--effort` when not `auto`.
