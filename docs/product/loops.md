@@ -16,6 +16,8 @@
 
 ## UI
 
+Web routes: `/loops` (list), `/loops/[loopId]` (detail). See also `apps/web/README.md` for the full route map.
+
 Under **Loops** in the sidebar: list, create, toggle **Active**, **Run now**, and a detail page with **Triggers**, **Runs**, and **Activity** (audit events for that loop). On a trigger, **Edit** opens a dialog to change schedule, pause, or **Delete** the trigger. The loop detail layout includes a **right-hand summary** with metadata: title, linked **agent** and **project**, **last run** time and outcome, and created/updated timestamps.
 
 On an **issue** detail page, the **Loops** tab lists work loops that either use this issue as **parent issue** or **opened this issue** on a run (`loopId` on the issue row), with a shortcut to the full Loops page.
