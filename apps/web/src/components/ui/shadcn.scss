@@ -279,7 +279,7 @@ body {
 }
 
 .ui-company-file-export-file-row {
-  @apply flex cursor-pointer items-start gap-4 rounded px-2 pb-1 text-base hover:bg-muted/60;
+  @apply flex cursor-pointer items-start gap-4 rounded px-2 pb-1 text-base hover:bg-muted/60 truncate;
 }
 
 .ui-company-file-export-file-row--active {
