@@ -245,6 +245,95 @@ body {
   @apply flex items-center px-6 [.border-t]:pt-6;
 }
 
+/* Company file export / import (Templates → Export / Import) */
+.ui-company-file-export-content {
+  @apply grid gap-6 lg:grid-cols-2;
+}
+
+.ui-company-file-export-pane {
+  @apply flex min-h-[320px] flex-col rounded-md border px-4 py-4;
+}
+
+.ui-company-file-export-pane--files {
+  @apply gap-4;
+}
+
+.ui-company-file-export-pane--preview {
+  @apply gap-2;
+}
+
+.ui-company-file-export-search-field {
+  @apply w-full;
+}
+
+.ui-company-file-export-error {
+  @apply text-base text-destructive;
+}
+
+.ui-company-file-export-file-scroll {
+  @apply h-[280px] rounded border;
+}
+
+.ui-company-file-export-file-list {
+  @apply px-4 py-4;
+}
+
+.ui-company-file-export-file-row {
+  @apply flex cursor-pointer items-start gap-4 rounded px-2 pb-1 text-base hover:bg-muted/60;
+}
+
+.ui-company-file-export-file-row--active {
+  @apply bg-muted;
+}
+
+.ui-company-file-export-file-checkbox {
+  @apply mt-1;
+}
+
+.ui-company-file-export-file-path {
+  @apply min-w-0 flex-1 text-left font-mono text-base break-all;
+}
+
+.ui-company-file-export-file-meta {
+  @apply ml-2 text-muted-foreground;
+}
+
+.ui-company-file-export-preview-scroll {
+  @apply max-h-[360px] rounded border bg-muted/30 px-4 py-4;
+}
+
+.ui-company-file-export-preview-pre {
+  @apply font-mono text-base whitespace-pre-wrap wrap-break-word;
+}
+
+.ui-company-file-export-footer {
+  @apply flex flex-col gap-3 border-t pt-6 sm:flex-row sm:items-center sm:justify-between;
+}
+
+.ui-company-file-export-footer-summary {
+  @apply text-base text-muted-foreground;
+}
+
+.ui-company-file-export-footer-actions {
+  @apply flex w-full flex-wrap items-center justify-end gap-6 sm:w-auto;
+}
+
+.ui-company-file-import-code {
+  @apply text-xs;
+}
+
+.ui-company-file-import-field-row {
+  @apply mt-2 flex flex-wrap items-center gap-2;
+}
+
+.ui-company-file-import-busy {
+  @apply text-base text-muted-foreground;
+}
+
+.ui-company-file-import-message {
+  @apply mt-2 text-base;
+}
+
 .ui-checkbox {
   @apply size-4 shrink-0 rounded-[4px] border border-input transition-shadow outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground dark:bg-input/30 dark:aria-invalid:ring-destructive/40 dark:data-[state=checked]:bg-primary;
 }

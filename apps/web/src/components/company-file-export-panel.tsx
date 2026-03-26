@@ -146,34 +146,34 @@ export function CompanyFileExportCard({ companyId, companyName }: { companyId: s
           Download your company as a zip archive.
         </CardDescription>
       </CardHeader>
-      <CardContent className="grid gap-6 lg:grid-cols-2">
-        <div className="flex min-h-[320px] flex-col gap-4 rounded-md border px-4 py-4">
-          <Field className="w-full">
+      <CardContent className="ui-company-file-export-content">
+        <div className="ui-company-file-export-pane ui-company-file-export-pane--files">
+          <Field className="ui-company-file-export-search-field">
             <Input id={searchId} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Filter by path…" />
           </Field>
-          {error ? <p className="text-destructive text-base">{error}</p> : null}
-          <ScrollArea className="h-[280px] rounded border">
-            <ul className=" px-4 py-4">
+          {error ? <p className="ui-company-file-export-error">{error}</p> : null}
+          <ScrollArea className="ui-company-file-export-file-scroll">
+            <ul className="ui-company-file-export-file-list">
               {filtered.map((f) => (
                 <li key={f.path}>
                   <label
                     className={cn(
-                      "flex cursor-pointer items-start gap-4 rounded px-2 pb-1 text-base hover:bg-muted/60",
-                      activePath === f.path && "bg-muted"
+                      "ui-company-file-export-file-row",
+                      activePath === f.path && "ui-company-file-export-file-row--active"
                     )}
                   >
                     <Checkbox
                       checked={selected.has(f.path)}
                       onCheckedChange={(v) => togglePath(f.path, v === true)}
-                      className="mt-1"
+                      className="ui-company-file-export-file-checkbox"
                     />
                     <button
                       type="button"
-                      className="min-w-0 flex-1 text-left font-mono text-base break-all"
+                      className="ui-company-file-export-file-path"
                       onClick={() => void openPreview(f.path)}
                     >
                       {f.path}
-                      <span className="text-muted-foreground ml-2">({f.bytes} B)</span>
+                      <span className="ui-company-file-export-file-meta">({f.bytes} B)</span>
                     </button>
                   </label>
                 </li>
@@ -181,19 +181,19 @@ export function CompanyFileExportCard({ companyId, companyName }: { companyId: s
             </ul>
           </ScrollArea>
         </div>
-        <div className="flex min-h-[320px] flex-col gap-2 rounded-md border px-4 py-4">
-          <ScrollArea className="max-h-[360px] rounded border bg-muted/30 px-4 py-4">
-            <pre className="font-mono text-base whitespace-pre-wrap wrap-break-word">
+        <div className="ui-company-file-export-pane ui-company-file-export-pane--preview">
+          <ScrollArea className="ui-company-file-export-preview-scroll">
+            <pre className="ui-company-file-export-preview-pre">
               {previewLoading ? "Loading…" : preview || "Select a file to preview."}
             </pre>
           </ScrollArea>
         </div>
       </CardContent>
-      <CardFooter className="flex flex-col gap-3 border-t pt-6 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-muted-foreground text-base">
+      <CardFooter className="ui-company-file-export-footer">
+        <p className="ui-company-file-export-footer-summary">
           {loading ? "Preparing export…" : `${selectedCount} of ${totalCount} file${totalCount === 1 ? "" : "s"} will be included in the zip.`}
         </p>
-        <div className="flex w-full flex-wrap items-center justify-end gap-6 sm:w-auto">
+        <div className="ui-company-file-export-footer-actions">
           <Button
             type="button"
             variant="outline"
@@ -247,13 +247,13 @@ export function CompanyFileImportCard() {
         <CardTitle>Import company from zip</CardTitle>
         <CardDescription>
           Board role required. Creates a new company from a Bopo export archive (form field name must be{" "}
-          <code className="text-xs">archive</code>).
+          <code className="ui-company-file-import-code">archive</code>).
         </CardDescription>
       </CardHeader>
       <CardContent>
         <Field>
           <FieldLabel htmlFor={importInputId}>Zip archive</FieldLabel>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
+          <div className="ui-company-file-import-field-row">
             <Input
               id={importInputId}
               type="file"
@@ -261,9 +261,9 @@ export function CompanyFileImportCard() {
               disabled={importBusy}
               onChange={(e) => void onImportZip(e.target.files)}
             />
-            {importBusy ? <span className="text-muted-foreground text-base">Importing…</span> : null}
+            {importBusy ? <span className="ui-company-file-import-busy">Importing…</span> : null}
           </div>
-          {importMessage ? <p className="mt-2 text-base">{importMessage}</p> : null}
+          {importMessage ? <p className="ui-company-file-import-message">{importMessage}</p> : null}
         </Field>
       </CardContent>
     </Card>
