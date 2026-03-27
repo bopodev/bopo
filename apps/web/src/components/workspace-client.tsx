@@ -523,8 +523,7 @@ function CostDailyBreakdownChartCard({
   totalTokens,
   emptyLabel,
   metaLine,
-  threadMessageCount,
-  initialMetric
+  threadMessageCount
 }: {
   title: string;
   chartMonthLabel: string;
@@ -536,12 +535,7 @@ function CostDailyBreakdownChartCard({
   metaLine?: string;
   /** Read-only stat beside USD/Tokens for owner-assistant threads (messages in the selected month). */
   threadMessageCount?: number;
-  /** When USD is zero but tokens exist, defaulting to `tokens` avoids a flat chart until the user toggles. */
-  initialMetric?: "usd" | "tokens";
 }) {
-  const [metric, setMetric] = useState<"usd" | "tokens">(
-    () => initialMetric ?? (totalTokens > 0 && totalUsd <= 0 ? "tokens" : "usd")
-  );
   const gradientBaseId = useId().replace(/:/g, "");
   const chartConfig = {
     usd: { label: "Spend (USD)", color: "var(--chart-2)" },
@@ -560,31 +554,27 @@ function CostDailyBreakdownChartCard({
           {metaLine ? <span className="mt-1 block text-muted-foreground">{metaLine}</span> : null}
         </CardDescription>
         <CardAction className={styles.costProviderDailyCardAction}>
-          <div role="group" aria-label="Chart unit and summary" className={styles.costProviderDailyMetricGroup}>
-            <button
-              type="button"
+          <div role="group" aria-label="Month totals" className={styles.costProviderDailyMetricGroup}>
+            <div
               className={cn(
                 styles.costProviderDailyMetricButton,
-                metric === "usd" ? styles.costProviderDailyMetricButtonActive : styles.costProviderDailyMetricButtonInactive
+                styles.costProviderDailyMetricButtonInactive,
+                "pointer-events-none cursor-default"
               )}
-              aria-pressed={metric === "usd"}
-              onClick={() => setMetric("usd")}
             >
               <span className={styles.costProviderDailyMetricLabel}>USD</span>
               <span className={styles.costProviderDailyMetricValue}>{formatUsdCost(totalUsd)}</span>
-            </button>
-            <button
-              type="button"
+            </div>
+            <div
               className={cn(
                 styles.costProviderDailyMetricButton,
-                metric === "tokens" ? styles.costProviderDailyMetricButtonActive : styles.costProviderDailyMetricButtonInactive
+                styles.costProviderDailyMetricButtonInactive,
+                "pointer-events-none cursor-default"
               )}
-              aria-pressed={metric === "tokens"}
-              onClick={() => setMetric("tokens")}
             >
               <span className={styles.costProviderDailyMetricLabel}>Tokens</span>
               <span className={styles.costProviderDailyMetricValue}>{totalTokens.toLocaleString()}</span>
-            </button>
+            </div>
             {typeof threadMessageCount === "number" && threadMessageCount > 0 ? (
               <div
                 className={cn(
@@ -603,7 +593,13 @@ function CostDailyBreakdownChartCard({
       <CardContent className={styles.costProviderDailyCardContent}>
         {hasAnyActivity ? (
           <ChartContainer config={chartConfig} className={styles.costProviderDailyChartContainer}>
-            <BarChart accessibilityLayer data={daily} margin={{ top: 8, left: -12, right: -12, bottom: 4 }}>
+            <BarChart
+              accessibilityLayer
+              data={daily}
+              margin={{ top: 8, left: 2, right: 2, bottom: 4 }}
+              barCategoryGap="18%"
+              barGap={2}
+            >
               <defs>
                 <linearGradient id={usdGradientId} x1="0" y1="0" x2="0" y2="1">
                   <stop offset="4%" stopColor="var(--color-usd)" stopOpacity={0.95} />
@@ -623,17 +619,55 @@ function CostDailyBreakdownChartCard({
                 minTickGap={28}
                 interval="preserveStartEnd"
               />
-              <YAxis hide />
+              <YAxis yAxisId="tokens" orientation="left" hide width={0} domain={[0, "auto"]} />
+              <YAxis yAxisId="usd" orientation="right" hide width={0} domain={[0, "auto"]} />
               <ChartTooltip
-                content={<ChartTooltipContent indicator="line" />}
+                content={({ active, payload, label }) => {
+                  if (!active || !payload?.length) {
+                    return null;
+                  }
+                  return (
+                    <div className="grid min-w-36 items-start gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1.5 text-base shadow-md">
+                      {label != null ? <div className="font-medium">{label}</div> : null}
+                      <div className="grid gap-1.5">
+                        {payload.map((item, index) => {
+                          const key = String(item.dataKey ?? item.name ?? index);
+                          const isUsd = key === "usd";
+                          const raw = item.value;
+                          const num = typeof raw === "number" ? raw : Number(raw);
+                          const display = isUsd ? formatUsdCost(Number.isFinite(num) ? num : 0) : (Number.isFinite(num) ? num : 0).toLocaleString();
+                          const color =
+                            item.color ?? (isUsd ? "var(--color-usd)" : "var(--color-tokens)");
+                          const conf = chartConfig[isUsd ? "usd" : "tokens"];
+                          return (
+                            <div key={`${key}-${index}`} className="flex items-center gap-2">
+                              <span className="h-0.5 w-3 shrink-0 rounded-[1px]" style={{ backgroundColor: color }} />
+                              <span className="text-muted-foreground">{conf.label}</span>
+                              <span className="ml-auto font-mono font-medium tabular-nums">{display}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                }}
                 cursor={{ fill: "var(--muted)", opacity: 0.2 }}
               />
               <Bar
-                dataKey={metric}
-                fill={metric === "usd" ? `url(#${usdGradientId})` : `url(#${tokensGradientId})`}
-                radius={[4, 4, 0, 0]}
-                maxBarSize={12}
-                minPointSize={2}
+                yAxisId="tokens"
+                dataKey="tokens"
+                name="tokens"
+                fill={`url(#${tokensGradientId})`}
+                radius={[3, 3, 0, 0]}
+                maxBarSize={14}
+              />
+              <Bar
+                yAxisId="usd"
+                dataKey="usd"
+                name="usd"
+                fill={`url(#${usdGradientId})`}
+                radius={[3, 3, 0, 0]}
+                maxBarSize={14}
               />
             </BarChart>
           </ChartContainer>
@@ -5643,7 +5677,6 @@ export function WorkspaceClient({
                         daily={row.daily}
                         totalUsd={row.totalUsd}
                         totalTokens={row.totalTokens}
-                        initialMetric={row.totalUsd <= 0 && row.totalTokens > 0 ? "tokens" : "usd"}
                         emptyLabel="No usage for this provider in this month."
                       />
                     ))}
@@ -5673,7 +5706,6 @@ export function WorkspaceClient({
                         daily={row.daily}
                         totalUsd={row.totalUsd}
                         totalTokens={row.totalTokens}
-                        initialMetric={row.totalUsd <= 0 && row.totalTokens > 0 ? "tokens" : "usd"}
                         emptyLabel="No usage for this model in this month."
                       />
                     ))}
@@ -5733,11 +5765,6 @@ export function WorkspaceClient({
                       daily={ownerAssistantMonthlyChatsCost.daily}
                       totalUsd={ownerAssistantMonthlyChatsCost.totalUsd}
                       totalTokens={ownerAssistantMonthlyChatsCost.totalTokens}
-                      initialMetric={
-                        ownerAssistantMonthlyChatsCost.totalUsd <= 0 && ownerAssistantMonthlyChatsCost.totalTokens > 0
-                          ? "tokens"
-                          : "usd"
-                      }
                       metaLine={
                         ownerAssistantMonthlyChatsCost.activeThreadCount > 0
                           ? `${ownerAssistantMonthlyChatsCost.activeThreadCount} conversation${
