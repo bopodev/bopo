@@ -151,7 +151,7 @@ export async function importCompanyFromZipBuffer(db: BopoDb, buffer: Buffer): Pr
 
   const projectSlugToId = new Map<string, string>();
   const projectStatuses = new Set(["planned", "active", "paused", "blocked", "completed", "archived"]);
-  for (const [, p] of Object.entries(doc.projects)) {
+  for (const [projectSlug, p] of Object.entries(doc.projects)) {
     const st = p.status?.trim();
     const status = st && projectStatuses.has(st) ? (st as "planned") : "planned";
     const row = await createProject(db, {
@@ -161,7 +161,7 @@ export async function importCompanyFromZipBuffer(db: BopoDb, buffer: Buffer): Pr
       status
     });
     if (row) {
-      projectSlugToId.set(slug, row.id);
+      projectSlugToId.set(projectSlug, row.id);
     }
   }
 
