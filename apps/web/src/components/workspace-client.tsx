@@ -92,6 +92,8 @@ import {
   buildRecentDayKeys,
   formatMonthLabel,
   formatRelativeAgeCompact,
+  localCalendarDayInMonthKey,
+  localCalendarMonthUtcRange,
   monthKeyFromDate
 } from "@/components/workspace/workspace-client-time";
 
@@ -372,6 +374,9 @@ interface AuditRow {
 
 interface CostRow {
   id: string;
+  costCategory?: string | null;
+  assistantThreadId?: string | null;
+  assistantMessageId?: string | null;
   issueId: string | null;
   projectId?: string | null;
   agentId?: string | null;
@@ -516,7 +521,10 @@ function CostDailyBreakdownChartCard({
   daily,
   totalUsd,
   totalTokens,
-  emptyLabel
+  emptyLabel,
+  metaLine,
+  threadMessageCount,
+  initialMetric
 }: {
   title: string;
   chartMonthLabel: string;
@@ -524,8 +532,16 @@ function CostDailyBreakdownChartCard({
   totalUsd: number;
   totalTokens: number;
   emptyLabel: string;
+  /** Extra context under the subtitle (e.g. message count for chat threads). */
+  metaLine?: string;
+  /** Read-only stat beside USD/Tokens for owner-assistant threads (messages in the selected month). */
+  threadMessageCount?: number;
+  /** When USD is zero but tokens exist, defaulting to `tokens` avoids a flat chart until the user toggles. */
+  initialMetric?: "usd" | "tokens";
 }) {
-  const [metric, setMetric] = useState<"usd" | "tokens">("usd");
+  const [metric, setMetric] = useState<"usd" | "tokens">(
+    () => initialMetric ?? (totalTokens > 0 && totalUsd <= 0 ? "tokens" : "usd")
+  );
   const gradientBaseId = useId().replace(/:/g, "");
   const chartConfig = {
     usd: { label: "Spend (USD)", color: "var(--chart-2)" },
@@ -539,9 +555,12 @@ function CostDailyBreakdownChartCard({
     <Card className={styles.costProviderDailyCard}>
       <CardHeader className={styles.costProviderDailyCardHeader}>
         <CardTitle className={styles.costProviderDailyCardTitle}>{title}</CardTitle>
-        <CardDescription>Day-by-day usage for {chartMonthLabel}.</CardDescription>
+        <CardDescription>
+          Day-by-day usage for {chartMonthLabel}.
+          {metaLine ? <span className="mt-1 block text-muted-foreground">{metaLine}</span> : null}
+        </CardDescription>
         <CardAction className={styles.costProviderDailyCardAction}>
-          <div role="group" aria-label="Chart unit" className={styles.costProviderDailyMetricGroup}>
+          <div role="group" aria-label="Chart unit and summary" className={styles.costProviderDailyMetricGroup}>
             <button
               type="button"
               className={cn(
@@ -566,6 +585,18 @@ function CostDailyBreakdownChartCard({
               <span className={styles.costProviderDailyMetricLabel}>Tokens</span>
               <span className={styles.costProviderDailyMetricValue}>{totalTokens.toLocaleString()}</span>
             </button>
+            {typeof threadMessageCount === "number" && threadMessageCount > 0 ? (
+              <div
+                className={cn(
+                  styles.costProviderDailyMetricButton,
+                  styles.costProviderDailyMetricButtonInactive,
+                  "pointer-events-none cursor-default"
+                )}
+              >
+                <span className={styles.costProviderDailyMetricLabel}>Messages</span>
+                <span className={styles.costProviderDailyMetricValue}>{threadMessageCount.toLocaleString()}</span>
+              </div>
+            ) : null}
           </div>
         </CardAction>
       </CardHeader>
@@ -1567,9 +1598,12 @@ export function WorkspaceClient({
         return true;
       }
       const model = (entry.runtimeModelId ?? entry.pricingModelId ?? "").toLowerCase();
+      const category = (entry.costCategory ?? "").toLowerCase();
       return (
         entry.providerType.toLowerCase().includes(normalizedQuery) ||
         model.includes(normalizedQuery) ||
+        category.includes(normalizedQuery) ||
+        (entry.assistantThreadId?.toLowerCase().includes(normalizedQuery) ?? false) ||
         (entry.agentId?.toLowerCase().includes(normalizedQuery) ?? false) ||
         (entry.issueId?.toLowerCase().includes(normalizedQuery) ?? false) ||
         entry.id.toLowerCase().includes(normalizedQuery)
@@ -1720,6 +1754,41 @@ export function WorkspaceClient({
     }
     return costMonthOptions.includes(activeCostMonth) ? activeCostMonth : null;
   }, [activeCostMonth, costMonthOptions, includeCostAggregations]);
+
+  const [assistantChatThreadStats, setAssistantChatThreadStats] = useState<Array<{ threadId: string; messageCount: number }>>(
+    []
+  );
+  useEffect(() => {
+    if (!includeCostAggregations || !companyId || !costDailyTargetMonthKey) {
+      setAssistantChatThreadStats([]);
+      return;
+    }
+    const range = localCalendarMonthUtcRange(costDailyTargetMonthKey);
+    if (!range) {
+      setAssistantChatThreadStats([]);
+      return;
+    }
+    let cancelled = false;
+    const qs = `from=${encodeURIComponent(range.fromIso)}&toExclusive=${encodeURIComponent(range.toExclusiveIso)}`;
+    void apiGet<{ threads: Array<{ threadId: string; messageCount: number }> }>(
+      `/observability/assistant-chat-threads?${qs}`,
+      companyId
+    )
+      .then((res) => {
+        if (!cancelled) {
+          setAssistantChatThreadStats(Array.isArray(res.data.threads) ? res.data.threads : []);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setAssistantChatThreadStats([]);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId, costDailyTargetMonthKey, includeCostAggregations]);
+
   const providerDailyChartMonthLabel = useMemo(() => {
     if (!costDailyTargetMonthKey) {
       return selectedMonthLabel;
@@ -1939,6 +2008,77 @@ export function WorkspaceClient({
     }
     return rows.sort((a, b) => b.ledgerUsdMonth - a.ledgerUsdMonth || a.agentName.localeCompare(b.agentName));
   }, [agents, costEntries, costDailyTargetMonthKey, includeCostAggregations]);
+
+  /** Single combined owner-assistant ledger series for the Costs "By chats" tab (all threads in the month). */
+  const ownerAssistantMonthlyChatsCost = useMemo(() => {
+    if (!includeCostAggregations || !costDailyTargetMonthKey) {
+      return null;
+    }
+    const match = costDailyTargetMonthKey.match(/^(\d{4})-(\d{2})$/);
+    if (!match) {
+      return null;
+    }
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const byDay = new Map<number, { usd: number; inputTokens: number; outputTokens: number }>();
+    for (let day = 1; day <= daysInMonth; day += 1) {
+      byDay.set(day, { usd: 0, inputTokens: 0, outputTokens: 0 });
+    }
+    const threadIdsWithLedger = new Set<string>();
+    let totalUsd = 0;
+    let totalTokens = 0;
+    for (const entry of costEntries) {
+      if (entry.costCategory !== "company_assistant" || !entry.assistantThreadId) {
+        continue;
+      }
+      if (monthKeyFromDate(entry.createdAt) !== costDailyTargetMonthKey) {
+        continue;
+      }
+      threadIdsWithLedger.add(entry.assistantThreadId);
+      const usd = Number(entry.usdCost) || 0;
+      const tin = Number(entry.tokenInput) || 0;
+      const tout = Number(entry.tokenOutput) || 0;
+      totalUsd += usd;
+      totalTokens += tin + tout;
+      const day = localCalendarDayInMonthKey(entry.createdAt, costDailyTargetMonthKey);
+      if (day === null || day < 1 || day > daysInMonth) {
+        continue;
+      }
+      const current = byDay.get(day);
+      if (!current) {
+        continue;
+      }
+      current.usd += usd;
+      current.inputTokens += tin;
+      current.outputTokens += tout;
+    }
+    const totalMessages = assistantChatThreadStats.reduce((acc, row) => acc + row.messageCount, 0);
+    const threadIdsFromStats = new Set(assistantChatThreadStats.map((s) => s.threadId));
+    const activeThreadCount = new Set([...threadIdsWithLedger, ...threadIdsFromStats]).size;
+    const daily: CostDailyChartRow[] = [];
+    for (let day = 1; day <= daysInMonth; day += 1) {
+      const v = byDay.get(day)!;
+      const d = new Date(year, month - 1, day);
+      daily.push({
+        day,
+        label: String(day).padStart(2, "0"),
+        dateLabel: d.toLocaleString(undefined, { month: "short", day: "numeric" }),
+        usd: v.usd,
+        inputTokens: v.inputTokens,
+        outputTokens: v.outputTokens,
+        tokens: v.inputTokens + v.outputTokens
+      });
+    }
+    return {
+      daily,
+      totalUsd,
+      totalTokens,
+      totalMessages,
+      activeThreadCount
+    };
+  }, [assistantChatThreadStats, costDailyTargetMonthKey, costEntries, includeCostAggregations]);
+
   const runDetailsByRunId = useMemo(() => {
     if (!isRunsNav) {
       return new Map<string, RunDetailsPayload>();
@@ -5222,7 +5362,7 @@ export function WorkspaceClient({
           <>
             <SectionHeading
               title="Costs"
-              description="Tracked token and cost usage for agents and issue execution."
+              description="Tracked token and cost usage for agents, owner-assistant chats, and issue execution."
               actions={
                 <Select value={activeCostMonth} onValueChange={setSelectedCostMonth}>
                   <SelectTrigger className={styles.costLedgerSelectTrigger}>
@@ -5245,6 +5385,7 @@ export function WorkspaceClient({
                 <TabsTrigger value="by-provider">By provider</TabsTrigger>
                 <TabsTrigger value="by-model">By model</TabsTrigger>
                 <TabsTrigger value="by-agent">By agent</TabsTrigger>
+                <TabsTrigger value="by-chats">By chats</TabsTrigger>
               </TabsList>
               <TabsContent value="overview" className={styles.costTabsOverviewContent}>
             <div className="ui-stats">
@@ -5502,6 +5643,7 @@ export function WorkspaceClient({
                         daily={row.daily}
                         totalUsd={row.totalUsd}
                         totalTokens={row.totalTokens}
+                        initialMetric={row.totalUsd <= 0 && row.totalTokens > 0 ? "tokens" : "usd"}
                         emptyLabel="No usage for this provider in this month."
                       />
                     ))}
@@ -5531,6 +5673,7 @@ export function WorkspaceClient({
                         daily={row.daily}
                         totalUsd={row.totalUsd}
                         totalTokens={row.totalTokens}
+                        initialMetric={row.totalUsd <= 0 && row.totalTokens > 0 ? "tokens" : "usd"}
                         emptyLabel="No usage for this model in this month."
                       />
                     ))}
@@ -5563,6 +5706,58 @@ export function WorkspaceClient({
                         daily={row.daily}
                       />
                     ))}
+                  </div>
+                )}
+              </TabsContent>
+              <TabsContent value="by-chats" className={styles.costTabsByProviderContent}>
+                {activeCostMonth === "all" ? (
+                  <p className={styles.costProviderDailyAllTimeHint}>
+                    Daily charts use {providerDailyChartMonthLabel} — the same calendar month as the Overview &quot;Daily spend
+                    trend&quot; when &quot;All time&quot; is selected.
+                  </p>
+                ) : null}
+                {!costDailyTargetMonthKey ? (
+                  <EmptyState>No months with cost data yet.</EmptyState>
+                ) : !ownerAssistantMonthlyChatsCost || ownerAssistantMonthlyChatsCost.activeThreadCount === 0 ? (
+                  <EmptyState>
+                    No owner-assistant conversations in {providerDailyChartMonthLabel} (no messages in that month, or the
+                    request failed). Chat activity is listed from stored messages; ledger rows add metered tokens when the
+                    brain reports them.
+                  </EmptyState>
+                ) : (
+                  <div className={styles.costProviderDailyGrid}>
+                    <CostDailyBreakdownChartCard
+                      key={costDailyTargetMonthKey}
+                      title="All owner-assistant conversations"
+                      chartMonthLabel={providerDailyChartMonthLabel}
+                      daily={ownerAssistantMonthlyChatsCost.daily}
+                      totalUsd={ownerAssistantMonthlyChatsCost.totalUsd}
+                      totalTokens={ownerAssistantMonthlyChatsCost.totalTokens}
+                      initialMetric={
+                        ownerAssistantMonthlyChatsCost.totalUsd <= 0 && ownerAssistantMonthlyChatsCost.totalTokens > 0
+                          ? "tokens"
+                          : "usd"
+                      }
+                      metaLine={
+                        ownerAssistantMonthlyChatsCost.activeThreadCount > 0
+                          ? `${ownerAssistantMonthlyChatsCost.activeThreadCount} conversation${
+                              ownerAssistantMonthlyChatsCost.activeThreadCount === 1 ? "" : "s"
+                            } in this month`
+                          : undefined
+                      }
+                      threadMessageCount={
+                        ownerAssistantMonthlyChatsCost.totalMessages > 0
+                          ? ownerAssistantMonthlyChatsCost.totalMessages
+                          : undefined
+                      }
+                      emptyLabel={
+                        ownerAssistantMonthlyChatsCost.totalUsd <= 0 && ownerAssistantMonthlyChatsCost.totalTokens <= 0
+                          ? ownerAssistantMonthlyChatsCost.totalMessages > 0
+                            ? "No metered tokens or USD in the ledger for this month yet. CLI brains record usage when the runtime reports it; otherwise use Anthropic API or OpenAI API for metering."
+                            : "No metered tokens or USD for owner-assistant chat this month. Provider spend may still apply outside Bopo."
+                          : "No usage for owner-assistant chat in this month."
+                      }
+                    />
                   </div>
                 )}
               </TabsContent>

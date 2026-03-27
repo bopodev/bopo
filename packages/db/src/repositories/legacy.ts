@@ -1518,6 +1518,10 @@ export async function appendCost(
     projectId?: string | null;
     issueId?: string | null;
     agentId?: string | null;
+    /** Discriminator for reporting (e.g. `company_assistant`); null for heartbeat / legacy */
+    costCategory?: string | null;
+    assistantThreadId?: string | null;
+    assistantMessageId?: string | null;
   }
 ) {
   const id = nanoid(14);
@@ -1525,6 +1529,9 @@ export async function appendCost(
     id,
     companyId: input.companyId,
     runId: input.runId ?? null,
+    costCategory: input.costCategory ?? null,
+    assistantThreadId: input.assistantThreadId ?? null,
+    assistantMessageId: input.assistantMessageId ?? null,
     providerType: input.providerType,
     runtimeModelId: input.runtimeModelId ?? null,
     pricingProviderType: input.pricingProviderType ?? null,

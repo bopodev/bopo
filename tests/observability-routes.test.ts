@@ -16,11 +16,15 @@ import {
   appendHeartbeatRunMessages,
   appendCost,
   bootstrapDatabase,
+  companyAssistantMessages,
   createAgent,
+  createAssistantThread,
   createCompany,
   createIssue,
   createProject,
+  eq,
   heartbeatRuns,
+  insertAssistantMessage,
   listCostEntries,
   listHeartbeatRuns
 } from "../packages/db/src/index";
@@ -87,6 +91,116 @@ describe("observability routes", { timeout: 30_000 }, () => {
     process.env.NODE_ENV = previousNodeEnv;
     await client?.close?.();
     await rm(tempDir, { recursive: true, force: true });
+  });
+
+  it("returns cost ledger rows with company_assistant category and thread linkage", async () => {
+    const thread = await createAssistantThread(db, companyId);
+    const assistantMsg = await insertAssistantMessage(db, {
+      threadId: thread.id,
+      companyId,
+      role: "assistant",
+      body: "Seeded for cost test."
+    });
+    const costId = await appendCost(db, {
+      companyId,
+      providerType: "anthropic_api",
+      runtimeModelId: "claude-test-model",
+      tokenInput: 50,
+      tokenOutput: 12,
+      usdCost: "0.001000",
+      costCategory: "company_assistant",
+      assistantThreadId: thread.id,
+      assistantMessageId: assistantMsg.id
+    });
+
+    const res = await request(app).get("/observability/costs").set("x-company-id", companyId);
+    expect(res.status).toBe(200);
+    const row = res.body.data.find((r: { id: string }) => r.id === costId);
+    expect(row).toBeTruthy();
+    expect(row.costCategory).toBe("company_assistant");
+    expect(row.assistantThreadId).toBe(thread.id);
+    expect(row.assistantMessageId).toBe(assistantMsg.id);
+    expect(row.tokenInput).toBe(50);
+    expect(row.tokenOutput).toBe(12);
+  });
+
+  it("GET /observability/assistant-chat-threads groups messages by thread for from/toExclusive range", async () => {
+    const t1 = await createAssistantThread(db, companyId);
+    const t2 = await createAssistantThread(db, companyId);
+    const m1 = await insertAssistantMessage(db, {
+      threadId: t1.id,
+      companyId,
+      role: "user",
+      body: "one"
+    });
+    const m2 = await insertAssistantMessage(db, {
+      threadId: t2.id,
+      companyId,
+      role: "assistant",
+      body: "two"
+    });
+    const m3 = await insertAssistantMessage(db, {
+      threadId: t2.id,
+      companyId,
+      role: "user",
+      body: "three"
+    });
+    const inRange = new Date(Date.UTC(2026, 2, 15, 12, 0, 0, 0));
+    await db
+      .update(companyAssistantMessages)
+      .set({ createdAt: inRange })
+      .where(eq(companyAssistantMessages.id, m1.id));
+    await db
+      .update(companyAssistantMessages)
+      .set({ createdAt: inRange })
+      .where(eq(companyAssistantMessages.id, m2.id));
+    await db
+      .update(companyAssistantMessages)
+      .set({ createdAt: inRange })
+      .where(eq(companyAssistantMessages.id, m3.id));
+
+    const from = encodeURIComponent("2026-03-01T00:00:00.000Z");
+    const toExclusive = encodeURIComponent("2026-04-01T00:00:00.000Z");
+    const res = await request(app)
+      .get(`/observability/assistant-chat-threads?from=${from}&toExclusive=${toExclusive}`)
+      .set("x-company-id", companyId);
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    const threads = res.body.data.threads as Array<{ threadId: string; messageCount: number }>;
+    expect(threads.length).toBe(2);
+    const byId = Object.fromEntries(threads.map((t) => [t.threadId, t.messageCount]));
+    expect(byId[t1.id]).toBe(1);
+    expect(byId[t2.id]).toBe(2);
+  });
+
+  it("GET /observability/assistant-chat-threads rejects invalid ISO range", async () => {
+    const res = await request(app)
+      .get(
+        `/observability/assistant-chat-threads?from=${encodeURIComponent("2026-03-01T00:00:00.000Z")}&toExclusive=${encodeURIComponent("not-a-date")}`
+      )
+      .set("x-company-id", companyId);
+    expect(res.status).toBe(422);
+  });
+
+  it("GET /observability/assistant-chat-threads accepts monthKey as UTC month", async () => {
+    const thread = await createAssistantThread(db, companyId);
+    const msg = await insertAssistantMessage(db, {
+      threadId: thread.id,
+      companyId,
+      role: "user",
+      body: "hi"
+    });
+    await db
+      .update(companyAssistantMessages)
+      .set({ createdAt: new Date(Date.UTC(2026, 2, 10, 8, 0, 0, 0)) })
+      .where(eq(companyAssistantMessages.id, msg.id));
+
+    const res = await request(app)
+      .get("/observability/assistant-chat-threads?monthKey=2026-03")
+      .set("x-company-id", companyId);
+    expect(res.status).toBe(200);
+    const threads = res.body.data.threads as Array<{ threadId: string; messageCount: number }>;
+    expect(threads).toEqual([{ threadId: thread.id, messageCount: 1 }]);
   });
 
   it("returns costs and heartbeats including derived run outcome", async () => {

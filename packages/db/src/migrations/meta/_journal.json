@@ -50,6 +50,13 @@
       "when": 1743100000000,
       "tag": "0006_company_assistant_chat",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1743200000000,
+      "tag": "0007_cost_ledger_company_assistant",
+      "breakpoints": true
     }
   ]
 }

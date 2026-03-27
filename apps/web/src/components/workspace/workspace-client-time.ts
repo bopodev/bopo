@@ -25,6 +25,22 @@ export function monthKeyFromDate(value: string) {
   return `${date.getFullYear()}-${month}`;
 }
 
+/** Instants delimiting the user's local calendar month (same basis as {@link monthKeyFromDate} for ledger rows). */
+export function localCalendarMonthUtcRange(monthKey: string): { fromIso: string; toExclusiveIso: string } | null {
+  const match = monthKey.match(/^(\d{4})-(\d{2})$/);
+  if (!match) {
+    return null;
+  }
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  if (month < 1 || month > 12) {
+    return null;
+  }
+  const startLocal = new Date(year, month - 1, 1, 0, 0, 0, 0);
+  const endExclusiveLocal = new Date(year, month, 1, 0, 0, 0, 0);
+  return { fromIso: startLocal.toISOString(), toExclusiveIso: endExclusiveLocal.toISOString() };
+}
+
 export function formatMonthLabel(monthKey: string) {
   const match = monthKey.match(/^(\d{4})-(\d{2})$/);
   if (!match) {
@@ -42,6 +58,19 @@ export function dayKeyFromDate(value: string) {
   }
   date.setHours(0, 0, 0, 0);
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+/** Local calendar day (1–31) for `createdAt` when it falls in `monthKey` (YYYY-MM); aligns with {@link dayKeyFromDate} for bucketing. */
+export function localCalendarDayInMonthKey(createdAt: string, monthKey: string): number | null {
+  if (monthKeyFromDate(createdAt) !== monthKey) {
+    return null;
+  }
+  const dk = dayKeyFromDate(createdAt);
+  if (!dk || !dk.startsWith(`${monthKey}-`)) {
+    return null;
+  }
+  const day = Number(dk.slice(8, 10));
+  return Number.isFinite(day) && day >= 1 && day <= 31 ? day : null;
 }
 
 export function buildRecentDayKeys(days: number) {

@@ -3,6 +3,7 @@ import { readFile, stat } from "node:fs/promises";
 import { basename, resolve } from "node:path";
 import {
   getHeartbeatRun,
+  listAssistantChatThreadStatsInCreatedAtRange,
   listCompanies,
   listAgents,
   listAuditEvents,
@@ -58,6 +59,53 @@ export function createObservabilityRouter(ctx: AppContext) {
         usdCost: typeof row.usdCost === "number" ? row.usdCost : Number(row.usdCost ?? 0)
       }))
     );
+  });
+
+  /**
+   * Owner-assistant threads with message counts in `[from, toExclusive)` on message `created_at`.
+   * Prefer `from` + `toExclusive` (ISO 8601) so the window matches the browser local month used for cost charts;
+   * otherwise `monthKey=YYYY-MM` selects that month in UTC.
+   */
+  router.get("/assistant-chat-threads", async (req, res) => {
+    const companyId = req.companyId!;
+    const fromRaw = typeof req.query.from === "string" ? req.query.from.trim() : "";
+    const toRaw = typeof req.query.toExclusive === "string" ? req.query.toExclusive.trim() : "";
+    let startInclusive: Date;
+    let endExclusive: Date;
+    if (fromRaw.length > 0 && toRaw.length > 0) {
+      startInclusive = new Date(fromRaw);
+      endExclusive = new Date(toRaw);
+      if (Number.isNaN(startInclusive.getTime()) || Number.isNaN(endExclusive.getTime())) {
+        return sendError(res, "from and toExclusive must be valid ISO 8601 datetimes", 422);
+      }
+      if (endExclusive.getTime() <= startInclusive.getTime()) {
+        return sendError(res, "toExclusive must be after from", 422);
+      }
+      const maxSpanMs = 120 * 86400000;
+      if (endExclusive.getTime() - startInclusive.getTime() > maxSpanMs) {
+        return sendError(res, "Date range too large (max 120 days)", 422);
+      }
+    } else {
+      const monthKey = typeof req.query.monthKey === "string" ? req.query.monthKey.trim() : "";
+      const match = monthKey.match(/^(\d{4})-(\d{2})$/);
+      if (!match) {
+        return sendError(res, "Provide from+toExclusive (ISO) or monthKey (YYYY-MM)", 422);
+      }
+      const year = Number(match[1]);
+      const month = Number(match[2]);
+      if (month < 1 || month > 12) {
+        return sendError(res, "Invalid month in monthKey", 422);
+      }
+      startInclusive = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0, 0));
+      endExclusive = new Date(Date.UTC(year, month, 1, 0, 0, 0, 0));
+    }
+    const threads = await listAssistantChatThreadStatsInCreatedAtRange(
+      ctx.db,
+      companyId,
+      startInclusive,
+      endExclusive
+    );
+    return sendOk(res, { threads });
   });
 
   router.get("/heartbeats", async (req, res) => {

@@ -165,11 +165,37 @@ function extractAssistantBodyFromRuntime(out: RuntimeExecutionOutput, providerTy
   return "No output from assistant runtime.";
 }
 
+function usageFromAssistantRuntime(out: RuntimeExecutionOutput): {
+  tokenInput: number;
+  tokenOutput: number;
+  usdCost: number;
+} {
+  const u = out.parsedUsage;
+  return {
+    tokenInput: Math.max(0, Math.floor(Number(u?.tokenInput ?? 0) || 0)),
+    tokenOutput: Math.max(0, Math.floor(Number(u?.tokenOutput ?? 0) || 0)),
+    usdCost: Math.max(0, Number(u?.usdCost ?? 0) || 0)
+  };
+}
+
+function finishOwnerCliTurn(runtime: RuntimeExecutionOutput, providerType: AskCliBrainId, startedMs: number) {
+  const usage = usageFromAssistantRuntime(runtime);
+  return {
+    assistantBody: extractAssistantBodyFromRuntime(runtime, providerType),
+    provider: providerType,
+    elapsedMs: Date.now() - startedMs,
+    tokenInput: usage.tokenInput,
+    tokenOutput: usage.tokenOutput,
+    usdCost: usage.usdCost
+  };
+}
+
 function buildOwnerCliInstructions(ceoDisplayName: string) {
   return [
     `You are **${ceoDisplayName}**, the company's CEO in Bopo. The owner/operator is chatting with you in Chat—reply like a real person: short paragraphs, plain language, warm and direct. Use contractions when they sound natural.`,
-    "Use ONLY the JSON snapshot below for factual claims (issues, goals, agents, memory, approvals, runs, **costAndUsage**). For spend/tokens: **`monthToDateUtc`** is the full UTC calendar month to date (exact DB sum); **`allTime`** is lifetime totals; **`recentSample`** is just the newest rows for examples—never treat its `totalsInListedRows` as monthly figures. If something is not in the snapshot, say you do not have it—do not invent data.",
-    "Do **not** paste raw JSON, NDJSON lines, token counts, thread ids, or CLI event logs. Summarize what matters in sentences. Use a short bullet list only when comparing several items.",
+    "**Answer only what they asked.** Do not volunteer status briefings or extra metrics from the snapshot—agent state, approvals, spend, tokens, runs, issue lists, etc.—unless the question clearly calls for it. Greetings (“hi”, “hello”) get a short friendly reply and an offer to help; **do not** recite costs, idle agents, or operational summaries.",
+    "When you **do** need facts, use ONLY the JSON snapshot below (issues, goals, agents, memory, approvals, runs, **costAndUsage**). For spend/tokens: **`monthToDateUtc`** is the full UTC calendar month to date (exact DB sum); **`allTime`** is lifetime totals; **`recentSample`** is just the newest rows for examples—never treat its `totalsInListedRows` as monthly figures. If something is not in the snapshot, say you do not have it—do not invent data.",
+    "Do **not** paste raw JSON, NDJSON lines, token counts, thread ids, or CLI event logs. Summarize only what answers the question. Use a short bullet list only when comparing several items the user asked about.",
     "When the runtime expects structured JSON, put your natural-language answer for the operator in employee_comment (or the tool’s primary summary field)."
   ].join("\n");
 }
@@ -224,7 +250,14 @@ export async function runCompanyAssistantBrainCliTurn(input: {
   providerType: AskCliBrainId;
   userMessage: string;
   ceoDisplayName: string;
-}): Promise<{ assistantBody: string; provider: string; elapsedMs: number }> {
+}): Promise<{
+  assistantBody: string;
+  provider: string;
+  elapsedMs: number;
+  tokenInput: number;
+  tokenOutput: number;
+  usdCost: number;
+}> {
   const { providerType } = input;
   const n = await resolveOwnerAssistantNormalizedRuntime(input.db, input.companyId);
   const cwd = n.runtimeCwd?.trim();
@@ -258,11 +291,7 @@ export async function runCompanyAssistantBrainCliTurn(input: {
       runPolicy: n.runPolicy
     };
     const runtime = await executeAgentRuntime(providerType, prompt, config);
-    return {
-      assistantBody: extractAssistantBodyFromRuntime(runtime, providerType),
-      provider: providerType,
-      elapsedMs: Date.now() - started
-    };
+    return finishOwnerCliTurn(runtime, providerType, started);
   }
 
   if (providerType === "gemini_cli") {
@@ -287,11 +316,7 @@ export async function runCompanyAssistantBrainCliTurn(input: {
       },
       { provider: "gemini_cli" }
     );
-    return {
-      assistantBody: extractAssistantBodyFromRuntime(runtime, providerType),
-      provider: providerType,
-      elapsedMs: Date.now() - started
-    };
+    return finishOwnerCliTurn(runtime, providerType, started);
   }
 
   if (providerType === "opencode") {
@@ -321,11 +346,7 @@ export async function runCompanyAssistantBrainCliTurn(input: {
       },
       { provider: "opencode" }
     );
-    return {
-      assistantBody: extractAssistantBodyFromRuntime(runtime, providerType),
-      provider: providerType,
-      elapsedMs: Date.now() - started
-    };
+    return finishOwnerCliTurn(runtime, providerType, started);
   }
 
   if (providerType === "cursor") {
@@ -360,11 +381,7 @@ export async function runCompanyAssistantBrainCliTurn(input: {
       },
       { provider: "cursor" }
     );
-    return {
-      assistantBody: extractAssistantBodyFromRuntime(runtime, providerType),
-      provider: providerType,
-      elapsedMs: Date.now() - started
-    };
+    return finishOwnerCliTurn(runtime, providerType, started);
   }
 
   throw new Error(`CLI assistant not implemented for ${providerType}.`);

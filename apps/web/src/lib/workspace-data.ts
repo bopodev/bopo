@@ -158,6 +158,9 @@ export interface WorkspaceData {
   }>;
   costEntries: Array<{
     id: string;
+    costCategory?: string | null;
+    assistantThreadId?: string | null;
+    assistantMessageId?: string | null;
     issueId: string | null;
     projectId?: string | null;
     agentId?: string | null;

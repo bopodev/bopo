@@ -169,6 +169,9 @@ export interface AuditRow {
 
 export interface CostRow {
   id: string;
+  costCategory?: string | null;
+  assistantThreadId?: string | null;
+  assistantMessageId?: string | null;
   issueId: string | null;
   projectId?: string | null;
   agentId?: string | null;

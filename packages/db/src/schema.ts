@@ -366,6 +366,29 @@ export const attentionInboxStates = pgTable(
   (table) => [primaryKey({ columns: [table.companyId, table.actorId, table.itemKey] })]
 );
 
+export const companyAssistantThreads = pgTable("company_assistant_threads", {
+  id: text("id").primaryKey(),
+  companyId: text("company_id")
+    .notNull()
+    .references(() => companies.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull()
+});
+
+export const companyAssistantMessages = pgTable("company_assistant_messages", {
+  id: text("id").primaryKey(),
+  threadId: text("thread_id")
+    .notNull()
+    .references(() => companyAssistantThreads.id, { onDelete: "cascade" }),
+  companyId: text("company_id")
+    .notNull()
+    .references(() => companies.id, { onDelete: "cascade" }),
+  role: text("role").notNull(),
+  body: text("body").notNull(),
+  metadataJson: text("metadata_json"),
+  createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull()
+});
+
 export const costLedger = pgTable("cost_ledger", {
   id: text("id").primaryKey(),
   companyId: text("company_id")
@@ -375,6 +398,10 @@ export const costLedger = pgTable("cost_ledger", {
   projectId: text("project_id").references(() => projects.id, { onDelete: "set null" }),
   issueId: text("issue_id").references(() => issues.id, { onDelete: "set null" }),
   agentId: text("agent_id").references(() => agents.id, { onDelete: "set null" }),
+  /** e.g. `company_assistant` for owner-assistant chat; null for heartbeat and legacy rows */
+  costCategory: text("cost_category"),
+  assistantThreadId: text("assistant_thread_id").references(() => companyAssistantThreads.id, { onDelete: "set null" }),
+  assistantMessageId: text("assistant_message_id").references(() => companyAssistantMessages.id, { onDelete: "set null" }),
   providerType: text("provider_type").notNull(),
   runtimeModelId: text("runtime_model_id"),
   pricingProviderType: text("pricing_provider_type"),
@@ -507,29 +534,6 @@ export const agentIssueLabels = pgTable(
   },
   (table) => [primaryKey({ columns: [table.companyId, table.issueId, table.label] })]
 );
-
-export const companyAssistantThreads = pgTable("company_assistant_threads", {
-  id: text("id").primaryKey(),
-  companyId: text("company_id")
-    .notNull()
-    .references(() => companies.id, { onDelete: "cascade" }),
-  createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
-  updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull()
-});
-
-export const companyAssistantMessages = pgTable("company_assistant_messages", {
-  id: text("id").primaryKey(),
-  threadId: text("thread_id")
-    .notNull()
-    .references(() => companyAssistantThreads.id, { onDelete: "cascade" }),
-  companyId: text("company_id")
-    .notNull()
-    .references(() => companies.id, { onDelete: "cascade" }),
-  role: text("role").notNull(),
-  body: text("body").notNull(),
-  metadataJson: text("metadata_json"),
-  createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull()
-});
 
 export const schema = {
   companies,

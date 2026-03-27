@@ -73,6 +73,20 @@ const DEFAULT_CEO_PERSONA: CeoPersona = {
 
 const PENDING_USER_MESSAGE_PREFIX = "pending-user:";
 
+/** Virtual row id — not persisted; shown until the thread has a real assistant reply. */
+const CEO_WELCOME_MESSAGE_ID = "__bopo-ceo-welcome__";
+
+function buildCeoWelcomeMarkdown(companyName: string | null, persona: CeoPersona): string {
+  const label = formatCeoLabel(persona);
+  const org = companyName?.trim() || "your company";
+  return [
+    `Hi, I'm **${label}**.`,
+    "",
+    `Ask me anything about **${org}**: priorities, projects, issues, spend, agents, or what's blocking us.`,
+    "What would you like to know?"
+  ].join("\n");
+}
+
 function makePendingUserMessage(body: string): AssistantMessage {
   return {
     id: `${PENDING_USER_MESSAGE_PREFIX}${Date.now()}`,
@@ -194,6 +208,8 @@ export function AssistantPageClient({
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const revealDoneRef = useRef<(() => void) | null>(null);
   const revealScrollTickRef = useRef<(() => void) | null>(null);
+
+  const activeCompanyName = companyId ? (companies.find((c) => c.id === companyId)?.name ?? null) : null;
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
     const el = scrollContainerRef.current;
@@ -418,7 +434,7 @@ export function AssistantPageClient({
                 ) : null}
                 <Button
                   type="button"
-                  variant="default"
+                  variant="outline"
                   className="h-9 shrink-0 gap-2 whitespace-nowrap"
                   disabled={isStartingNewThread}
                   onClick={() => void startNewConversation()}
@@ -443,6 +459,25 @@ export function AssistantPageClient({
                 </Alert>
               ) : null}
               {isLoading && messages.length === 0 ? <p className="ui-ask-empty-hint">Loading…</p> : null}
+              {!isLoading &&
+              !loadError &&
+              !messages.some((m) => m.role === "assistant") ? (
+                <AssistantChatRow
+                  key={CEO_WELCOME_MESSAGE_ID}
+                  message={{
+                    id: CEO_WELCOME_MESSAGE_ID,
+                    role: "assistant",
+                    body: buildCeoWelcomeMarkdown(activeCompanyName, ceoPersona),
+                    createdAt: new Date().toISOString(),
+                    metadata: { kind: "welcome" }
+                  }}
+                  viewer={viewer}
+                  ceoPersona={ceoPersona}
+                  animate={false}
+                  onRevealDoneRef={revealDoneRef}
+                  onRevealTickRef={revealScrollTickRef}
+                />
+              ) : null}
               {messages.map((m) => (
                 <AssistantChatRow
                   key={m.id}

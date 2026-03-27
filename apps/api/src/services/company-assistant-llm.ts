@@ -10,6 +10,12 @@ export type AssistantChatMessage =
   | { role: "user"; content: string }
   | { role: "assistant"; content: string };
 
+export type AssistantApiTurnMetrics = {
+  tokenInput: number;
+  tokenOutput: number;
+  runtimeModelId: string;
+};
+
 const DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-5-20250929";
 const DEFAULT_OPENAI_MODEL = "gpt-4.1";
 
@@ -35,6 +41,37 @@ function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Pr
   return fetch(url, { ...init, signal: controller.signal }).finally(() => clearTimeout(timer));
 }
 
+function nonnegInt(value: unknown): number {
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+}
+
+function mergeAnthropicUsageFromResponse(
+  acc: { tokenInput: number; tokenOutput: number },
+  raw: Record<string, unknown>
+) {
+  const u = raw.usage;
+  if (!u || typeof u !== "object") {
+    return;
+  }
+  const usage = u as Record<string, unknown>;
+  acc.tokenInput += nonnegInt(usage.input_tokens);
+  acc.tokenOutput += nonnegInt(usage.output_tokens);
+}
+
+function mergeOpenAiUsageFromResponse(
+  acc: { tokenInput: number; tokenOutput: number },
+  raw: Record<string, unknown>
+) {
+  const u = raw.usage;
+  if (!u || typeof u !== "object") {
+    return;
+  }
+  const usage = u as Record<string, unknown>;
+  acc.tokenInput += nonnegInt(usage.prompt_tokens);
+  acc.tokenOutput += nonnegInt(usage.completion_tokens);
+}
+
 type AnthropicContentBlock =
   | { type: "text"; text: string }
   | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> };
@@ -48,7 +85,7 @@ export async function runAssistantWithToolsAnthropic(input: {
   executeTool: (name: string, args: Record<string, unknown>) => Promise<string>;
   maxToolRounds: number;
   timeoutMs: number;
-}): Promise<{ text: string; toolRoundCount: number }> {
+}): Promise<{ text: string; toolRoundCount: number } & AssistantApiTurnMetrics> {
   const provider: DirectApiProvider = "anthropic_api";
   const { key, baseUrl } = resolveDirectApiCredentials(provider, undefined);
   if (!key) {
@@ -58,6 +95,7 @@ export async function runAssistantWithToolsAnthropic(input: {
   const endpoint = `${String(baseUrl).replace(/\/$/, "")}/v1/messages`;
   let toolRoundCount = 0;
   const conversation: AnthropicMessage[] = [...input.messages];
+  const usageAcc = { tokenInput: 0, tokenOutput: 0 };
 
   for (let round = 0; round < input.maxToolRounds + 1; round += 1) {
     const body = {
@@ -94,6 +132,8 @@ export async function runAssistantWithToolsAnthropic(input: {
       throw new Error(`Anthropic API error (${response.status}): ${err}`);
     }
 
+    mergeAnthropicUsageFromResponse(usageAcc, raw);
+
     const stopReason = String(raw.stop_reason ?? "");
     const contentBlocks = (Array.isArray(raw.content) ? raw.content : []) as AnthropicContentBlock[];
 
@@ -101,7 +141,13 @@ export async function runAssistantWithToolsAnthropic(input: {
 
     if (stopReason !== "tool_use") {
       const textParts = contentBlocks.filter((b) => b.type === "text").map((b) => (b as { text: string }).text);
-      return { text: textParts.join("\n").trim() || "(No text response.)", toolRoundCount };
+      return {
+        text: textParts.join("\n").trim() || "(No text response.)",
+        toolRoundCount,
+        tokenInput: usageAcc.tokenInput,
+        tokenOutput: usageAcc.tokenOutput,
+        runtimeModelId: model
+      };
     }
 
     const toolUses = contentBlocks.filter((b) => b.type === "tool_use") as Array<{
@@ -113,14 +159,23 @@ export async function runAssistantWithToolsAnthropic(input: {
 
     if (toolUses.length === 0) {
       const textParts = contentBlocks.filter((b) => b.type === "text").map((b) => (b as { text: string }).text);
-      return { text: textParts.join("\n").trim() || "(No text response.)", toolRoundCount };
+      return {
+        text: textParts.join("\n").trim() || "(No text response.)",
+        toolRoundCount,
+        tokenInput: usageAcc.tokenInput,
+        tokenOutput: usageAcc.tokenOutput,
+        runtimeModelId: model
+      };
     }
 
     toolRoundCount += 1;
     if (toolRoundCount > input.maxToolRounds) {
       return {
         text: "I hit the tool-call limit for this question. Try a narrower question or break it into steps.",
-        toolRoundCount
+        toolRoundCount,
+        tokenInput: usageAcc.tokenInput,
+        tokenOutput: usageAcc.tokenOutput,
+        runtimeModelId: model
       };
     }
 
@@ -145,7 +200,13 @@ export async function runAssistantWithToolsAnthropic(input: {
     });
   }
 
-  return { text: "Unable to complete the response.", toolRoundCount };
+  return {
+    text: "Unable to complete the response.",
+    toolRoundCount,
+    tokenInput: usageAcc.tokenInput,
+    tokenOutput: usageAcc.tokenOutput,
+    runtimeModelId: model
+  };
 }
 
 type OpenAIToolCall = { id: string; type: "function"; function: { name: string; arguments: string } };
@@ -157,7 +218,7 @@ export async function runAssistantWithToolsOpenAI(input: {
   executeTool: (name: string, args: Record<string, unknown>) => Promise<string>;
   maxToolRounds: number;
   timeoutMs: number;
-}): Promise<{ text: string; toolRoundCount: number }> {
+}): Promise<{ text: string; toolRoundCount: number } & AssistantApiTurnMetrics> {
   const provider: DirectApiProvider = "openai_api";
   const { key, baseUrl } = resolveDirectApiCredentials(provider, undefined);
   if (!key) {
@@ -167,6 +228,7 @@ export async function runAssistantWithToolsOpenAI(input: {
   const endpoint = `${String(baseUrl).replace(/\/$/, "")}/v1/chat/completions`;
   let toolRoundCount = 0;
   const messages: Array<Record<string, unknown>> = [{ role: "system", content: input.system }, ...input.messages];
+  const usageAcc = { tokenInput: 0, tokenOutput: 0 };
 
   const openaiTools = input.tools.map((t) => ({
     type: "function" as const,
@@ -205,6 +267,8 @@ export async function runAssistantWithToolsOpenAI(input: {
       throw new Error(`OpenAI API error (${response.status}): ${err}`);
     }
 
+    mergeOpenAiUsageFromResponse(usageAcc, raw);
+
     const choice = (Array.isArray(raw.choices) ? raw.choices[0] : null) as Record<string, unknown> | null;
     const msg = choice?.message as Record<string, unknown> | undefined;
     const toolCalls = (msg?.tool_calls as OpenAIToolCall[] | undefined) ?? [];
@@ -217,14 +281,23 @@ export async function runAssistantWithToolsOpenAI(input: {
     });
 
     if (toolCalls.length === 0) {
-      return { text: content.trim() || "(No text response.)", toolRoundCount };
+      return {
+        text: content.trim() || "(No text response.)",
+        toolRoundCount,
+        tokenInput: usageAcc.tokenInput,
+        tokenOutput: usageAcc.tokenOutput,
+        runtimeModelId: model
+      };
     }
 
     toolRoundCount += 1;
     if (toolRoundCount > input.maxToolRounds) {
       return {
         text: "I hit the tool-call limit for this question. Try a narrower question or break it into steps.",
-        toolRoundCount
+        toolRoundCount,
+        tokenInput: usageAcc.tokenInput,
+        tokenOutput: usageAcc.tokenOutput,
+        runtimeModelId: model
       };
     }
 
@@ -249,7 +322,13 @@ export async function runAssistantWithToolsOpenAI(input: {
     }
   }
 
-  return { text: "Unable to complete the response.", toolRoundCount };
+  return {
+    text: "Unable to complete the response.",
+    toolRoundCount,
+    tokenInput: usageAcc.tokenInput,
+    tokenOutput: usageAcc.tokenOutput,
+    runtimeModelId: model
+  };
 }
 
 export async function runAssistantWithTools(input: {
@@ -260,7 +339,7 @@ export async function runAssistantWithTools(input: {
   executeTool: (name: string, args: Record<string, unknown>) => Promise<string>;
   maxToolRounds: number;
   timeoutMs: number;
-}): Promise<{ text: string; toolRoundCount: number }> {
+}): Promise<{ text: string; toolRoundCount: number } & AssistantApiTurnMetrics> {
   if (input.provider === "openai_api") {
     const openaiMessages: Array<{ role: "user" | "assistant" | "tool"; content: string; tool_call_id?: string }> = [];
     for (const m of input.chatHistory) {

@@ -28,6 +28,25 @@ Tools are implemented server-side in `apps/api/src/services/company-assistant-se
 
 If no API key is configured, the assistant endpoint returns a clear error.
 
+## Cost accounting
+
+Each **API-mode** assistant turn (after the model finishes, including tool rounds) appends one row to the company **cost ledger** (`cost_ledger`):
+
+- **`cost_category`:** `company_assistant` (heartbeat runs keep this null and use `run_id` instead).
+- **`assistant_thread_id` / `assistant_message_id`:** link the spend to the assistant reply message (and thread) for filtering and support.
+- **Tokens:** summed from provider `usage` on every model call in that turn; USD is derived from the same model-pricing path as heartbeats when catalog pricing exists.
+
+CLI-based assistant brains do not emit API usage; those turns do not add a ledger row.
+
+## API surface (tests)
+
+- `GET /assistant/messages?threadId=…` — history for a thread (omit `threadId` for latest-or-create).
+- `POST /assistant/messages` — run a turn (body: `message`, optional `brain`, `threadId`).
+- `POST /assistant/threads` — start a new thread.
+- `GET /assistant/brains` — list configured assistant brains.
+
+Integration coverage: `tests/assistant-chat-routes.test.ts` (HTTP routes without LLM), and cost ledger shape for `company_assistant` in `tests/observability-routes.test.ts`.
+
 ## Retrieval (phase 2)
 
 Full-text search and embeddings across long markdown are **not** in v1; the assistant relies on structured tools and bounded file reads. Revisit when fuzzy cross-corpus questions justify the operational cost.

@@ -37,7 +37,7 @@ This glossary defines canonical terms used across product, API, and operations d
 
 - **Audit event**: immutable log of important control-plane actions.
 - **Trace log**: detailed run diagnostics and execution metadata.
-- **Cost ledger entry**: normalized token/cost accounting record for runtime execution.
+- **Cost ledger entry**: normalized token/cost accounting record for runtime execution (heartbeats via `run_id`; owner-assistant chat via `cost_category` = `company_assistant` plus optional `assistant_thread_id` / `assistant_message_id`).
 
 ## Realtime Terms
 

@@ -3,6 +3,7 @@ import {
   aggregateCompanyCostLedgerAllTime,
   aggregateCompanyCostLedgerInRange,
   appendAuditEvent,
+  appendCost,
   getCompany,
   getIssue,
   listAgents,
@@ -40,6 +41,7 @@ import {
   type AssistantToolDefinition,
   type AssistantChatMessage
 } from "./company-assistant-llm";
+import { calculateModelPricedUsdCost } from "./model-pricing";
 import { type AskCliBrainId, isAskCliBrain, parseAskBrain } from "./company-assistant-brain";
 import { runCompanyAssistantBrainCliTurn } from "./company-assistant-cli";
 import type { DirectApiProvider } from "bopodev-agent-sdk";
@@ -47,6 +49,117 @@ import type { DirectApiProvider } from "bopodev-agent-sdk";
 const MAX_TOOL_JSON_CHARS = 48_000;
 const DEFAULT_MAX_TOOL_ROUNDS = 8;
 const DEFAULT_TIMEOUT_MS = 120_000;
+
+/** `cost_ledger.cost_category` for owner-assistant API turns */
+const COMPANY_ASSISTANT_COST_CATEGORY = "company_assistant";
+
+/**
+ * One cost_ledger row per assistant reply: API rows include metered tokens/USD when the provider
+ * reports usage; CLI rows and zero-usage API rows still append so Costs / By chats can attribute
+ * turns to threads (USD may be $0).
+ */
+async function recordCompanyAssistantTurnLedger(input: {
+  db: BopoDb;
+  companyId: string;
+  threadId: string;
+  assistantMessageId: string;
+  mode: "api" | "cli";
+  /** `anthropic_api` / `openai_api` for API; codex / cursor / … for CLI */
+  brain: string;
+  runtimeModelId: string | null;
+  tokenInput: number;
+  tokenOutput: number;
+  /** CLI: parsed from runtime `parsedUsage` when the adapter reports it */
+  runtimeUsdCost?: number;
+}) {
+  const base = {
+    companyId: input.companyId,
+    runId: null as string | null,
+    costCategory: COMPANY_ASSISTANT_COST_CATEGORY,
+    assistantThreadId: input.threadId,
+    assistantMessageId: input.assistantMessageId,
+    providerType: input.brain
+  };
+
+  if (input.mode === "cli") {
+    const ti = Math.max(0, Math.floor(input.tokenInput));
+    const to = Math.max(0, Math.floor(input.tokenOutput));
+    const runtimeUsd = Math.max(0, Number(input.runtimeUsdCost ?? 0) || 0);
+    const hasMetered = ti > 0 || to > 0 || runtimeUsd > 0;
+    if (!hasMetered) {
+      await appendCost(input.db, {
+        ...base,
+        runtimeModelId: null,
+        pricingProviderType: null,
+        pricingModelId: null,
+        pricingSource: null,
+        usdCostStatus: "unknown" as const,
+        tokenInput: 0,
+        tokenOutput: 0,
+        usdCost: "0.000000"
+      });
+      return;
+    }
+    const usdCostStatus: "exact" | "estimated" | "unknown" =
+      runtimeUsd > 0 ? "exact" : ti > 0 || to > 0 ? "unknown" : "unknown";
+    await appendCost(input.db, {
+      ...base,
+      runtimeModelId: null,
+      pricingProviderType: null,
+      pricingModelId: null,
+      pricingSource: runtimeUsd > 0 ? ("exact" as const) : null,
+      usdCostStatus,
+      tokenInput: ti,
+      tokenOutput: to,
+      usdCost: runtimeUsd > 0 ? runtimeUsd.toFixed(6) : "0.000000"
+    });
+    return;
+  }
+
+  const modelId = input.runtimeModelId?.trim() || null;
+  const isDirectApi = input.brain === "anthropic_api" || input.brain === "openai_api";
+  const hasTokenUsage = input.tokenInput > 0 || input.tokenOutput > 0;
+
+  if (isDirectApi && hasTokenUsage) {
+    const pricingDecision = await calculateModelPricedUsdCost({
+      db: input.db,
+      companyId: input.companyId,
+      providerType: input.brain,
+      pricingProviderType: input.brain,
+      modelId,
+      tokenInput: input.tokenInput,
+      tokenOutput: input.tokenOutput
+    });
+    const pricedUsdCost = Math.max(0, pricingDecision.usdCost);
+    const usdCostStatus: "exact" | "estimated" | "unknown" =
+      pricedUsdCost > 0 ? "estimated" : "unknown";
+    const effectiveUsdCost = usdCostStatus === "estimated" ? pricedUsdCost : 0;
+    await appendCost(input.db, {
+      ...base,
+      runtimeModelId: modelId,
+      pricingProviderType: pricingDecision.pricingProviderType,
+      pricingModelId: pricingDecision.pricingModelId,
+      pricingSource: pricingDecision.pricingSource,
+      usdCostStatus,
+      tokenInput: input.tokenInput,
+      tokenOutput: input.tokenOutput,
+      usdCost: effectiveUsdCost.toFixed(6)
+    });
+    return;
+  }
+
+  await appendCost(input.db, {
+    ...base,
+    runtimeModelId: modelId,
+    pricingProviderType: null,
+    pricingModelId: null,
+    pricingSource: null,
+    usdCostStatus: "unknown" as const,
+    tokenInput: input.tokenInput,
+    tokenOutput: input.tokenOutput,
+    usdCost: "0.000000"
+  });
+}
 
 function capToolOutput(value: unknown): string {
   const raw = typeof value === "string" ? value : JSON.stringify(value);
@@ -688,8 +801,9 @@ function buildSystemPrompt(companyId: string, companyName: string, persona: Assi
   return [
     `You are ${who}, the CEO of ${companyName}. The owner/operator is talking with you in Chat: sound human—warm, direct, plain language, short paragraphs. Use bullet lists only when comparing several items; otherwise prefer flowing prose.`,
     `Scope: this session is fixed to one company (${companyId}). Never claim access to other companies.`,
-    "Use tools for factual status (issues, approvals, runs). For **tokens, usage, or USD spend this month or all-time**, call **get_cost_usage_summary** (current_month_utc or all_time). Use **list_cost_entries** only for recent line-level detail. Use memory/operating file tools for narrative context; if memory conflicts with issue data, prefer issues and mention the mismatch briefly.",
-    "Never paste raw JSON, NDJSON, or internal event logs in your reply. For costs you may state concrete numbers from tool results (tokens/USD) in readable form.",
+    "**Answer only what they asked.** Do not volunteer status briefings, metrics, or “here’s what’s going on” summaries—agent activity, approvals, heartbeats, runs, costs, spend, tokens, project/issue inventories, etc.—unless the user clearly asked for that information or a specific fact. If they only greet you (“hi”, “hello”) or make small talk, reply in one or two friendly sentences and offer help; **do not call tools** and do not mention internal numbers or operational state.",
+    "**Tools:** Call tools only when the user’s message requires company data you cannot infer from the chat. Use the **narrowest** calls that answer the question (e.g. for **tokens / USD this month or all-time**, **get_cost_usage_summary**; for recent line-level costs, **list_cost_entries**). Use memory/operating file tools only when relevant to the question. If memory conflicts with structured data, prefer structured data and mention the mismatch briefly.",
+    "Never paste raw JSON, NDJSON, or internal event logs. When you do cite numbers from tools, keep them proportional to the question—no extra dashboards.",
     "Be concise. If data is missing, say what you could not find.",
     `Active company: ${companyName} (${companyId}).`
   ].join("\n");
@@ -752,6 +866,7 @@ export async function runCompanyAssistantTurn(input: {
   let toolRoundCount = 0;
   let mode: "api" | "cli" = "api";
   let cliElapsedMs: number | undefined;
+  let cliMetered = { tokenInput: 0, tokenOutput: 0, usdCost: 0 };
 
   if (isAskCliBrain(brain)) {
     const cli = await runCompanyAssistantBrainCliTurn({
@@ -764,6 +879,7 @@ export async function runCompanyAssistantTurn(input: {
     text = cli.assistantBody;
     mode = "cli";
     cliElapsedMs = cli.elapsedMs;
+    cliMetered = { tokenInput: cli.tokenInput, tokenOutput: cli.tokenOutput, usdCost: cli.usdCost };
   } else {
     const maxRounds = Math.min(
       20,
@@ -796,8 +912,20 @@ export async function runCompanyAssistantTurn(input: {
         mode: "api",
         brain: provider,
         toolRoundCount,
-        model: process.env.BOPO_ASSISTANT_MODEL?.trim() || null
+        model: apiTurn.runtimeModelId
       })
+    });
+
+    await recordCompanyAssistantTurnLedger({
+      db: input.db,
+      companyId: input.companyId,
+      threadId: thread.id,
+      assistantMessageId: assistantRowApi.id,
+      mode: "api",
+      brain: provider,
+      runtimeModelId: apiTurn.runtimeModelId,
+      tokenInput: apiTurn.tokenInput,
+      tokenOutput: apiTurn.tokenOutput
     });
 
     await appendAuditEvent(input.db, {
@@ -839,6 +967,19 @@ export async function runCompanyAssistantTurn(input: {
       cliElapsedMs: cliElapsedMs ?? null,
       toolRoundCount: 0
     })
+  });
+
+  await recordCompanyAssistantTurnLedger({
+    db: input.db,
+    companyId: input.companyId,
+    threadId: thread.id,
+    assistantMessageId: assistantRow.id,
+    mode: "cli",
+    brain,
+    runtimeModelId: null,
+    tokenInput: cliMetered.tokenInput,
+    tokenOutput: cliMetered.tokenOutput,
+    runtimeUsdCost: cliMetered.usdCost
   });
 
   await appendAuditEvent(input.db, {

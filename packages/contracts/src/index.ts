@@ -1265,6 +1265,10 @@ export const CostLedgerEntrySchema = z.object({
   id: EntityIdSchema,
   companyId: EntityIdSchema,
   runId: EntityIdSchema.nullable().optional(),
+  /** Discriminator for reporting; `company_assistant` = owner-assistant chat turn */
+  costCategory: z.string().nullable().optional(),
+  assistantThreadId: EntityIdSchema.nullable().optional(),
+  assistantMessageId: EntityIdSchema.nullable().optional(),
   projectId: EntityIdSchema.nullable(),
   issueId: EntityIdSchema.nullable(),
   agentId: EntityIdSchema.nullable(),

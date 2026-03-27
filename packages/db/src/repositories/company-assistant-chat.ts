@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, lt } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import type { BopoDb } from "../client";
 import { companyAssistantMessages, companyAssistantThreads } from "../schema";
@@ -84,4 +84,43 @@ export async function listAssistantMessages(db: BopoDb, threadId: string, limit 
     .where(eq(companyAssistantMessages.threadId, threadId))
     .orderBy(asc(companyAssistantMessages.createdAt))
     .limit(capped);
+}
+
+/** Threads with at least one message in `[startInclusive, endExclusive)` on `created_at`. */
+export async function listAssistantChatThreadStatsInCreatedAtRange(
+  db: BopoDb,
+  companyId: string,
+  startInclusive: Date,
+  endExclusive: Date
+): Promise<Array<{ threadId: string; messageCount: number }>> {
+  const rows = await db
+    .select({
+      threadId: companyAssistantMessages.threadId,
+      messageCount: count()
+    })
+    .from(companyAssistantMessages)
+    .where(
+      and(
+        eq(companyAssistantMessages.companyId, companyId),
+        gte(companyAssistantMessages.createdAt, startInclusive),
+        lt(companyAssistantMessages.createdAt, endExclusive)
+      )
+    )
+    .groupBy(companyAssistantMessages.threadId);
+  return rows.map((r) => ({
+    threadId: r.threadId,
+    messageCount: Number(r.messageCount) || 0
+  }));
+}
+
+/** Threads with at least one message in the UTC calendar month (for callers without local bounds). */
+export async function listAssistantChatThreadStatsInUtcMonth(
+  db: BopoDb,
+  companyId: string,
+  year: number,
+  month1Based: number
+): Promise<Array<{ threadId: string; messageCount: number }>> {
+  const startUtc = new Date(Date.UTC(year, month1Based - 1, 1, 0, 0, 0, 0));
+  const endExclusiveUtc = new Date(Date.UTC(year, month1Based, 1, 0, 0, 0, 0));
+  return listAssistantChatThreadStatsInCreatedAtRange(db, companyId, startUtc, endExclusiveUtc);
 }
