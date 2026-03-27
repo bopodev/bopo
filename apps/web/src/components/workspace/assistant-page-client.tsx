@@ -206,6 +206,7 @@ export function AssistantPageClient({
   const [viewer, setViewer] = useState(() => getViewerChatProfile());
   const [ceoPersona, setCeoPersona] = useState<CeoPersona>(DEFAULT_CEO_PERSONA);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const revealDoneRef = useRef<(() => void) | null>(null);
   const revealScrollTickRef = useRef<(() => void) | null>(null);
 
@@ -348,6 +349,18 @@ export function AssistantPageClient({
   useEffect(() => {
     scrollToBottom("smooth");
   }, [messages, isSending, scrollToBottom]);
+
+  /** While sending, the composer is disabled and loses focus; restore after the turn completes. */
+  useEffect(() => {
+    if (!isSending) {
+      return;
+    }
+    return () => {
+      requestAnimationFrame(() => {
+        composerRef.current?.focus();
+      });
+    };
+  }, [isSending]);
 
   async function onSubmit() {
     const text = draft.trim();
@@ -501,6 +514,7 @@ export function AssistantPageClient({
               ) : null}
               <div className="ui-ask-pill-composer w-full">
                 <Textarea
+                  ref={composerRef}
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
                   placeholder="Ask me anything..."
