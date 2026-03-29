@@ -108,7 +108,6 @@ export function SettingsSkillsPageClient({
 
   const [linkOpen, setLinkOpen] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
-  const [linkSkillId, setLinkSkillId] = useState("");
   const [linkBusy, setLinkBusy] = useState(false);
   const [linkError, setLinkError] = useState<string | null>(null);
   const [forkBusy, setForkBusy] = useState(false);
@@ -372,18 +371,18 @@ export function SettingsSkillsPageClient({
     if (!companyId) {
       return;
     }
-    const id = linkSkillId.trim();
     setLinkError(null);
     setLinkBusy(true);
     try {
-      await apiPost("/observability/company-skills/link-url", companyId, {
-        url: linkUrl.trim(),
-        skillId: id
-      });
+      const result = await apiPost<{ skillId: string; url: string }>(
+        "/observability/company-skills/link-url",
+        companyId,
+        { url: linkUrl.trim() }
+      );
       await refreshCompanySkills();
       setLinkOpen(false);
       setLinkUrl("");
-      selectCompanyFile(id, "SKILL.md");
+      selectCompanyFile(result.data.skillId, "SKILL.md");
     } catch (error) {
       setLinkError(error instanceof ApiError ? error.message : "Link failed.");
     } finally {
@@ -627,30 +626,29 @@ export function SettingsSkillsPageClient({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={linkOpen} onOpenChange={setLinkOpen}>
+      <Dialog
+        open={linkOpen}
+        onOpenChange={(open) => {
+          setLinkOpen(open);
+          if (!open) {
+            setLinkUrl("");
+            setLinkError(null);
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Link skill from URL</DialogTitle>
             <DialogDescription>
-              Stores only a pointer to the canonical URL (for example a{" "}
-              <code className="ui-settings-skills-dialog-code">skills.sh</code> skill page or a raw{" "}
-              <code className="ui-settings-skills-dialog-code">SKILL.md</code> on{" "}
-              <code className="ui-settings-skills-dialog-code">raw.githubusercontent.com</code> /{" "}
-              <code className="ui-settings-skills-dialog-code">gist.githubusercontent.com</code>). The UI and agent
-              runs resolve the latest content from that URL; nothing is copied into your workspace until you choose
-              &quot;Save copy to workspace&quot;.
+              Paste the skill URL. The folder name comes from the skill&apos;s{" "}
+              <code className="ui-settings-skills-dialog-code">name</code> in{" "}
+              <code className="ui-settings-skills-dialog-code">SKILL.md</code> frontmatter, or from the URL path. If a
+              local <code className="ui-settings-skills-dialog-code">SKILL.md</code> already exists for that id, it is
+              replaced by this link. Only a pointer is stored; content is fetched when you view or run the agent until
+              you save a copy to the workspace.
             </DialogDescription>
           </DialogHeader>
           <FieldGroup>
-            <Field>
-              <FieldLabel htmlFor="settings-skills-link-id">Skill id</FieldLabel>
-              <Input
-                id="settings-skills-link-id"
-                placeholder="Folder name for this skill"
-                value={linkSkillId}
-                onChange={(e) => setLinkSkillId(e.target.value)}
-              />
-            </Field>
             <Field>
               <FieldLabel htmlFor="settings-skills-link-url">URL</FieldLabel>
               <Input
@@ -666,11 +664,7 @@ export function SettingsSkillsPageClient({
             <Button type="button" variant="outline" onClick={() => setLinkOpen(false)}>
               Cancel
             </Button>
-            <Button
-              type="button"
-              onClick={() => void submitLinkSkillUrl()}
-              disabled={linkBusy || !linkSkillId.trim() || !linkUrl.trim()}
-            >
+            <Button type="button" onClick={() => void submitLinkSkillUrl()} disabled={linkBusy || !linkUrl.trim()}>
               {linkBusy ? "Linking…" : "Link"}
             </Button>
           </DialogFooter>

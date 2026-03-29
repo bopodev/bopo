@@ -625,14 +625,13 @@ export function createObservabilityRouter(ctx: AppContext) {
     if (typeof body?.url !== "string" || !body.url.trim()) {
       return sendError(res, "Expected JSON body with string 'url'.", 422);
     }
-    if (typeof body?.skillId !== "string" || !body.skillId.trim()) {
-      return sendError(res, "Expected JSON body with string 'skillId'.", 422);
-    }
+    const optionalSkillId =
+      typeof body.skillId === "string" && body.skillId.trim() ? body.skillId.trim() : undefined;
     try {
       const result = await linkCompanySkillFromUrl({
         companyId,
-        skillId: body.skillId,
-        url: body.url
+        url: body.url,
+        ...(optionalSkillId ? { skillId: optionalSkillId } : {})
       });
       return sendOk(res, result);
     } catch (error) {

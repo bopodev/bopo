@@ -35,6 +35,7 @@ import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel } from "@
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { RuntimeCwdPathInput } from "@/components/runtime-cwd-path-help";
+import { cn } from "@/lib/utils";
 import styles from "./create-agent-modal.module.scss";
 import {
   Select,
@@ -45,6 +46,7 @@ import {
 } from "@/components/ui/select";
 import { FieldLabelWithHelp } from "@/components/ui/field-label-with-help";
 import { LazyMarkdownMdxEditor } from "@/components/modals/lazy-markdown-mdx-editor";
+import { Label } from "../ui/label";
 
 type RuntimePreflightResponse = {
   status: "pass" | "warn" | "fail";
@@ -1347,31 +1349,28 @@ export function CreateAgentModal({
               </FieldGroup>
             </section>
             {providerSupportsSkillLibrary(providerType) ? (
-              <section className={styles.createAgentModalSection}>
-                <h3 className={styles.createAgentModalSectionTitle}>Skills</h3>
+              <section   className={styles.createAgentModalSection}>
+                <Label className={styles.createAgentModalSectionTitle}>Skills</Label>
                 <FieldGroup className={styles.createAgentModalFieldGroupFull}>
-                  <Field orientation="horizontal">
-                    <button
-                      type="button"
-                      id="agent-skills-all-toggle"
-                      role="switch"
-                      aria-checked={skillAttachMode === "all"}
-                      aria-label="Inject all company skills"
-                      className={styles.createAgentModalSkillsAllSwitch}
-                      onClick={() => {
-                        const nextAll = skillAttachMode !== "all";
-                        setSkillAttachMode(nextAll ? "all" : "explicit");
-                        if (nextAll) {
-                          setExplicitCompanySkillIds([]);
-                        }
-                      }}
-                    >
-                      <span className={styles.createAgentModalSkillsAllSwitchThumb} aria-hidden />
-                    </button>
-                    <FieldContent>
-                      <FieldLabel htmlFor="agent-skills-all-toggle">All company skills</FieldLabel>
-                    </FieldContent>
-                  </Field>
+                  <button
+                    type="button"
+                    id="agent-skills-mode-toggle"
+                    role="switch"
+                    aria-checked={skillAttachMode === "all"}
+                    className={cn(
+                      styles.createAgentModalSkillsModeToggle,
+                      skillAttachMode === "all" && styles.createAgentModalSkillsModeToggleAll
+                    )}
+                    onClick={() => {
+                      const nextAll = skillAttachMode !== "all";
+                      setSkillAttachMode(nextAll ? "all" : "explicit");
+                      if (nextAll) {
+                        setExplicitCompanySkillIds([]);
+                      }
+                    }}
+                  >
+                    {skillAttachMode === "all" ? "All company skills" : "Selected company skills only"}
+                  </button>
                   {skillsLibraryError ? <p className={styles.createAgentModalText}>{skillsLibraryError}</p> : null}
                   {skillAttachMode === "explicit" ? (
                     skillsCompany.length > 0 ? (

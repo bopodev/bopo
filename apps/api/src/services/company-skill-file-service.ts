@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import TurndownService from "turndown";
@@ -310,6 +310,73 @@ export function assertImportUrl(urlString: string): URL {
   return url;
 }
 
+function parseYamlNameFromSkillFrontmatter(markdown: string): string | null {
+  const match = markdown.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  if (!match) {
+    return null;
+  }
+  const block = match[1] ?? "";
+  const lineMatch = block.match(/^\s*name:\s*(.+)$/m);
+  if (!lineMatch) {
+    return null;
+  }
+  let v = (lineMatch[1] ?? "").trim();
+  if (
+    (v.startsWith('"') && v.endsWith('"')) ||
+    (v.startsWith("'") && v.endsWith("'"))
+  ) {
+    v = v.slice(1, -1).trim();
+  }
+  return v.length > 0 ? v : null;
+}
+
+function inferSkillIdFromUrlPath(url: URL): string {
+  const parts = url.pathname.split("/").filter(Boolean);
+  if (parts.length === 0) {
+    return "linked-skill";
+  }
+  const last = parts[parts.length - 1] ?? "";
+  const base =
+    last.toLowerCase() === "skill.md" && parts.length >= 2 ? (parts[parts.length - 2] ?? last) : last;
+  return base.length > 0 ? base : "linked-skill";
+}
+
+/** Maps a title or path segment to a valid company skill folder id. */
+function slugifyForCompanySkillId(raw: string): string {
+  const s = raw
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-+/g, "-");
+  return s.length > 0 ? s : "linked-skill";
+}
+
+async function resolveSkillIdForUrlLink(input: { url: URL; explicitSkillId?: string }): Promise<string> {
+  if (input.explicitSkillId !== undefined && input.explicitSkillId.trim()) {
+    return assertCompanySkillId(input.explicitSkillId);
+  }
+  let markdown: string;
+  try {
+    markdown = await fetchSkillMarkdownFromUrl(input.url);
+  } catch (error) {
+    const fromPath = slugifyForCompanySkillId(inferSkillIdFromUrlPath(input.url));
+    try {
+      return assertCompanySkillId(fromPath);
+    } catch {
+      throw error;
+    }
+  }
+  const fromFrontmatter = parseYamlNameFromSkillFrontmatter(markdown);
+  const candidate = fromFrontmatter ?? inferSkillIdFromUrlPath(input.url);
+  const id = slugifyForCompanySkillId(candidate);
+  try {
+    return assertCompanySkillId(id);
+  } catch {
+    return assertCompanySkillId(slugifyForCompanySkillId(inferSkillIdFromUrlPath(input.url)));
+  }
+}
+
 export async function fetchSkillMarkdownFromUrl(url: URL): Promise<string> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), IMPORT_TIMEOUT_MS);
@@ -356,12 +423,18 @@ export async function fetchSkillMarkdownFromUrl(url: URL): Promise<string> {
 }
 
 /** Store only `.bopo-skill-link.json`; content is resolved from the URL when viewed or at heartbeat time. */
-export async function linkCompanySkillFromUrl(input: { companyId: string; skillId: string; url: string }) {
+export async function linkCompanySkillFromUrl(input: {
+  companyId: string;
+  url: string;
+  /** When omitted, id is taken from the skill frontmatter `name` or the URL path. */
+  skillId?: string;
+}) {
   const url = assertImportUrl(input.url);
-  const { root, id } = await skillRoot(input.companyId, input.skillId);
+  const id = await resolveSkillIdForUrlLink({ url, explicitSkillId: input.skillId });
+  const { root } = await skillRoot(input.companyId, id);
   await mkdir(root, { recursive: true });
   if (await skillDirHasSkillMd(root)) {
-    throw new Error("A local SKILL.md exists. Remove it first to use URL-only linking, or pick another id.");
+    await unlink(join(root, SKILL_MD));
   }
   await writeFile(join(root, SKILL_LINK_BASENAME), JSON.stringify({ url: url.toString() }, null, 2), "utf8");
   return { skillId: id, url: url.toString() };
