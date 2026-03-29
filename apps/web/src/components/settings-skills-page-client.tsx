@@ -2,8 +2,10 @@
 
 import type { Route } from "next";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { FilePenLine, Link2 } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
+import createAgentModalStyles from "@/components/modals/create-agent-modal.module.scss";
 import { LazyMarkdownMdxEditor } from "@/components/modals/lazy-markdown-mdx-editor";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -101,12 +103,13 @@ export function SettingsSkillsPageClient({
   const [saving, setSaving] = useState(false);
   const [settledKey, setSettledKey] = useState("");
 
-  const [createOpen, setCreateOpen] = useState(false);
+  type SkillAddStep = "intro" | "create" | "link";
+  const [addSkillOpen, setAddSkillOpen] = useState(false);
+  const [skillAddStep, setSkillAddStep] = useState<SkillAddStep>("intro");
   const [createSkillId, setCreateSkillId] = useState("");
   const [createBusy, setCreateBusy] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
-  const [linkOpen, setLinkOpen] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
   const [linkBusy, setLinkBusy] = useState(false);
   const [linkError, setLinkError] = useState<string | null>(null);
@@ -357,7 +360,8 @@ export function SettingsSkillsPageClient({
     try {
       await apiPost("/observability/company-skills/create", companyId, { skillId: id });
       await refreshCompanySkills();
-      setCreateOpen(false);
+      setAddSkillOpen(false);
+      setSkillAddStep("intro");
       setCreateSkillId("");
       selectCompanyFile(id, "SKILL.md");
     } catch (error) {
@@ -380,7 +384,8 @@ export function SettingsSkillsPageClient({
         { url: linkUrl.trim() }
       );
       await refreshCompanySkills();
-      setLinkOpen(false);
+      setAddSkillOpen(false);
+      setSkillAddStep("intro");
       setLinkUrl("");
       selectCompanyFile(result.data.skillId, "SKILL.md");
     } catch (error) {
@@ -448,6 +453,7 @@ export function SettingsSkillsPageClient({
                 {pack.files.map((f) => {
                   const active =
                     open?.kind === "company" && open.skillId === pack.skillId && open.relativePath === f.relativePath;
+                  const multiFile = pack.files.length > 1;
                   return (
                     <button
                       key={`${pack.skillId}-${f.relativePath}`}
@@ -460,8 +466,8 @@ export function SettingsSkillsPageClient({
                       onClick={() => selectCompanyFile(pack.skillId, f.relativePath)}
                     >
                       <div className="run-sidebar-item-header">
-                        <span className="run-sidebar-item-id" title={f.relativePath}>
-                          {f.relativePath}
+                        <span className="run-sidebar-item-id" title={`${pack.skillId} · ${f.relativePath}`}>
+                          {pack.skillId}
                         </span>
                         {pack.linkedUrl && !pack.hasLocalSkillMd ? (
                           <span className="ui-settings-skills-linked-pill" title="Linked skill (URL)">
@@ -469,6 +475,9 @@ export function SettingsSkillsPageClient({
                           </span>
                         ) : null}
                       </div>
+                      {multiFile ? (
+                        <p className="run-sidebar-item-message">{f.relativePath}</p>
+                      ) : null}
                     </button>
                   );
                 })}
@@ -476,11 +485,19 @@ export function SettingsSkillsPageClient({
             ))
           )}
           <div className="ui-settings-skills-sidebar-actions">
-            <Button type="button" size="sm" variant="outline" onClick={() => setCreateOpen(true)} disabled={!companyId}>
-              New skill
-            </Button>
-            <Button type="button" size="sm" variant="outline" onClick={() => setLinkOpen(true)} disabled={!companyId}>
-              Link from URL
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setSkillAddStep("intro");
+                setCreateError(null);
+                setLinkError(null);
+                setAddSkillOpen(true);
+              }}
+              disabled={!companyId}
+            >
+              Add skill
             </Button>
           </div>
         </div>
@@ -594,79 +611,132 @@ export function SettingsSkillsPageClient({
         }
       />
 
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>New company skill</DialogTitle>
-            <DialogDescription>
-              Creates <code className="ui-settings-skills-dialog-code">skills/&lt;id&gt;/SKILL.md</code> under the
-              company workspace. Use letters, digits, underscores, and hyphens only.
-            </DialogDescription>
-          </DialogHeader>
-          <FieldGroup>
-            <Field>
-              <FieldLabel htmlFor="settings-skills-create-id">Skill id</FieldLabel>
-              <Input
-                id="settings-skills-create-id"
-                placeholder="e.g. my-workflow"
-                value={createSkillId}
-                onChange={(e) => setCreateSkillId(e.target.value)}
-              />
-            </Field>
-            {createError ? <FieldError>{createError}</FieldError> : null}
-          </FieldGroup>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="button" onClick={() => void submitCreate()} disabled={createBusy || !createSkillId.trim()}>
-              {createBusy ? "Creating…" : "Create"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       <Dialog
-        open={linkOpen}
+        open={addSkillOpen}
         onOpenChange={(open) => {
-          setLinkOpen(open);
+          setAddSkillOpen(open);
           if (!open) {
+            setSkillAddStep("intro");
+            setCreateSkillId("");
+            setCreateError(null);
             setLinkUrl("");
             setLinkError(null);
           }
         }}
       >
-        <DialogContent>
+        <DialogContent className={createAgentModalStyles.createAgentModalDialogContent}>
           <DialogHeader>
-            <DialogTitle>Link skill from URL</DialogTitle>
-            <DialogDescription>
-              Paste the skill URL. The folder name comes from the skill&apos;s{" "}
-              <code className="ui-settings-skills-dialog-code">name</code> in{" "}
-              <code className="ui-settings-skills-dialog-code">SKILL.md</code> frontmatter, or from the URL path. If a
-              local <code className="ui-settings-skills-dialog-code">SKILL.md</code> already exists for that id, it is
-              replaced by this link. Only a pointer is stored; content is fetched when you view or run the agent until
-              you save a copy to the workspace.
-            </DialogDescription>
+            <DialogTitle>
+              {skillAddStep === "intro"
+                ? "Create skill"
+                : skillAddStep === "create"
+                  ? "Create skill"
+                  : "Link skill from URL"}
+            </DialogTitle>
+            {skillAddStep === "intro" ? (
+              <DialogDescription>Create a new skill in the workspace or link one from a URL.</DialogDescription>
+            ) : null}
+            {skillAddStep === "create" ? (
+              <DialogDescription>
+                Creates <code className="ui-settings-skills-dialog-code">skills/&lt;id&gt;/SKILL.md</code>.
+              </DialogDescription>
+            ) : null}
+            {skillAddStep === "link" ? (
+              <DialogDescription>
+                Paste the skill URL. The folder name comes from the skill</DialogDescription>
+            ) : null}
           </DialogHeader>
-          <FieldGroup>
-            <Field>
-              <FieldLabel htmlFor="settings-skills-link-url">URL</FieldLabel>
-              <Input
-                id="settings-skills-link-url"
-                placeholder="https://skills.sh/… or https://raw.githubusercontent.com/…"
-                value={linkUrl}
-                onChange={(e) => setLinkUrl(e.target.value)}
-              />
-            </Field>
-            {linkError ? <FieldError>{linkError}</FieldError> : null}
-          </FieldGroup>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setLinkOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="button" onClick={() => void submitLinkSkillUrl()} disabled={linkBusy || !linkUrl.trim()}>
-              {linkBusy ? "Linking…" : "Link"}
-            </Button>
+          {skillAddStep === "intro" ? (
+            <section className={createAgentModalStyles.createAgentModalIntroSection}>
+              <div className={createAgentModalStyles.createAgentModalIntroChoices}>
+                <button
+                  type="button"
+                  className={createAgentModalStyles.createAgentModalIntroChoice}
+                  onClick={() => {
+                    setSkillAddStep("create");
+                    setCreateError(null);
+                  }}
+                >
+                  <span className={createAgentModalStyles.createAgentModalIntroChoiceIcon} aria-hidden>
+                    <FilePenLine className="size-5" strokeWidth={1.75} />
+                  </span>
+                  <span className={createAgentModalStyles.createAgentModalIntroChoiceTitle}>Create new skill</span>
+                  <span className={createAgentModalStyles.createAgentModalIntroChoiceDescription}>
+                    {`Add SKILL.md under skills/<id> in your company workspace.`}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className={createAgentModalStyles.createAgentModalIntroChoice}
+                  onClick={() => {
+                    setSkillAddStep("link");
+                    setLinkError(null);
+                  }}
+                >
+                  <span className={createAgentModalStyles.createAgentModalIntroChoiceIcon} aria-hidden>
+                    <Link2 className="size-5" strokeWidth={1.75} />
+                  </span>
+                  <span className={createAgentModalStyles.createAgentModalIntroChoiceTitle}>Link from URL</span>
+                  <span className={createAgentModalStyles.createAgentModalIntroChoiceDescription}>
+                    Point at a remote skill; content loads when you open it
+                  </span>
+                </button>
+              </div>
+            </section>
+          ) : null}
+          {skillAddStep === "create" ? (
+            <FieldGroup>
+              <Field>
+                <FieldLabel htmlFor="settings-skills-create-id">Skill id</FieldLabel>
+                <Input
+                  id="settings-skills-create-id"
+                  placeholder="e.g. my-workflow"
+                  value={createSkillId}
+                  onChange={(e) => setCreateSkillId(e.target.value)}
+                />
+              </Field>
+              {createError ? <FieldError>{createError}</FieldError> : null}
+            </FieldGroup>
+          ) : null}
+          {skillAddStep === "link" ? (
+            <FieldGroup>
+              <Field>
+                <FieldLabel htmlFor="settings-skills-link-url">URL</FieldLabel>
+                <Input
+                  id="settings-skills-link-url"
+                  placeholder="https://skills.sh/… or https://raw.githubusercontent.com/…"
+                  value={linkUrl}
+                  onChange={(e) => setLinkUrl(e.target.value)}
+                />
+              </Field>
+              {linkError ? <FieldError>{linkError}</FieldError> : null}
+            </FieldGroup>
+          ) : null}
+          <DialogFooter showCloseButton={skillAddStep === "intro"}>
+            {skillAddStep !== "intro" ? (
+              <>
+                <Button type="button" variant="ghost" onClick={() => setAddSkillOpen(false)}>
+                  Cancel
+                </Button>
+                {skillAddStep === "create" ? (
+                  <Button
+                    type="button"
+                    onClick={() => void submitCreate()}
+                    disabled={createBusy || !createSkillId.trim()}
+                  >
+                    {createBusy ? "Creating…" : "Create"}
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    onClick={() => void submitLinkSkillUrl()}
+                    disabled={linkBusy || !linkUrl.trim()}
+                  >
+                    {linkBusy ? "Linking…" : "Link"}
+                  </Button>
+                )}
+              </>
+            ) : null}
           </DialogFooter>
         </DialogContent>
       </Dialog>
