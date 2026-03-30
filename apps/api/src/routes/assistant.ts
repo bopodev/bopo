@@ -4,7 +4,8 @@ import {
   createAssistantThread,
   getAssistantThreadById,
   getOrCreateAssistantThread,
-  listAssistantMessages
+  listAssistantMessages,
+  listAssistantThreadsForCompany
 } from "bopodev-db";
 import type { AppContext } from "../context";
 import { sendError, sendOk } from "../http";
@@ -28,6 +29,20 @@ export function createAssistantRouter(ctx: AppContext) {
 
   router.get("/brains", (_req, res) => {
     return sendOk(res, { brains: listAskAssistantBrains() });
+  });
+
+  router.get("/threads", async (req, res) => {
+    const companyId = req.companyId!;
+    const rawLimit = Number(req.query.limit ?? 50);
+    const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(Math.floor(rawLimit), 1), 100) : 50;
+    const rows = await listAssistantThreadsForCompany(ctx.db, companyId, limit);
+    return sendOk(res, {
+      threads: rows.map((t) => ({
+        id: t.id,
+        updatedAt: t.updatedAt.toISOString(),
+        preview: t.previewBody ? truncateAssistantPreview(t.previewBody) : null
+      }))
+    });
   });
 
   router.get("/messages", async (req, res) => {
@@ -106,4 +121,14 @@ function safeJsonParse(raw: string): unknown {
   } catch {
     return null;
   }
+}
+
+const ASSISTANT_THREAD_PREVIEW_MAX = 120;
+
+function truncateAssistantPreview(body: string): string {
+  const singleLine = body.replace(/\s+/g, " ").trim();
+  if (singleLine.length <= ASSISTANT_THREAD_PREVIEW_MAX) {
+    return singleLine;
+  }
+  return `${singleLine.slice(0, ASSISTANT_THREAD_PREVIEW_MAX - 1)}…`;
 }

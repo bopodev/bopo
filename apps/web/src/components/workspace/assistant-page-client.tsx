@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
-import { Loader2, MessageSquarePlus, RefreshCw, Send } from "lucide-react";
+import { Loader2, Send } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { MarkdownBody } from "@/components/markdown-view";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -96,6 +96,20 @@ function makePendingUserMessage(body: string): AssistantMessage {
     metadata: null
   };
 }
+
+function formatThreadUpdatedLabel(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) {
+    return "";
+  }
+  return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+type AssistantThreadListItem = {
+  id: string;
+  updatedAt: string;
+  preview: string | null;
+};
 
 function formatCeoLabel(persona: CeoPersona): string {
   const title = persona.title?.trim();
@@ -205,12 +219,39 @@ export function AssistantPageClient({
   const [revealMessageId, setRevealMessageId] = useState<string | null>(null);
   const [viewer, setViewer] = useState(() => getViewerChatProfile());
   const [ceoPersona, setCeoPersona] = useState<CeoPersona>(DEFAULT_CEO_PERSONA);
+  const [threads, setThreads] = useState<AssistantThreadListItem[]>([]);
+  const [threadsLoading, setThreadsLoading] = useState(false);
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const revealDoneRef = useRef<(() => void) | null>(null);
   const revealScrollTickRef = useRef<(() => void) | null>(null);
 
   const activeCompanyName = companyId ? (companies.find((c) => c.id === companyId)?.name ?? null) : null;
+
+  const refreshThreads = useCallback(async () => {
+    if (!companyId) {
+      setThreads([]);
+      return;
+    }
+    setThreadsLoading(true);
+    try {
+      const res = await apiGet<{ threads: AssistantThreadListItem[] }>("/assistant/threads?limit=80", companyId);
+      setThreads(Array.isArray(res.data.threads) ? res.data.threads : []);
+    } catch {
+      setThreads([]);
+    } finally {
+      setThreadsLoading(false);
+    }
+  }, [companyId]);
+
+  useEffect(() => {
+    setActiveThreadId(null);
+  }, [companyId]);
+
+  useEffect(() => {
+    void refreshThreads();
+  }, [refreshThreads]);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
     const el = scrollContainerRef.current;
@@ -303,6 +344,9 @@ export function AssistantPageClient({
         setCeoPersona(DEFAULT_CEO_PERSONA);
       }
       setMessages(data.messages ?? []);
+      if (data.threadId) {
+        setActiveThreadId(data.threadId);
+      }
       if (typeof window !== "undefined" && data.threadId) {
         window.localStorage.setItem(chatThreadStorageKey(companyId), data.threadId);
       }
@@ -392,6 +436,7 @@ export function AssistantPageClient({
       }
       setRevealMessageId(res.data.assistantMessageId);
       await refreshMessages();
+      void refreshThreads();
     } catch (e) {
       setMessages((prev) => prev.filter((m) => m.id !== pending.id));
       setDraft(text);
@@ -415,12 +460,65 @@ export function AssistantPageClient({
         window.localStorage.setItem(chatThreadStorageKey(companyId), res.data.threadId);
       }
       setMessages([]);
+      void refreshThreads();
     } catch (e) {
       setLoadError(e instanceof ApiError ? e.message : "Could not start a new conversation.");
     } finally {
       setIsStartingNewThread(false);
     }
   }
+
+  const selectThread = useCallback(
+    async (threadId: string) => {
+      if (!companyId) {
+        return;
+      }
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(chatThreadStorageKey(companyId), threadId);
+      }
+      setActiveThreadId(threadId);
+      await refreshMessages();
+    },
+    [companyId, refreshMessages]
+  );
+
+  const secondaryPane = companyId ? (
+    <div className="run-sidebar-pane">
+      <div className="run-sidebar-list">
+        <div className="ui-agent-docs-sidebar-section-label">Conversations</div>
+        {threadsLoading && threads.length === 0 ? (
+          <p className="ui-agent-docs-sidebar-empty">Loading…</p>
+        ) : threads.length === 0 ? (
+          <p className="ui-agent-docs-sidebar-empty">No saved chats yet. Send a message or use New.</p>
+        ) : (
+          <nav className="contents" aria-label="Saved conversations">
+            {threads.map((t) => {
+              const title = t.preview ?? "new chat";
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  className={cn(
+                    "run-sidebar-item",
+                    "ui-agent-docs-sidebar-item",
+                    t.id === activeThreadId && "run-sidebar-item--active"
+                  )}
+                  onClick={() => void selectThread(t.id)}
+                >
+                  <div className="run-sidebar-item-header">
+                    <span className="run-sidebar-item-id" title={title}>
+                      {title}
+                    </span>
+                  </div>
+                  <p className="run-sidebar-item-time">{formatThreadUpdatedLabel(t.updatedAt)}</p>
+                </button>
+              );
+            })}
+          </nav>
+        )}
+      </div>
+    </div>
+  ) : undefined;
 
   const leftPane = (
     <div className="ui-page-stack flex h-full min-h-0 flex-col">
@@ -560,6 +658,7 @@ export function AssistantPageClient({
       companies={companies}
       activeCompanyId={companyId}
       rightPane={null}
+      secondaryPane={secondaryPane}
     />
   );
 }

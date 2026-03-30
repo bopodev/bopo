@@ -5,7 +5,12 @@ import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../apps/api/src/app";
 import type { BopoDb } from "../packages/db/src/client";
-import { bootstrapDatabase, createCompany } from "../packages/db/src/index";
+import {
+  bootstrapDatabase,
+  createAssistantThread,
+  createCompany,
+  insertAssistantMessage
+} from "../packages/db/src/index";
 
 describe("assistant chat routes (no LLM)", { timeout: 30_000 }, () => {
   let db: BopoDb;
@@ -57,5 +62,32 @@ describe("assistant chat routes (no LLM)", { timeout: 30_000 }, () => {
     expect(res.body.ok).toBe(true);
     expect(Array.isArray(res.body.data.brains)).toBe(true);
     expect(res.body.data.brains.length).toBeGreaterThan(0);
+  });
+
+  it("GET /assistant/threads lists threads with last-message preview", async () => {
+    const older = await createAssistantThread(db, companyId);
+    const newer = await createAssistantThread(db, companyId);
+    await insertAssistantMessage(db, {
+      threadId: older.id,
+      companyId,
+      role: "user",
+      body: "First thread question"
+    });
+    await insertAssistantMessage(db, {
+      threadId: newer.id,
+      companyId,
+      role: "assistant",
+      body: "Latest thread reply"
+    });
+
+    const res = await request(app).get("/assistant/threads").set("x-company-id", companyId);
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    const threads = res.body.data.threads as Array<{ id: string; preview: string | null; updatedAt: string }>;
+    expect(threads.length).toBeGreaterThanOrEqual(2);
+    const byId = Object.fromEntries(threads.map((t) => [t.id, t]));
+    expect(byId[newer.id]?.preview).toContain("Latest thread reply");
+    expect(byId[older.id]?.preview).toContain("First thread question");
+    expect(threads[0]?.id).toBe(newer.id);
   });
 });

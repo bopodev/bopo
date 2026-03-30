@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, gte, lt } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, lt, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import type { BopoDb } from "../client";
 import { companyAssistantMessages, companyAssistantThreads } from "../schema";
@@ -43,6 +43,47 @@ export async function getAssistantThreadById(db: BopoDb, companyId: string, thre
     .where(and(eq(companyAssistantThreads.id, threadId), eq(companyAssistantThreads.companyId, companyId)))
     .limit(1);
   return row ?? null;
+}
+
+export type AssistantThreadSummary = {
+  id: string;
+  createdAt: Date;
+  updatedAt: Date;
+  previewBody: string | null;
+};
+
+/** Threads for the company, newest activity first, with last message body as preview (if any). */
+export async function listAssistantThreadsForCompany(
+  db: BopoDb,
+  companyId: string,
+  limit = 50
+): Promise<AssistantThreadSummary[]> {
+  const capped = Math.min(Math.max(1, limit), 100);
+  const result = await db.execute(sql`
+    SELECT t.id, t.created_at, t.updated_at, lm.body AS preview_body
+    FROM company_assistant_threads t
+    LEFT JOIN LATERAL (
+      SELECT body FROM company_assistant_messages
+      WHERE thread_id = t.id
+      ORDER BY created_at DESC
+      LIMIT 1
+    ) lm ON true
+    WHERE t.company_id = ${companyId}
+    ORDER BY t.updated_at DESC
+    LIMIT ${capped}
+  `);
+  const rows = result as unknown as Array<{
+    id: string;
+    created_at: Date | string;
+    updated_at: Date | string;
+    preview_body: string | null;
+  }>;
+  return rows.map((r) => ({
+    id: r.id,
+    createdAt: r.created_at instanceof Date ? r.created_at : new Date(String(r.created_at)),
+    updatedAt: r.updated_at instanceof Date ? r.updated_at : new Date(String(r.updated_at)),
+    previewBody: r.preview_body
+  }));
 }
 
 export async function touchAssistantThread(db: BopoDb, threadId: string) {
