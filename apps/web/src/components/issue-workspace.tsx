@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ComponentProps } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { ColumnDef } from "@tanstack/react-table";
 import { DndContext, DragOverlay, PointerSensor, closestCenter, useDroppable, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
@@ -216,18 +217,22 @@ export function IssueWorkspace({
   const issueColumns = useMemo<ColumnDef<IssueRow>[]>(
     () => [
       {
-        id: "task",
-        header: "Task",
-        cell: ({ row }) => <div className={styles.savedViewContainer1}>{row.original.id.slice(0, 8).toUpperCase()}</div>
-      },
-      {
         accessorKey: "title",
         header: ({ column }) => <DataTableColumnHeader column={column} title="Issue" />,
         cell: ({ row }) => (
-          <div className={styles.savedViewContainer2}>
-            <div className={styles.savedViewContainer3}>{row.original.title}</div>
-          </div>
+          <Link
+            href={`/issues/${row.original.id}?companyId=${encodeURIComponent(companyId)}`}
+            className="ui-link-medium"
+            onClick={(event) => event.stopPropagation()}
+          >
+            {row.original.title}
+          </Link>
         )
+      },
+      {
+        id: "task",
+        header: "Task",
+        cell: ({ row }) => <div className={styles.savedViewContainer1}>{row.original.id.slice(0, 8).toUpperCase()}</div>
       },
       {
         id: "assignee",
@@ -253,7 +258,7 @@ export function IssueWorkspace({
         )
       }
     ],
-    [agents]
+    [agents, companyId]
   );
 
   function SortableIssueCard({ issue }: { issue: IssueRow }) {
