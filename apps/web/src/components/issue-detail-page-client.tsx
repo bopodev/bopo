@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import type { ColumnDef } from "@tanstack/react-table";
 import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import type { IssuePriority, IssueStatus } from "bopodev-contracts";
@@ -20,7 +21,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldLabel } from "@/components/ui/field";
-import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "@/components/ui/item";
+import { DataTable } from "@/components/ui/data-table";
+import { DataTableColumnHeader } from "@/components/ui/data-table-column-header";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -41,7 +43,7 @@ import { formatSmartDateTime } from "@/lib/smart-date";
 import { agentAvatarSeed } from "@/lib/agent-avatar";
 import { getStatusBadgeClassName } from "@/lib/status-presentation";
 import { cn } from "@/lib/utils";
-import { MetricCard, SectionHeading } from "./workspace/shared";
+import { MetricCard, SectionHeading, formatDateTime } from "./workspace/shared";
 
 interface IssueRow {
   id: string;
@@ -835,6 +837,224 @@ export function IssueDetailPageClient({
     }
   }
 
+  const issueAttachmentColumns: ColumnDef<IssueAttachmentRow>[] = [
+    {
+      id: "preview",
+      header: "",
+      enableSorting: false,
+      cell: ({ row }) => {
+        const attachment = row.original;
+        return (
+          <div className="ui-issue-attachment-media">
+            {isImageAttachment(attachment) ? (
+              <img
+                src={buildAttachmentUrl(attachment.downloadPath, companyId)}
+                alt={attachment.fileName}
+                className="ui-issue-attachment-preview"
+                loading="lazy"
+              />
+            ) : isMarkdownDocument(attachment) ? (
+              <div className="ui-issue-attachment-svg-wrap" aria-hidden>
+                <FileTextIcon className="ui-issue-attachment-svg" />
+              </div>
+            ) : (
+              <div className="ui-issue-attachment-placeholder" aria-hidden>
+                {attachment.fileName.slice(0, 1).toUpperCase()}
+              </div>
+            )}
+          </div>
+        );
+      }
+    },
+    {
+      accessorKey: "fileName",
+      header: ({ column }) => <DataTableColumnHeader column={column} title="File" />,
+      cell: ({ row }) => {
+        const attachment = row.original;
+        return isMarkdownDocument(attachment) ? (
+          <button
+            type="button"
+            className="ui-issue-attachment-title"
+            onClick={() => {
+              setIssueDocumentEditTarget({
+                id: attachment.id,
+                fileName: attachment.fileName,
+                downloadPath: attachment.downloadPath
+              });
+              setIssueDocumentDialogOpen(true);
+            }}
+          >
+            {attachment.fileName}
+          </button>
+        ) : (
+          <a
+            href={buildAttachmentUrl(attachment.downloadPath, companyId)}
+            target="_blank"
+            rel="noreferrer"
+            className="ui-link-sidebar-nested"
+          >
+            {attachment.fileName}
+          </a>
+        );
+      }
+    },
+    {
+      id: "details",
+      header: ({ column }) => <DataTableColumnHeader column={column} title="Details" />,
+      enableSorting: false,
+      cell: ({ row }) => (
+        <span className="ui-run-table-cell-muted text-sm">
+          {attachmentDescriptionLine(row.original, formatSmartDateTime(row.original.createdAt))}
+        </span>
+      )
+    },
+    {
+      id: "actions",
+      header: () => <div className="ui-table-head-right">Actions</div>,
+      enableSorting: false,
+      cell: ({ row }) => (
+        <Button type="button" variant="outline" size="sm" onClick={() => void removeAttachment(row.original.id)}>
+          Delete
+        </Button>
+      )
+    }
+  ];
+
+  const issueSubIssueColumns: ColumnDef<IssueRow>[] = [
+    {
+      accessorKey: "title",
+      header: ({ column }) => <DataTableColumnHeader column={column} title="Title" />,
+      cell: ({ row }) => (
+        <Link href={`/issues/${row.original.id}?companyId=${companyId}`} className="ui-link-sidebar-nested">
+          {row.original.title}
+        </Link>
+      )
+    },
+    {
+      accessorKey: "status",
+      header: ({ column }) => <DataTableColumnHeader column={column} title="Status" />,
+      cell: ({ row }) => (
+        <Badge variant="outline" className={getStatusBadgeClassName(row.original.status)}>
+          {row.original.status}
+        </Badge>
+      )
+    },
+    {
+      accessorKey: "updatedAt",
+      header: ({ column }) => <DataTableColumnHeader column={column} title="Updated" />,
+      cell: ({ row }) => (
+        <time className="ui-run-table-datetime" dateTime={row.original.updatedAt} title={formatDateTime(row.original.updatedAt)}>
+          {formatSmartDateTime(row.original.updatedAt)}
+        </time>
+      )
+    },
+    {
+      id: "assignee",
+      header: ({ column }) => <DataTableColumnHeader column={column} title="Assignee" />,
+      enableSorting: false,
+      cell: ({ row }) => {
+        const agent = agents.find((a) => a.id === row.original.assigneeAgentId);
+        const label =
+          agent != null
+            ? agent.name.trim() || getAgentDisplayRole(agent)
+            : row.original.assigneeAgentId ?? "Unassigned";
+        return <span className="ui-run-table-cell-muted">{label}</span>;
+      }
+    }
+  ];
+
+  const issueLoopColumns: ColumnDef<IssueWorkLoopRow>[] = [
+    {
+      accessorKey: "title",
+      header: ({ column }) => <DataTableColumnHeader column={column} title="Loop" />,
+      cell: ({ row }) => (
+        <Link
+          href={{ pathname: `/loops/${row.original.id}`, query: { companyId } }}
+          className="ui-link-sidebar-nested"
+        >
+          {row.original.title}
+        </Link>
+      )
+    },
+    {
+      accessorKey: "status",
+      header: ({ column }) => <DataTableColumnHeader column={column} title="Status" />,
+      cell: ({ row }) => (
+        <Badge variant="outline" className={getStatusBadgeClassName(row.original.status)}>
+          {row.original.status}
+        </Badge>
+      )
+    },
+    {
+      id: "assignee",
+      header: ({ column }) => <DataTableColumnHeader column={column} title="Assignee" />,
+      enableSorting: false,
+      cell: ({ row }) => {
+        const assignee = agents.find((a) => a.id === row.original.assigneeAgentId);
+        const assigneeLabel =
+          assignee != null
+            ? assignee.name.trim() || getAgentDisplayRole(assignee)
+            : row.original.assigneeAgentId;
+        return <span className="ui-run-table-cell-muted">{assigneeLabel}</span>;
+      }
+    },
+    {
+      accessorKey: "updatedAt",
+      header: ({ column }) => <DataTableColumnHeader column={column} title="Updated" />,
+      cell: ({ row }) => (
+        <time className="ui-run-table-datetime" dateTime={row.original.updatedAt} title={formatDateTime(row.original.updatedAt)}>
+          {formatSmartDateTime(row.original.updatedAt)}
+        </time>
+      )
+    }
+  ];
+
+  const issueActivityColumns: ColumnDef<IssueActivityRow>[] = [
+    {
+      accessorKey: "createdAt",
+      header: ({ column }) => <DataTableColumnHeader column={column} title="Time" />,
+      cell: ({ row }) => (
+        <time
+          className="ui-run-table-datetime"
+          dateTime={row.original.createdAt}
+          title={formatDateTime(row.original.createdAt)}
+        >
+          {formatSmartDateTime(row.original.createdAt, { includeSeconds: true })}
+        </time>
+      )
+    },
+    {
+      accessorKey: "actorType",
+      header: ({ column }) => <DataTableColumnHeader column={column} title="Actor" />,
+      cell: ({ row }) => (
+        <Badge variant="outline">{formatIssueActivityActorLabel(row.original.actorType)}</Badge>
+      )
+    },
+    {
+      id: "summary",
+      accessorKey: "eventType",
+      header: ({ column }) => <DataTableColumnHeader column={column} title="Summary" />,
+      enableSorting: false,
+      cell: ({ row }) => (
+        <span className="ui-issue-activity-message min-w-0" title={row.original.eventType}>
+          {formatIssueActivityTitle(row.original, agents)}
+        </span>
+      )
+    },
+    {
+      id: "details",
+      header: ({ column }) => <DataTableColumnHeader column={column} title="Details" />,
+      enableSorting: false,
+      cell: ({ row }) => {
+        const line = summarizeActivityPayload(row.original.payload);
+        if (line === "Event recorded.") {
+          return <span className="ui-run-table-cell-muted">—</span>;
+        }
+        return <span className="ui-run-table-cell-muted text-sm">{line}</span>;
+      }
+    }
+  ];
+
   const leftPane = (
     <div className="ui-page-stack">
       <div className="ui-page-section-gap-sm">
@@ -1055,67 +1275,12 @@ export function IssueDetailPageClient({
               {attachmentsLoading ? <div className="ui-issue-muted-text">Loading attachments...</div> : null}
               {!attachmentsLoading && attachments.length === 0 ? <EmptyState>No attachments yet.</EmptyState> : null}
               {attachments.length > 0 ? (
-                <ItemGroup>
-                  {attachments.map((attachment) => (
-                    <Item key={attachment.id} variant="outline">
-                      <div className="ui-issue-attachment-media">
-                        {isImageAttachment(attachment) ? (
-                          <img
-                            src={buildAttachmentUrl(attachment.downloadPath, companyId)}
-                            alt={attachment.fileName}
-                            className="ui-issue-attachment-preview"
-                            loading="lazy"
-                          />
-                        ) : isMarkdownDocument(attachment) ? (
-                          <div className="ui-issue-attachment-svg-wrap" aria-hidden>
-                            <FileTextIcon className="ui-issue-attachment-svg" />
-                          </div>
-                        ) : (
-                          <div className="ui-issue-attachment-placeholder" aria-hidden>
-                            {attachment.fileName.slice(0, 1).toUpperCase()}
-                          </div>
-                        )}
-                      </div>
-                      <ItemContent>
-                        <ItemTitle>
-                          {isMarkdownDocument(attachment) ? (
-                            <button
-                              type="button"
-                              className="ui-issue-attachment-title"
-                              onClick={() => {
-                                setIssueDocumentEditTarget({
-                                  id: attachment.id,
-                                  fileName: attachment.fileName,
-                                  downloadPath: attachment.downloadPath
-                                });
-                                setIssueDocumentDialogOpen(true);
-                              }}
-                            >
-                              {attachment.fileName}
-                            </button>
-                          ) : (
-                            <a
-                              href={buildAttachmentUrl(attachment.downloadPath, companyId)}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="ui-link-sidebar-nested"
-                            >
-                              {attachment.fileName}
-                            </a>
-                          )}
-                        </ItemTitle>
-                        <ItemDescription>
-                          {attachmentDescriptionLine(attachment, formatSmartDateTime(attachment.createdAt))}
-                        </ItemDescription>
-                      </ItemContent>
-                      <ItemActions>
-                        <Button type="button" variant="outline" size="sm" onClick={() => void removeAttachment(attachment.id)}>
-                          Delete
-                        </Button>
-                      </ItemActions>
-                    </Item>
-                  ))}
-                </ItemGroup>
+                <DataTable
+                  columns={issueAttachmentColumns}
+                  data={attachments}
+                  emptyMessage="No attachments yet."
+                  showViewOptions={false}
+                />
               ) : null}
               <div className="ui-issue-attachment-actions">
                 <Button asChild variant="outline">
@@ -1164,27 +1329,12 @@ export function IssueDetailPageClient({
               {subIssues.length === 0 ? (
                 <EmptyState>No sub-issues linked yet.</EmptyState>
               ) : (
-                <ItemGroup>
-                  {subIssues.map((entry) => (
-                    <Item key={entry.id} variant="outline">
-                      <ItemContent>
-                        <ItemTitle>
-                          <Link href={`/issues/${entry.id}?companyId=${companyId}`} className="ui-link-sidebar-nested">
-                            {entry.title}
-                          </Link>
-                        </ItemTitle>
-                        <ItemDescription>
-                          updated {formatDate(entry.updatedAt)} · {entry.assigneeAgentId ? "assigned" : "unassigned"}
-                        </ItemDescription>
-                      </ItemContent>
-                      <ItemActions>
-                        <Badge variant="outline" className={getStatusBadgeClassName(entry.status)}>
-                          {entry.status}
-                        </Badge>
-                      </ItemActions>
-                    </Item>
-                  ))}
-                </ItemGroup>
+                <DataTable
+                  columns={issueSubIssueColumns}
+                  data={subIssues}
+                  emptyMessage="No sub-issues linked yet."
+                  showViewOptions={false}
+                />
               )}
 
               <div className="ui-issue-subissue-actions">
@@ -1209,37 +1359,12 @@ export function IssueDetailPageClient({
                 </EmptyState>
               ) : null}
               {issueLoops.length > 0 ? (
-                <ItemGroup>
-                  {issueLoops.map((loop) => {
-                    const assignee = agents.find((a) => a.id === loop.assigneeAgentId);
-                    const assigneeLabel =
-                      assignee != null
-                        ? assignee.name.trim() || getAgentDisplayRole(assignee)
-                        : loop.assigneeAgentId;
-                    return (
-                      <Item key={loop.id} variant="outline">
-                        <ItemContent>
-                          <ItemTitle>
-                            <Link
-                              href={{ pathname: `/loops/${loop.id}`, query: { companyId } }}
-                              className="ui-link-sidebar-nested"
-                            >
-                              {loop.title}
-                            </Link>
-                          </ItemTitle>
-                          <ItemDescription>
-                            {assigneeLabel} · updated {formatDate(loop.updatedAt)}
-                          </ItemDescription>
-                        </ItemContent>
-                        <ItemActions>
-                          <Badge variant="outline" className={getStatusBadgeClassName(loop.status)}>
-                            {loop.status}
-                          </Badge>
-                        </ItemActions>
-                      </Item>
-                    );
-                  })}
-                </ItemGroup>
+                <DataTable
+                  columns={issueLoopColumns}
+                  data={issueLoops}
+                  emptyMessage="No linked work loops yet."
+                  showViewOptions={false}
+                />
               ) : null}
               <div className="ui-issue-subissue-actions">
                 <Button asChild variant="outline">
@@ -1249,32 +1374,15 @@ export function IssueDetailPageClient({
             </TabsContent>
             <TabsContent value="activity" className="ui-issue-tabs-content">
               {activityLoading ? <div className="ui-issue-muted-text">Loading activity...</div> : null}
-              {activityItems.length === 0 ? (
-                <EmptyState>No activity yet.</EmptyState>
-              ) : (
-                <ItemGroup>
-                  {activityItems.map((item) => (
-                    <Item key={item.id} variant="outline">
-                      <ItemContent>
-                        <div className="ui-issue-activity-header">
-                          <div className="ui-issue-activity-title-block">
-                            <Badge variant="outline">{formatIssueActivityActorLabel(item.actorType)}</Badge>
-                            <span className="ui-issue-activity-message" title={item.eventType}>
-                              {formatIssueActivityTitle(item, agents)}
-                            </span>
-                          </div>
-                          <time className="ui-issue-activity-time" dateTime={item.createdAt}>
-                            {formatSmartDateTime(item.createdAt)}
-                          </time>
-                        </div>
-                        {summarizeActivityPayload(item.payload) !== "Event recorded." ? (
-                          <ItemDescription>{summarizeActivityPayload(item.payload)}</ItemDescription>
-                        ) : null}
-                      </ItemContent>
-                    </Item>
-                  ))}
-                </ItemGroup>
-              )}
+              {!activityLoading && activityItems.length === 0 ? <EmptyState>No activity yet.</EmptyState> : null}
+              {activityItems.length > 0 ? (
+                <DataTable
+                  columns={issueActivityColumns}
+                  data={activityItems}
+                  emptyMessage="No activity yet."
+                  showViewOptions={false}
+                />
+              ) : null}
             </TabsContent>
           </Tabs>
     </div>
