@@ -27,6 +27,7 @@ import {
 import { BUILTIN_BOPO_SKILLS } from "../lib/builtin-bopo-skills";
 import {
   createCompanySkillPackage,
+  deleteCompanySkillPackage,
   linkCompanySkillFromUrl,
   listCompanySkillFiles,
   listCompanySkillPackages,
@@ -633,6 +634,23 @@ export function createObservabilityRouter(ctx: AppContext) {
         url: body.url,
         ...(optionalSkillId ? { skillId: optionalSkillId } : {})
       });
+      return sendOk(res, result);
+    } catch (error) {
+      return sendError(res, String(error), 422);
+    }
+  });
+
+  router.delete("/company-skills", async (req, res) => {
+    if (!enforcePermission(req, res, "agents:write")) {
+      return;
+    }
+    const companyId = req.companyId!;
+    const skillId = typeof req.query.skillId === "string" ? req.query.skillId.trim() : "";
+    if (!skillId) {
+      return sendError(res, "Query parameter 'skillId' is required.", 422);
+    }
+    try {
+      const result = await deleteCompanySkillPackage({ companyId, skillId });
       return sendOk(res, result);
     } catch (error) {
       return sendError(res, String(error), 422);

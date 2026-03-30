@@ -233,6 +233,32 @@ export async function writeCompanySkillFile(input: {
   };
 }
 
+/** Remove `skills/<id>/` entirely (local files and linked-skill pointer). */
+export async function deleteCompanySkillPackage(input: { companyId: string; skillId: string }) {
+  const { root, id } = await skillRoot(input.companyId, input.skillId);
+  let exists = false;
+  try {
+    const st = await stat(root);
+    exists = st.isDirectory();
+  } catch (error) {
+    const code = error && typeof error === "object" && "code" in error ? (error as NodeJS.ErrnoException).code : undefined;
+    if (code === "ENOENT") {
+      throw new Error("Skill not found.");
+    }
+    throw error;
+  }
+  if (!exists) {
+    throw new Error("Skill not found.");
+  }
+  const hasMd = await skillDirHasSkillMd(root);
+  const linkedUrl = await readOptionalSkillLinkUrl(root);
+  if (!hasMd && !linkedUrl) {
+    throw new Error("Skill not found.");
+  }
+  await rm(root, { recursive: true, force: true });
+  return { skillId: id };
+}
+
 /** Create `skills/<id>/SKILL.md` if the package does not exist yet. */
 export async function createCompanySkillPackage(input: { companyId: string; skillId: string }) {
   const { root, id } = await skillRoot(input.companyId, input.skillId);

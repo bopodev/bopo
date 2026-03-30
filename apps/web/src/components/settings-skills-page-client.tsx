@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/dialog";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { ApiError, apiGet, apiPost, apiPut } from "@/lib/api";
+import { ApiError, apiDelete, apiGet, apiPost, apiPut } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { SectionHeading } from "@/components/workspace/shared";
 
@@ -114,6 +114,10 @@ export function SettingsSkillsPageClient({
   const [linkBusy, setLinkBusy] = useState(false);
   const [linkError, setLinkError] = useState<string | null>(null);
   const [forkBusy, setForkBusy] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [pendingDeleteSkillId, setPendingDeleteSkillId] = useState<string | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteDialogError, setDeleteDialogError] = useState<string | null>(null);
 
   const urlKind = searchParams.get("kind") as DocKind | null;
   const urlSkillId = searchParams.get("skillId") ?? "";
@@ -140,6 +144,18 @@ export function SettingsSkillsPageClient({
     },
     [companyId, pathname, router]
   );
+
+  const clearSkillSelectionFromUrl = useCallback(() => {
+    if (!companyId) {
+      return;
+    }
+    const next = new URLSearchParams(searchParamsRef.current.toString());
+    next.set("companyId", companyId);
+    next.delete("kind");
+    next.delete("skillId");
+    next.delete("path");
+    router.replace(`${pathname}?${next.toString()}` as Route);
+  }, [companyId, pathname, router]);
 
   const refreshCompanySkills = useCallback(async () => {
     if (!companyId) {
@@ -412,6 +428,26 @@ export function SettingsSkillsPageClient({
     }
   }
 
+  async function submitDeleteSkill() {
+    if (!companyId || !pendingDeleteSkillId) {
+      return;
+    }
+    const skillId = pendingDeleteSkillId;
+    setDeleteDialogError(null);
+    setDeleteBusy(true);
+    try {
+      await apiDelete(`/observability/company-skills?skillId=${encodeURIComponent(skillId)}`, companyId);
+      setDeleteDialogOpen(false);
+      setPendingDeleteSkillId(null);
+      clearSkillSelectionFromUrl();
+      await refreshCompanySkills();
+    } catch (error) {
+      setDeleteDialogError(error instanceof ApiError ? error.message : "Could not remove skill.");
+    } finally {
+      setDeleteBusy(false);
+    }
+  }
+
   const secondaryPane = (
     <div className="run-sidebar-pane">
       {listsLoading ? null : listsError ? (
@@ -536,7 +572,24 @@ export function SettingsSkillsPageClient({
                       onClick={() => void forkLinkedSkillToWorkspace()}
                       disabled={forkBusy || !editorReady}
                     >
-                      {forkBusy ? "Saving copy…" : "Save copy to workspace"}
+                      {forkBusy ? "Saving copy…" : "Save copy"}
+                    </Button>
+                  ) : null}
+                  {companyId && open?.kind === "company" ? (
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => {
+                        if (open?.kind !== "company") {
+                          return;
+                        }
+                        setDeleteDialogError(null);
+                        setPendingDeleteSkillId(open.skillId);
+                        setDeleteDialogOpen(true);
+                      }}
+                      disabled={deleteBusy}
+                    >
+                      Delete
                     </Button>
                   ) : null}
                   <Button
@@ -565,23 +618,6 @@ export function SettingsSkillsPageClient({
               </Alert>
             ) : null}
 
-            {companyId && open?.kind === "company" && skillIsUrlLinkedOnly && selectedCompanyPack?.linkedUrl ? (
-              <Alert className="ui-settings-skills-alert">
-                <AlertDescription>
-                  This skill is linked to{" "}
-                  <a
-                    href={selectedCompanyPack.linkedUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="ui-settings-skills-external-link"
-                  >
-                    {selectedCompanyPack.linkedUrl}
-                  </a>
-                  . The editor shows the current remote content; saving a copy writes{" "}
-                  <code className="ui-settings-skills-dialog-code">SKILL.md</code> into your company workspace.
-                </AlertDescription>
-              </Alert>
-            ) : null}
 
             {companyId && !listsLoading && !open ? (
               <p className="ui-agent-docs-empty-state">Select a skill from the list.</p>
@@ -737,6 +773,44 @@ export function SettingsSkillsPageClient({
                 )}
               </>
             ) : null}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={deleteDialogOpen}
+        onOpenChange={(nextOpen) => {
+          setDeleteDialogOpen(nextOpen);
+          if (!nextOpen) {
+            setDeleteDialogError(null);
+            setPendingDeleteSkillId(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Remove company skill?</DialogTitle>
+            <DialogDescription>
+              This permanently deletes{" "}
+              <code className="ui-settings-skills-dialog-code">
+                skills/{pendingDeleteSkillId ?? "…"}/
+              </code>{" "}
+              from the workspace, including any linked URL pointer and all files in that folder. Agents that referenced
+              this skill will no longer see it.
+            </DialogDescription>
+          </DialogHeader>
+          {deleteDialogError ? (
+            <Alert variant="destructive" className="ui-settings-skills-alert">
+              <AlertDescription>{deleteDialogError}</AlertDescription>
+            </Alert>
+          ) : null}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={deleteBusy}>
+              Cancel
+            </Button>
+            <Button type="button" variant="destructive" onClick={() => void submitDeleteSkill()} disabled={deleteBusy}>
+              {deleteBusy ? "Removing…" : "Remove skill"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
