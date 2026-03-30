@@ -3,6 +3,7 @@
 import Link from "next/link";
 import type { Route } from "next";
 import { useCallback, useEffect, useId, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import type { ColumnDef } from "@tanstack/react-table";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { AgentAvatar } from "@/components/agent-avatar";
@@ -16,14 +17,17 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { DataTable } from "@/components/ui/data-table";
+import { DataTableColumnHeader } from "@/components/ui/data-table-column-header";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ApiError, apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
 import { agentAvatarSeed } from "@/lib/agent-avatar";
 import { formatSmartDateTime } from "@/lib/smart-date";
+import { getStatusBadgeClassName } from "@/lib/status-presentation";
 import type { WorkspacePageProps } from "@/components/workspace/workspace-page-props";
 import { CollapsibleMarkdown } from "@/components/markdown-view";
 import { LazyMarkdownMdxEditor } from "@/components/modals/lazy-markdown-mdx-editor";
-import { SectionHeading } from "@/components/workspace/shared";
+import { SectionHeading, formatDateTime } from "@/components/workspace/shared";
 import { WeekdayMultiSelect } from "@/components/weekday-multi-select";
 import { SCHEDULE_HOUR_OPTIONS, SCHEDULE_MINUTE_OPTIONS } from "@/lib/schedule-picker-options";
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
@@ -93,6 +97,10 @@ const LOOP_ISSUES_AREA_CHART_CONFIG = {
   inReview: { label: "In review", color: "var(--chart-2)" },
   active: { label: "Open / active", color: "var(--chart-3)" }
 } satisfies ChartConfig;
+
+function shortLoopId(value: string) {
+  return value.length > 12 ? `${value.slice(0, 8)}…` : value;
+}
 
 function PropertyRow({ label, value }: { label: string; value: ReactNode }) {
   return (
@@ -335,83 +343,6 @@ function formatLoopRunOutcomeLabel(status: string): string {
   }
 }
 
-function loopRunIssueLink(issueId: string, companyId: string) {
-  const href = `/issues/${issueId}?companyId=${encodeURIComponent(companyId)}` as Route;
-  return (
-    <Link href={href} className="ui-loop-issue-link" title={`Issue ${issueId}`}>
-      View issue
-    </Link>
-  );
-}
-
-/** Same narrative as trigger “Last result”, for the run list subtitle. */
-function formatLoopRunResultDescription(r: RunRow, companyId: string | null): ReactNode {
-  switch (r.status) {
-    case "issue_created": {
-      if (r.linkedIssueId && companyId) {
-        const href = `/issues/${r.linkedIssueId}?companyId=${encodeURIComponent(companyId)}` as Route;
-        return (
-          <>
-            Opened a new issue:{" "}
-            <Link href={href} className="ui-loop-issue-link">
-              {r.linkedIssueId}
-            </Link>
-          </>
-        );
-      }
-      if (r.linkedIssueId) {
-        return `Opened a new issue (${r.linkedIssueId}).`;
-      }
-      return "Opened a new issue.";
-    }
-    case "coalesced":
-      return (
-        <>
-          No new issue was opened — this run was merged with an existing open issue from this loop.
-          {r.linkedIssueId && companyId ? (
-            <>
-              {" "}
-              {loopRunIssueLink(r.linkedIssueId, companyId)}
-            </>
-          ) : null}
-        </>
-      );
-    case "skipped":
-      return (
-        <>
-          Skipped because an issue from this loop is still open.
-          {r.linkedIssueId && companyId ? (
-            <>
-              {" "}
-              {loopRunIssueLink(r.linkedIssueId, companyId)}
-            </>
-          ) : null}
-        </>
-      );
-    case "failed":
-      return "The run failed; no new issue was opened.";
-    case "received":
-      return "This run is still in progress.";
-    default:
-      return (
-        <>
-          {formatLoopRunOutcomeLabel(r.status)}
-          {r.linkedIssueId && companyId ? (
-            <>
-              {" "}
-              {loopRunIssueLink(r.linkedIssueId, companyId)}
-            </>
-          ) : r.linkedIssueId ? (
-            <span className="ui-loop-issue-id-note" title={r.linkedIssueId}>
-              {" "}
-              (Issue {r.linkedIssueId})
-            </span>
-          ) : null}
-        </>
-      );
-  }
-}
-
 export function LoopDetailPageClient(
   props: WorkspacePageProps & {
     loopId: string;
@@ -572,6 +503,115 @@ export function LoopDetailPageClient(
   const hasLoopIssuesTrend = useMemo(
     () => loopIssueActivityByDay.some((row) => row.done > 0 || row.inReview > 0 || row.active > 0),
     [loopIssueActivityByDay]
+  );
+
+  const loopRunColumns = useMemo<ColumnDef<RunRow>[]>(
+    () => [
+      {
+        accessorKey: "triggeredAt",
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Triggered" />,
+        cell: ({ row }) => (
+          <time
+            className="ui-run-table-datetime"
+            dateTime={row.original.triggeredAt}
+            title={formatDateTime(row.original.triggeredAt)}
+          >
+            {formatSmartDateTime(row.original.triggeredAt, { includeSeconds: true })}
+          </time>
+        )
+      },
+      {
+        accessorKey: "status",
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Status" />,
+        cell: ({ row }) => (
+          <Badge variant="outline" className={getStatusBadgeClassName(row.original.status)}>
+            {formatLoopRunOutcomeLabel(row.original.status)}
+          </Badge>
+        )
+      },
+      {
+        accessorKey: "source",
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Source" />,
+        cell: ({ row }) => <span className="ui-run-table-cell-muted">{row.original.source}</span>
+      },
+      {
+        accessorKey: "failureReason",
+        header: "Failure",
+        enableSorting: false,
+        cell: ({ row }) => {
+          const fr = row.original.failureReason;
+          if (!fr?.trim()) {
+            return <span className="ui-run-table-cell-muted">—</span>;
+          }
+          const preview = fr.length > 120 ? `${fr.slice(0, 117)}…` : fr;
+          return (
+            <div className="ui-run-table-message" title={fr}>
+              {preview}
+            </div>
+          );
+        }
+      },
+      {
+        accessorKey: "id",
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Run" />,
+        cell: ({ row }) => (
+          <span className="ui-run-table-cell-muted font-mono text-sm tabular-nums">{shortLoopId(row.original.id)}</span>
+        )
+      }
+    ],
+    []
+  );
+
+  const loopActivityColumns = useMemo<ColumnDef<ActivityRow>[]>(
+    () => [
+      {
+        accessorKey: "createdAt",
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Time" />,
+        cell: ({ row }) => (
+          <time
+            className="ui-run-table-datetime"
+            dateTime={row.original.createdAt}
+            title={formatDateTime(row.original.createdAt)}
+          >
+            {formatSmartDateTime(row.original.createdAt, { includeSeconds: true })}
+          </time>
+        )
+      },
+      {
+        accessorKey: "eventType",
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Event" />,
+        cell: ({ row }) => <span>{row.original.eventType}</span>
+      },
+      {
+        accessorKey: "actorType",
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Actor type" />,
+        cell: ({ row }) => <span className="ui-run-table-cell-muted">{row.original.actorType}</span>
+      },
+      {
+        accessorKey: "actorId",
+        header: "Actor id",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <span className="ui-run-table-cell-muted font-mono text-sm">{row.original.actorId ?? "—"}</span>
+        )
+      },
+      {
+        id: "payloadPreview",
+        accessorFn: (row) => JSON.stringify(row.payload),
+        header: "Payload",
+        enableSorting: false,
+        cell: ({ row }) => {
+          const raw = JSON.stringify(row.original.payload);
+          const preview = raw.length > 160 ? `${raw.slice(0, 157)}…` : raw;
+          return (
+            <div className="ui-run-table-message font-mono text-sm" title={raw}>
+              {preview}
+            </div>
+          );
+        }
+      }
+    ],
+    []
   );
 
   async function setActive(next: boolean) {
@@ -1538,37 +1578,23 @@ export function LoopDetailPageClient(
                     </DialogContent>
                   </Dialog>
                 </TabsContent>
-                <TabsContent value="runs">
-                  {detail.recentRuns.length === 0 ? (
-                    <p className="ui-issue-muted-text">No runs yet.</p>
-                  ) : (
-                    detail.recentRuns.map((r) => (
-                      <Card key={r.id} className="ui-loop-run-card">
-                        <CardHeader>
-                          <CardTitle>{formatSmartDateTime(r.triggeredAt)}</CardTitle>
-                          <div className="ui-loop-run-result">{formatLoopRunResultDescription(r, companyId)}</div>
-                        </CardHeader>
-                        {r.failureReason ? (
-                          <CardContent className="ui-loop-run-failure-reason">{r.failureReason}</CardContent>
-                        ) : null}
-                      </Card>
-                    ))
-                  )}
+                <TabsContent value="runs" className="ui-issue-tabs-content">
+                  <DataTable
+                    columns={loopRunColumns}
+                    data={detail.recentRuns}
+                    emptyMessage="No runs yet."
+                    defaultPageSize={10}
+                    showViewOptions={false}
+                  />
                 </TabsContent>
-                <TabsContent value="activity">
-                  {activity.length === 0 ? (
-                    <p className="ui-issue-muted-text">No activity yet.</p>
-                  ) : (
-                    activity.map((a) => (
-                      <div key={a.id} className="ui-loop-activity-card">
-                        <div className="ui-loop-activity-type">{a.eventType}</div>
-                        <div className="ui-loop-activity-meta">
-                          {formatSmartDateTime(a.createdAt)} · {a.actorType}
-                          {a.actorId ? ` · ${a.actorId}` : ""}
-                        </div>
-                      </div>
-                    ))
-                  )}
+                <TabsContent value="activity" className="ui-issue-tabs-content">
+                  <DataTable
+                    columns={loopActivityColumns}
+                    data={activity}
+                    emptyMessage="No activity yet."
+                    defaultPageSize={10}
+                    showViewOptions={false}
+                  />
                 </TabsContent>
               </Tabs>
             </>

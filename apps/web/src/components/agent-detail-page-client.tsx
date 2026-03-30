@@ -4,7 +4,7 @@ import Link from "next/link";
 import type { Route } from "next";
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { ColumnDef, Row } from "@tanstack/react-table";
+import type { ColumnDef } from "@tanstack/react-table";
 import type { ExecutionOutcome } from "bopodev-contracts";
 import { AppShell } from "@/components/app-shell";
 import { AgentAvatar } from "@/components/agent-avatar";
@@ -243,20 +243,6 @@ function formatRunMessage(message: string | null | undefined) {
     }
   }
   return candidate.replace(/\s+/g, " ").trim();
-}
-
-function formatAgentRunTypeLabel(runType: HeartbeatRunRow["runType"]) {
-  if (runType === "no_assigned_work") {
-    return "No assigned work";
-  }
-  return runType.replaceAll("_", " ");
-}
-
-function columnEqualsFilter<TData>(row: Row<TData>, columnId: string, filterValue: unknown) {
-  if (filterValue == null || filterValue === "") {
-    return true;
-  }
-  return row.getValue(columnId) === filterValue;
 }
 
 function formatHeartbeatInterval(seconds: number) {
@@ -598,39 +584,6 @@ export function AgentDetailPageClient({
     [agentIssueActivityByDay]
   );
 
-  const agentIssuePriorityOptions = useMemo(
-    () => [...new Set(recentDeliveryIssues.map((i) => i.priority))].sort((a, b) => a.localeCompare(b)),
-    [recentDeliveryIssues]
-  );
-
-  const agentLoopStatusOptions = useMemo(
-    () => [...new Set(agentWorkLoops.map((l) => l.status))].sort((a, b) => a.localeCompare(b)),
-    [agentWorkLoops]
-  );
-
-  const agentLoopProjectFilterOptions = useMemo(() => {
-    const seen = new Map<string, string>();
-    for (const loop of agentWorkLoops) {
-      const name = projects.find((p) => p.id === loop.projectId)?.name ?? loop.projectId;
-      seen.set(loop.projectId, name);
-    }
-    return [...seen.entries()]
-      .map(([projectId, name]) => ({ projectId, name }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [agentWorkLoops, projects]);
-
-  const agentRunStatusFilterOptions = useMemo(() => {
-    const preferredOrder = ["started", "completed", "failed", "skipped"];
-    const observed = [...new Set(agentRuns.map((run) => run.status))];
-    const additional = observed.filter((status) => !preferredOrder.includes(status)).sort((a, b) => a.localeCompare(b));
-    return [...preferredOrder.filter((s) => observed.includes(s)), ...additional];
-  }, [agentRuns]);
-
-  const agentRunTypeFilterOptions = useMemo(
-    () => [...new Set(agentRuns.map((run) => run.runType))].sort((a, b) => a.localeCompare(b)),
-    [agentRuns]
-  );
-
   const [selectedProviderType, setSelectedProviderType] = useState(agent.providerType);
   const [selectedModelId, setSelectedModelId] = useState(configuredModelId);
   const [sidebarAdapterModels, setSidebarAdapterModels] = useState<SidebarAdapterModelsState>({ status: "idle" });
@@ -671,7 +624,6 @@ export function AgentDetailPageClient({
       },
       {
         accessorKey: "status",
-        filterFn: columnEqualsFilter,
         header: ({ column }) => <DataTableColumnHeader column={column} title="Status" />,
         cell: ({ row }) => (
           <Badge variant="outline" className={getStatusBadgeClassName(row.original.status)}>
@@ -681,7 +633,6 @@ export function AgentDetailPageClient({
       },
       {
         accessorKey: "priority",
-        filterFn: columnEqualsFilter,
         header: ({ column }) => <DataTableColumnHeader column={column} title="Priority" />,
         cell: ({ row }) => <Badge variant="outline">{row.original.priority}</Badge>
       },
@@ -717,7 +668,6 @@ export function AgentDetailPageClient({
       },
       {
         accessorKey: "projectId",
-        filterFn: columnEqualsFilter,
         header: ({ column }) => <DataTableColumnHeader column={column} title="Project" />,
         cell: ({ row }) => {
           const name = projects.find((p) => p.id === row.original.projectId)?.name;
@@ -726,7 +676,6 @@ export function AgentDetailPageClient({
       },
       {
         accessorKey: "status",
-        filterFn: columnEqualsFilter,
         header: ({ column }) => <DataTableColumnHeader column={column} title="Status" />,
         cell: ({ row }) => (
           <Badge variant="outline" className={getStatusBadgeClassName(row.original.status)}>
@@ -769,13 +718,6 @@ export function AgentDetailPageClient({
   const agentRunColumns = useMemo<ColumnDef<HeartbeatRunRow>[]>(
     () => [
       {
-        id: "searchAll",
-        accessorFn: (row) => `${row.id} ${formatRunMessage(row.message)}`,
-        header: () => null,
-        cell: () => null,
-        enableSorting: false
-      },
-      {
         accessorKey: "id",
         header: ({ column }) => <DataTableColumnHeader column={column} title="Run" />,
         cell: ({ row }) => (
@@ -786,7 +728,6 @@ export function AgentDetailPageClient({
       },
       {
         accessorKey: "status",
-        filterFn: columnEqualsFilter,
         header: ({ column }) => <DataTableColumnHeader column={column} title="Status" />,
         cell: ({ row }) => (
           <Badge variant="outline" className={getStatusBadgeClassName(row.original.status)}>
@@ -826,13 +767,6 @@ export function AgentDetailPageClient({
             </div>
           );
         }
-      },
-      {
-        accessorKey: "runType",
-        filterFn: columnEqualsFilter,
-        header: () => null,
-        cell: () => null,
-        enableSorting: false
       },
       {
         id: "actions",
@@ -1342,43 +1276,9 @@ export function AgentDetailPageClient({
           <DataTable
             columns={completedIssueColumns}
             data={recentDeliveryIssues}
-            emptyMessage="No done or in-review issues match the current filters."
-            filterColumn="title"
-            filterPlaceholder="Search titles…"
+            emptyMessage="No done or in-review issues for this agent yet."
             defaultPageSize={10}
-            renderToolbarActions={(table) => (
-              <div className="ui-toolbar-filters">
-                <Select
-                  value={(table.getColumn("status")?.getFilterValue() as string | undefined) ?? "all"}
-                  onValueChange={(value) => table.getColumn("status")?.setFilterValue(value === "all" ? undefined : value)}
-                >
-                  <SelectTrigger className="ui-toolbar-filter-select">
-                    <SelectValue placeholder="Status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All statuses</SelectItem>
-                    <SelectItem value="done">Done</SelectItem>
-                    <SelectItem value="in_review">In review</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select
-                  value={(table.getColumn("priority")?.getFilterValue() as string | undefined) ?? "all"}
-                  onValueChange={(value) => table.getColumn("priority")?.setFilterValue(value === "all" ? undefined : value)}
-                >
-                  <SelectTrigger className="ui-toolbar-filter-select">
-                    <SelectValue placeholder="Priority" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All priorities</SelectItem>
-                    {agentIssuePriorityOptions.map((priority) => (
-                      <SelectItem key={priority} value={priority}>
-                        {priority}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+            showViewOptions={false}
           />
         </TabsContent>
 
@@ -1393,48 +1293,9 @@ export function AgentDetailPageClient({
             <DataTable
               columns={agentLoopColumns}
               data={agentWorkLoops}
-              emptyMessage="No loops match the current filters."
-              filterColumn="title"
-              filterPlaceholder="Search loop titles…"
+              emptyMessage="No loops assign this agent yet."
               defaultPageSize={10}
-              renderToolbarActions={(table) => (
-                <div className="ui-toolbar-filters">
-                  <Select
-                    value={(table.getColumn("projectId")?.getFilterValue() as string | undefined) ?? "all"}
-                    onValueChange={(value) =>
-                      table.getColumn("projectId")?.setFilterValue(value === "all" ? undefined : value)
-                    }
-                  >
-                    <SelectTrigger className="ui-toolbar-filter-select">
-                      <SelectValue placeholder="Project" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All projects</SelectItem>
-                      {agentLoopProjectFilterOptions.map(({ projectId, name }) => (
-                        <SelectItem key={projectId} value={projectId}>
-                          {name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Select
-                    value={(table.getColumn("status")?.getFilterValue() as string | undefined) ?? "all"}
-                    onValueChange={(value) => table.getColumn("status")?.setFilterValue(value === "all" ? undefined : value)}
-                  >
-                    <SelectTrigger className="ui-toolbar-filter-select">
-                      <SelectValue placeholder="Status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All statuses</SelectItem>
-                      {agentLoopStatusOptions.map((status) => (
-                        <SelectItem key={status} value={status}>
-                          {status}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
+              showViewOptions={false}
             />
           ) : null}
         </TabsContent>
@@ -1444,47 +1305,9 @@ export function AgentDetailPageClient({
           <DataTable
             columns={agentRunColumns}
             data={agentRuns}
-            emptyMessage="No runs match the current filters."
-            filterColumn="searchAll"
-            filterPlaceholder="Search id or message…"
+            emptyMessage="No runs have executed for this agent yet."
             defaultPageSize={10}
-            initialColumnVisibility={{ searchAll: false, runType: false }}
-            renderToolbarActions={(table) => (
-              <div className="ui-toolbar-filters">
-                <Select
-                  value={(table.getColumn("status")?.getFilterValue() as string | undefined) ?? "all"}
-                  onValueChange={(value) => table.getColumn("status")?.setFilterValue(value === "all" ? undefined : value)}
-                >
-                  <SelectTrigger className="ui-toolbar-filter-select">
-                    <SelectValue placeholder="Status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All statuses</SelectItem>
-                    {agentRunStatusFilterOptions.map((status) => (
-                      <SelectItem key={status} value={status}>
-                        {formatRunStatusLabel(status)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select
-                  value={(table.getColumn("runType")?.getFilterValue() as string | undefined) ?? "all"}
-                  onValueChange={(value) => table.getColumn("runType")?.setFilterValue(value === "all" ? undefined : value)}
-                >
-                  <SelectTrigger className="ui-toolbar-filter-select">
-                    <SelectValue placeholder="Run type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All run types</SelectItem>
-                    {agentRunTypeFilterOptions.map((runType) => (
-                      <SelectItem key={runType} value={runType}>
-                        {formatAgentRunTypeLabel(runType)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+            showViewOptions={false}
           />
         </TabsContent>
       </Tabs>
