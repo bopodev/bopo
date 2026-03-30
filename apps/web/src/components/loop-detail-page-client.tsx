@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import type { Route } from "next";
-import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { AgentAvatar } from "@/components/agent-avatar";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { FieldLabelWithHelp } from "@/components/ui/field-label-with-help";
@@ -25,6 +26,7 @@ import { LazyMarkdownMdxEditor } from "@/components/modals/lazy-markdown-mdx-edi
 import { SectionHeading } from "@/components/workspace/shared";
 import { WeekdayMultiSelect } from "@/components/weekday-multi-select";
 import { SCHEDULE_HOUR_OPTIONS, SCHEDULE_MINUTE_OPTIONS } from "@/lib/schedule-picker-options";
+import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 
 type ScheduleKind =
   | "every_minute"
@@ -80,6 +82,17 @@ type ActivityRow = {
   payload: Record<string, unknown>;
   createdAt: string;
 };
+
+const LOOP_RUNS_AREA_CHART_CONFIG = {
+  issueCreated: { label: "Issue opened", color: "var(--chart-1)" },
+  failed: { label: "Failed", color: "var(--chart-5)" }
+} satisfies ChartConfig;
+
+const LOOP_ISSUES_AREA_CHART_CONFIG = {
+  done: { label: "Done", color: "var(--chart-1)" },
+  inReview: { label: "In review", color: "var(--chart-2)" },
+  active: { label: "Open / active", color: "var(--chart-3)" }
+} satisfies ChartConfig;
 
 function PropertyRow({ label, value }: { label: string; value: ReactNode }) {
   return (
@@ -404,7 +417,7 @@ export function LoopDetailPageClient(
     loopId: string;
   }
 ) {
-  const { companyId, companies, projects, agents, loopId } = props;
+  const { companyId, companies, projects, agents, loopId, issues } = props;
   const router = useRouter();
   const [detail, setDetail] = useState<LoopDetail | null>(null);
   const [activity, setActivity] = useState<ActivityRow[]>([]);
@@ -478,6 +491,88 @@ export function LoopDetailPageClient(
     const lastRunAt = detail.lastTriggeredAt ?? lastRun?.triggeredAt ?? null;
     return { lastRunAt, lastRun };
   }, [detail]);
+
+  const chartGradientId = useId().replace(/:/g, "");
+
+  const loopRunsDailyChartData = useMemo(() => {
+    const now = new Date();
+    const days = 14;
+    const byDay = new Map<string, { issueCreated: number; failed: number }>();
+    for (let i = days - 1; i >= 0; i -= 1) {
+      const day = new Date(now);
+      day.setHours(0, 0, 0, 0);
+      day.setDate(day.getDate() - i);
+      const key = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
+      byDay.set(key, { issueCreated: 0, failed: 0 });
+    }
+    const runs = detail?.recentRuns ?? [];
+    for (const run of runs) {
+      const day = new Date(run.triggeredAt);
+      day.setHours(0, 0, 0, 0);
+      const key = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
+      const current = byDay.get(key);
+      if (!current) {
+        continue;
+      }
+      if (run.status === "issue_created") {
+        current.issueCreated += 1;
+      } else if (run.status === "failed") {
+        current.failed += 1;
+      }
+    }
+    return Array.from(byDay.entries()).map(([date, values]) => ({
+      label: date.slice(5),
+      issueCreated: values.issueCreated,
+      failed: values.failed
+    }));
+  }, [detail]);
+
+  const loopIssueActivityByDay = useMemo(() => {
+    const now = new Date();
+    const days = 14;
+    const byDay = new Map<string, { done: number; inReview: number; active: number }>();
+    for (let i = days - 1; i >= 0; i -= 1) {
+      const day = new Date(now);
+      day.setHours(0, 0, 0, 0);
+      day.setDate(day.getDate() - i);
+      const key = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
+      byDay.set(key, { done: 0, inReview: 0, active: 0 });
+    }
+    for (const issue of issues) {
+      if (issue.loopId !== loopId || issue.status === "canceled") {
+        continue;
+      }
+      const day = new Date(issue.updatedAt);
+      day.setHours(0, 0, 0, 0);
+      const key = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
+      const current = byDay.get(key);
+      if (!current) {
+        continue;
+      }
+      if (issue.status === "done") {
+        current.done += 1;
+      } else if (issue.status === "in_review") {
+        current.inReview += 1;
+      } else {
+        current.active += 1;
+      }
+    }
+    return Array.from(byDay.entries()).map(([date, values]) => ({
+      label: date.slice(5),
+      done: values.done,
+      inReview: values.inReview,
+      active: values.active
+    }));
+  }, [issues, loopId]);
+
+  const hasLoopRunsTrend = useMemo(
+    () => loopRunsDailyChartData.some((row) => row.issueCreated > 0 || row.failed > 0),
+    [loopRunsDailyChartData]
+  );
+  const hasLoopIssuesTrend = useMemo(
+    () => loopIssueActivityByDay.some((row) => row.done > 0 || row.inReview > 0 || row.active > 0),
+    [loopIssueActivityByDay]
+  );
 
   async function setActive(next: boolean) {
     if (!companyId || !detail) {
@@ -957,12 +1052,132 @@ export function LoopDetailPageClient(
 
               <SectionHeading title="Details" description="Loop details and scheduling controls." />
 
-              <Tabs defaultValue="triggers" className="ui-tabs-gap-none">
+              <Tabs defaultValue="dashboard" className="ui-tabs-gap-none">
                 <TabsList>
+                  <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
                   <TabsTrigger value="triggers">Triggers</TabsTrigger>
                   <TabsTrigger value="runs">Runs</TabsTrigger>
                   <TabsTrigger value="activity">Activity</TabsTrigger>
                 </TabsList>
+                <TabsContent value="dashboard" className="ui-issue-tabs-content">
+                  <div className="ui-agent-dashboard-charts-grid">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Run outcomes</CardTitle>
+                        <CardDescription>
+                          Issue opened vs failed by trigger day (last 14 days). Based on recent runs loaded with this loop
+                          (up to 30); skipped or coalesced runs are not shown.
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        {hasLoopRunsTrend ? (
+                          <ChartContainer config={LOOP_RUNS_AREA_CHART_CONFIG} className="ui-agent-dashboard-chart">
+                            <AreaChart accessibilityLayer data={loopRunsDailyChartData} margin={{ top: 8, left: -8, right: -8 }}>
+                              <defs>
+                                <linearGradient id={`${chartGradientId}-loopRunsOpened`} x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="10%" stopColor="var(--color-issueCreated)" stopOpacity={0.45} />
+                                  <stop offset="90%" stopColor="var(--color-issueCreated)" stopOpacity={0.06} />
+                                </linearGradient>
+                                <linearGradient id={`${chartGradientId}-loopRunsFailed`} x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="10%" stopColor="var(--color-failed)" stopOpacity={0.4} />
+                                  <stop offset="90%" stopColor="var(--color-failed)" stopOpacity={0.04} />
+                                </linearGradient>
+                              </defs>
+                              <CartesianGrid vertical={false} strokeDasharray="4 4" strokeOpacity={0.3} />
+                              <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={10} minTickGap={22} />
+                              <YAxis hide />
+                              <ChartTooltip content={<ChartTooltipContent indicator="line" />} cursor={false} />
+                              <Area
+                                type="monotone"
+                                dataKey="issueCreated"
+                                stroke="var(--color-issueCreated)"
+                                fill={`url(#${chartGradientId}-loopRunsOpened)`}
+                                fillOpacity={1}
+                                strokeWidth={2}
+                              />
+                              <Area
+                                type="monotone"
+                                dataKey="failed"
+                                stroke="var(--color-failed)"
+                                fill={`url(#${chartGradientId}-loopRunsFailed)`}
+                                fillOpacity={1}
+                                strokeWidth={2}
+                              />
+                            </AreaChart>
+                          </ChartContainer>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">
+                            No issue-opened or failed runs in the last 14 days in the recent runs list.
+                          </p>
+                        )}
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Loop issue activity</CardTitle>
+                        <CardDescription>
+                          Issues tied to this loop, counted on the day they were last updated, stacked by status (last 14
+                          days).
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        {hasLoopIssuesTrend ? (
+                          <ChartContainer config={LOOP_ISSUES_AREA_CHART_CONFIG} className="ui-agent-dashboard-chart">
+                            <AreaChart accessibilityLayer data={loopIssueActivityByDay} margin={{ top: 8, left: -8, right: -8 }}>
+                              <defs>
+                                <linearGradient id={`${chartGradientId}-loopIssDone`} x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="10%" stopColor="var(--color-done)" stopOpacity={0.45} />
+                                  <stop offset="90%" stopColor="var(--color-done)" stopOpacity={0.06} />
+                                </linearGradient>
+                                <linearGradient id={`${chartGradientId}-loopIssReview`} x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="10%" stopColor="var(--color-inReview)" stopOpacity={0.4} />
+                                  <stop offset="90%" stopColor="var(--color-inReview)" stopOpacity={0.06} />
+                                </linearGradient>
+                                <linearGradient id={`${chartGradientId}-loopIssActive`} x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="10%" stopColor="var(--color-active)" stopOpacity={0.38} />
+                                  <stop offset="90%" stopColor="var(--color-active)" stopOpacity={0.05} />
+                                </linearGradient>
+                              </defs>
+                              <CartesianGrid vertical={false} strokeDasharray="4 4" strokeOpacity={0.3} />
+                              <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={10} minTickGap={22} />
+                              <YAxis hide />
+                              <ChartTooltip content={<ChartTooltipContent indicator="line" />} cursor={false} />
+                              <Area
+                                type="monotone"
+                                dataKey="done"
+                                stackId="loopIssues"
+                                stroke="var(--color-done)"
+                                fill={`url(#${chartGradientId}-loopIssDone)`}
+                                fillOpacity={1}
+                                strokeWidth={2}
+                              />
+                              <Area
+                                type="monotone"
+                                dataKey="inReview"
+                                stackId="loopIssues"
+                                stroke="var(--color-inReview)"
+                                fill={`url(#${chartGradientId}-loopIssReview)`}
+                                fillOpacity={1}
+                                strokeWidth={2}
+                              />
+                              <Area
+                                type="monotone"
+                                dataKey="active"
+                                stackId="loopIssues"
+                                stroke="var(--color-active)"
+                                fill={`url(#${chartGradientId}-loopIssActive)`}
+                                fillOpacity={1}
+                                strokeWidth={2}
+                              />
+                            </AreaChart>
+                          </ChartContainer>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">No loop issue updates in the last 14 days.</p>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </div>
+                </TabsContent>
                 <TabsContent value="triggers">
                   <Card>
                     <form onSubmit={addTrigger}>

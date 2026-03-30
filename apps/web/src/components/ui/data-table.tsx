@@ -4,9 +4,12 @@ import * as React from "react";
 import type {
   ColumnDef,
   ColumnFiltersState,
+  OnChangeFn,
+  PaginationState,
+  RowSelectionState,
   SortingState,
-  VisibilityState,
-  RowSelectionState
+  Table as TanstackTable,
+  VisibilityState
 } from "@tanstack/react-table";
 import {
   flexRender,
@@ -41,9 +44,15 @@ interface DataTableProps<TData, TValue> {
   filterColumn?: string;
   filterPlaceholder?: string;
   toolbarActions?: React.ReactNode;
+  /** Renders filter controls with access to the table instance (column filters, etc.). Takes precedence over `toolbarActions` when provided. */
+  renderToolbarActions?: (table: TanstackTable<TData>) => React.ReactNode;
   toolbarTrailing?: React.ReactNode;
   showViewOptions?: boolean;
   showHorizontalScrollbarOnHover?: boolean;
+  defaultPageSize?: number;
+  /** When true, pagination footer is shown even for a single page (row count and page size remain visible). */
+  alwaysShowPagination?: boolean;
+  initialColumnVisibility?: VisibilityState;
 }
 
 export function DataTable<TData, TValue>({
@@ -55,15 +64,28 @@ export function DataTable<TData, TValue>({
   filterColumn,
   filterPlaceholder = "Filter...",
   toolbarActions,
+  renderToolbarActions,
   toolbarTrailing,
   showViewOptions = true,
-  showHorizontalScrollbarOnHover = false
+  showHorizontalScrollbarOnHover = false,
+  defaultPageSize = 10,
+  alwaysShowPagination = false,
+  initialColumnVisibility
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
-  const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({});
+  const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>(() => initialColumnVisibility ?? {});
   const [rowSelection, setRowSelection] = React.useState<RowSelectionState>({});
+  const [pagination, setPagination] = React.useState<PaginationState>({
+    pageIndex: 0,
+    pageSize: defaultPageSize
+  });
   const [mobileFiltersOpen, setMobileFiltersOpen] = React.useState(false);
+
+  const handleColumnFiltersChange = React.useCallback<OnChangeFn<ColumnFiltersState>>((updater) => {
+    setColumnFilters(updater);
+    setPagination((prev) => ({ ...prev, pageIndex: 0 }));
+  }, []);
 
   const table = useReactTable({
     data,
@@ -73,22 +95,25 @@ export function DataTable<TData, TValue>({
     getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
     onSortingChange: setSorting,
-    onColumnFiltersChange: setColumnFilters,
+    onColumnFiltersChange: handleColumnFiltersChange,
     onColumnVisibilityChange: setColumnVisibility,
     onRowSelectionChange: setRowSelection,
+    onPaginationChange: setPagination,
     state: {
       sorting,
       columnFilters,
       columnVisibility,
-      rowSelection
+      rowSelection,
+      pagination
     }
   });
 
-  const shouldHidePagination = table.getPageCount() <= 1;
+  const toolbarNode = renderToolbarActions ? renderToolbarActions(table) : toolbarActions;
+  const shouldHidePagination = !alwaysShowPagination && table.getPageCount() <= 1;
 
   return (
     <div className="ui-data-table">
-      {filterColumn || toolbarActions || toolbarTrailing || showViewOptions ? (
+      {filterColumn || toolbarNode || toolbarTrailing || showViewOptions ? (
         <div className="ui-data-table-toolbar">
           {filterColumn ? (
             <Input
@@ -98,9 +123,9 @@ export function DataTable<TData, TValue>({
               className="ui-data-table-filter-input"
             />
           ) : null}
-          {toolbarActions ? (
+          {toolbarNode ? (
             <>
-              <div className="ui-data-table-toolbar-actions ui-data-table-toolbar-actions-inline">{toolbarActions}</div>
+              <div className="ui-data-table-toolbar-actions ui-data-table-toolbar-actions-inline">{toolbarNode}</div>
               <div className="ui-data-table-toolbar-actions ui-data-table-toolbar-actions-mobile">
                 <Drawer open={mobileFiltersOpen} onOpenChange={setMobileFiltersOpen}>
                   <DrawerTrigger asChild>
@@ -114,7 +139,7 @@ export function DataTable<TData, TValue>({
                       <DrawerTitle>Filters</DrawerTitle>
                       <DrawerDescription>Refine rows with quick mobile controls.</DrawerDescription>
                     </DrawerHeader>
-                    <div className="space-y-3 pb-2">{toolbarActions}</div>
+                    <div className="space-y-3 pb-2">{toolbarNode}</div>
                   </DrawerContent>
                 </Drawer>
               </div>
@@ -159,7 +184,7 @@ export function DataTable<TData, TValue>({
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={columns.length} className="ui-data-table-empty-cell">
+                <TableCell colSpan={Math.max(table.getVisibleLeafColumns().length, 1)} className="ui-data-table-empty-cell">
                   {emptyMessage}
                 </TableCell>
               </TableRow>

@@ -13,7 +13,7 @@ export default async function LoopDetailPage({
   const { companyId } = await searchParams;
   const workspaceData = await loadWorkspaceData(companyId, {
     include: {
-      issues: false,
+      issues: true,
       agents: true,
       heartbeatRuns: false,
       approvals: false,

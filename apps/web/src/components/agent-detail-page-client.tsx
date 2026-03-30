@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import type { Route } from "next";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { ColumnDef } from "@tanstack/react-table";
+import type { ColumnDef, Row } from "@tanstack/react-table";
 import type { ExecutionOutcome } from "bopodev-contracts";
 import { AppShell } from "@/components/app-shell";
 import { AgentAvatar } from "@/components/agent-avatar";
@@ -16,10 +16,12 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ApiError, apiGet, apiPost, apiPut } from "@/lib/api";
 import { agentAvatarSeed } from "@/lib/agent-avatar";
 import { parseRuntimeFromAgentColumns } from "@/lib/agent-detail-logic";
@@ -35,8 +37,9 @@ import { showThinkingEffortControlForProvider } from "@/lib/provider-runtime-ui"
 import { formatSmartDateTime } from "@/lib/smart-date";
 import { getStatusBadgeClassName } from "@/lib/status-presentation";
 import { isSkippedRun } from "@/lib/workspace-logic";
+import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { MoreHorizontal } from "lucide-react";
-import { MetricCard, SectionHeading } from "./workspace/shared";
+import { SectionHeading } from "./workspace/shared";
 
 interface AgentRow {
   id: string;
@@ -242,6 +245,20 @@ function formatRunMessage(message: string | null | undefined) {
   return candidate.replace(/\s+/g, " ").trim();
 }
 
+function formatAgentRunTypeLabel(runType: HeartbeatRunRow["runType"]) {
+  if (runType === "no_assigned_work") {
+    return "No assigned work";
+  }
+  return runType.replaceAll("_", " ");
+}
+
+function columnEqualsFilter<TData>(row: Row<TData>, columnId: string, filterValue: unknown) {
+  if (filterValue == null || filterValue === "") {
+    return true;
+  }
+  return row.getValue(columnId) === filterValue;
+}
+
 function formatHeartbeatInterval(seconds: number) {
   if (seconds <= 60) {
     return "Every minute";
@@ -350,6 +367,17 @@ function parseStateBlob(raw: string | undefined) {
     return { runtime: null, promptTemplate: null };
   }
 }
+
+const AGENT_RUNS_AREA_CHART_CONFIG = {
+  completed: { label: "Completed", color: "var(--chart-1)" },
+  failed: { label: "Failed", color: "var(--chart-5)" }
+} satisfies ChartConfig;
+
+const AGENT_ISSUES_AREA_CHART_CONFIG = {
+  done: { label: "Done", color: "var(--chart-1)" },
+  inReview: { label: "In review", color: "var(--chart-2)" },
+  active: { label: "Open / active", color: "var(--chart-3)" }
+} satisfies ChartConfig;
 
 function ConfigRow({ label, value, detail }: { label: string; value: string; detail?: string }) {
   return (
@@ -482,13 +510,6 @@ export function AgentDetailPageClient({
       return provider ? getDefaultModelForProvider(provider) ?? "" : "";
     })();
   const configuredModelLabel = configuredModelId ? getModelLabel(agent.providerType, configuredModelId) : "Not configured";
-  const completedIssues = useMemo(
-    () =>
-      issues
-        .filter((issue) => issue.assigneeAgentId === agent.id && issue.status === "done")
-        .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()),
-    [agent.id, issues]
-  );
   const recentDeliveryIssues = useMemo(
     () =>
       issues
@@ -496,25 +517,120 @@ export function AgentDetailPageClient({
         .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()),
     [agent.id, issues]
   );
-  const openAssignedIssueCount = useMemo(
-    () =>
-      issues.filter(
-        (issue) => issue.assigneeAgentId === agent.id && issue.status !== "done" && issue.status !== "canceled"
-      ).length,
-    [agent.id, issues]
-  );
-  const blockedIssueCount = useMemo(
-    () => issues.filter((issue) => issue.assigneeAgentId === agent.id && issue.status === "blocked").length,
-    [agent.id, issues]
-  );
-  const runHealth = useMemo(() => {
-    const completed = agentRuns.filter((run) => run.status === "completed").length;
-    const failed = agentRuns.filter((run) => run.status === "failed").length;
-    const relevant = completed + failed;
-    const successRate = relevant > 0 ? (completed / relevant) * 100 : 0;
-    return { completed, failed, successRate };
+  const chartGradientId = useId().replace(/:/g, "");
+
+  const agentRunsDailyChartData = useMemo(() => {
+    const now = new Date();
+    const days = 14;
+    const byDay = new Map<string, { completed: number; failed: number }>();
+    for (let i = days - 1; i >= 0; i -= 1) {
+      const day = new Date(now);
+      day.setHours(0, 0, 0, 0);
+      day.setDate(day.getDate() - i);
+      const key = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
+      byDay.set(key, { completed: 0, failed: 0 });
+    }
+    for (const run of agentRuns) {
+      const day = new Date(run.startedAt);
+      day.setHours(0, 0, 0, 0);
+      const key = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
+      const current = byDay.get(key);
+      if (!current) {
+        continue;
+      }
+      if (run.status === "completed") {
+        current.completed += 1;
+      } else if (run.status === "failed") {
+        current.failed += 1;
+      }
+    }
+    return Array.from(byDay.entries()).map(([date, values]) => ({
+      label: date.slice(5),
+      completed: values.completed,
+      failed: values.failed
+    }));
   }, [agentRuns]);
-  const avgCostPerCompletedIssue = completedIssues.length > 0 ? costSummary.usd / completedIssues.length : 0;
+
+  const agentIssueActivityByDay = useMemo(() => {
+    const now = new Date();
+    const days = 14;
+    const byDay = new Map<string, { done: number; inReview: number; active: number }>();
+    for (let i = days - 1; i >= 0; i -= 1) {
+      const day = new Date(now);
+      day.setHours(0, 0, 0, 0);
+      day.setDate(day.getDate() - i);
+      const key = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
+      byDay.set(key, { done: 0, inReview: 0, active: 0 });
+    }
+    for (const issue of issues) {
+      if (issue.assigneeAgentId !== agent.id || issue.status === "canceled") {
+        continue;
+      }
+      const day = new Date(issue.updatedAt);
+      day.setHours(0, 0, 0, 0);
+      const key = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
+      const current = byDay.get(key);
+      if (!current) {
+        continue;
+      }
+      if (issue.status === "done") {
+        current.done += 1;
+      } else if (issue.status === "in_review") {
+        current.inReview += 1;
+      } else {
+        current.active += 1;
+      }
+    }
+    return Array.from(byDay.entries()).map(([date, values]) => ({
+      label: date.slice(5),
+      done: values.done,
+      inReview: values.inReview,
+      active: values.active
+    }));
+  }, [agent.id, issues]);
+
+  const hasAgentRunsTrend = useMemo(
+    () => agentRunsDailyChartData.some((row) => row.completed > 0 || row.failed > 0),
+    [agentRunsDailyChartData]
+  );
+  const hasAgentIssuesTrend = useMemo(
+    () => agentIssueActivityByDay.some((row) => row.done > 0 || row.inReview > 0 || row.active > 0),
+    [agentIssueActivityByDay]
+  );
+
+  const agentIssuePriorityOptions = useMemo(
+    () => [...new Set(recentDeliveryIssues.map((i) => i.priority))].sort((a, b) => a.localeCompare(b)),
+    [recentDeliveryIssues]
+  );
+
+  const agentLoopStatusOptions = useMemo(
+    () => [...new Set(agentWorkLoops.map((l) => l.status))].sort((a, b) => a.localeCompare(b)),
+    [agentWorkLoops]
+  );
+
+  const agentLoopProjectFilterOptions = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const loop of agentWorkLoops) {
+      const name = projects.find((p) => p.id === loop.projectId)?.name ?? loop.projectId;
+      seen.set(loop.projectId, name);
+    }
+    return [...seen.entries()]
+      .map(([projectId, name]) => ({ projectId, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [agentWorkLoops, projects]);
+
+  const agentRunStatusFilterOptions = useMemo(() => {
+    const preferredOrder = ["started", "completed", "failed", "skipped"];
+    const observed = [...new Set(agentRuns.map((run) => run.status))];
+    const additional = observed.filter((status) => !preferredOrder.includes(status)).sort((a, b) => a.localeCompare(b));
+    return [...preferredOrder.filter((s) => observed.includes(s)), ...additional];
+  }, [agentRuns]);
+
+  const agentRunTypeFilterOptions = useMemo(
+    () => [...new Set(agentRuns.map((run) => run.runType))].sort((a, b) => a.localeCompare(b)),
+    [agentRuns]
+  );
+
   const [selectedProviderType, setSelectedProviderType] = useState(agent.providerType);
   const [selectedModelId, setSelectedModelId] = useState(configuredModelId);
   const [sidebarAdapterModels, setSidebarAdapterModels] = useState<SidebarAdapterModelsState>({ status: "idle" });
@@ -554,7 +670,18 @@ export function AgentDetailPageClient({
         )
       },
       {
+        accessorKey: "status",
+        filterFn: columnEqualsFilter,
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Status" />,
+        cell: ({ row }) => (
+          <Badge variant="outline" className={getStatusBadgeClassName(row.original.status)}>
+            {row.original.status.replaceAll("_", " ")}
+          </Badge>
+        )
+      },
+      {
         accessorKey: "priority",
+        filterFn: columnEqualsFilter,
         header: ({ column }) => <DataTableColumnHeader column={column} title="Priority" />,
         cell: ({ row }) => <Badge variant="outline">{row.original.priority}</Badge>
       },
@@ -590,6 +717,7 @@ export function AgentDetailPageClient({
       },
       {
         accessorKey: "projectId",
+        filterFn: columnEqualsFilter,
         header: ({ column }) => <DataTableColumnHeader column={column} title="Project" />,
         cell: ({ row }) => {
           const name = projects.find((p) => p.id === row.original.projectId)?.name;
@@ -598,6 +726,7 @@ export function AgentDetailPageClient({
       },
       {
         accessorKey: "status",
+        filterFn: columnEqualsFilter,
         header: ({ column }) => <DataTableColumnHeader column={column} title="Status" />,
         cell: ({ row }) => (
           <Badge variant="outline" className={getStatusBadgeClassName(row.original.status)}>
@@ -640,6 +769,13 @@ export function AgentDetailPageClient({
   const agentRunColumns = useMemo<ColumnDef<HeartbeatRunRow>[]>(
     () => [
       {
+        id: "searchAll",
+        accessorFn: (row) => `${row.id} ${formatRunMessage(row.message)}`,
+        header: () => null,
+        cell: () => null,
+        enableSorting: false
+      },
+      {
         accessorKey: "id",
         header: ({ column }) => <DataTableColumnHeader column={column} title="Run" />,
         cell: ({ row }) => (
@@ -650,6 +786,7 @@ export function AgentDetailPageClient({
       },
       {
         accessorKey: "status",
+        filterFn: columnEqualsFilter,
         header: ({ column }) => <DataTableColumnHeader column={column} title="Status" />,
         cell: ({ row }) => (
           <Badge variant="outline" className={getStatusBadgeClassName(row.original.status)}>
@@ -689,6 +826,13 @@ export function AgentDetailPageClient({
             </div>
           );
         }
+      },
+      {
+        accessorKey: "runType",
+        filterFn: columnEqualsFilter,
+        header: () => null,
+        cell: () => null,
+        enableSorting: false
       },
       {
         id: "actions",
@@ -1051,61 +1195,299 @@ export function AgentDetailPageClient({
         </Alert>
       ) : null}
 
-      <div className="ui-cost-section">
-        <div className="ui-cost-metrics-grid">
-          <MetricCard label="Open issues" value={openAssignedIssueCount.toLocaleString()} />
-          <MetricCard label="Blocked issues" value={blockedIssueCount.toLocaleString()} />
-          <MetricCard label="Run success rate" value={`${runHealth.successRate.toFixed(1)}%`} />
-          <MetricCard label="Avg cost/completed issue" value={`$${avgCostPerCompletedIssue.toFixed(2)}`} />
-        </div>
-      </div>
+      <Tabs defaultValue="dashboard" className="ui-tabs-gap-none">
+        <TabsList>
+          <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
+          <TabsTrigger value="issues">Issues ({recentDeliveryIssues.length})</TabsTrigger>
+          <TabsTrigger value="loops">Loops ({agentWorkLoops.length})</TabsTrigger>
+          <TabsTrigger value="runs">Runs ({agentRuns.length})</TabsTrigger>
+        </TabsList>
 
-      <SectionHeading title="Prompt" description="System-style instructions injected when this agent starts or resumes." />
+        <TabsContent value="dashboard" className="ui-issue-tabs-content">
+          <div className="ui-agent-dashboard-charts-grid">
+            <Card>
+              <CardHeader>
+                <CardTitle>Run outcomes</CardTitle>
+                <CardDescription>
+                  Completed vs failed heartbeat runs by start day (last 14 days; skipped runs excluded).
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {hasAgentRunsTrend ? (
+                  <ChartContainer config={AGENT_RUNS_AREA_CHART_CONFIG} className="ui-agent-dashboard-chart">
+                    <AreaChart accessibilityLayer data={agentRunsDailyChartData} margin={{ top: 8, left: -8, right: -8 }}>
+                      <defs>
+                        <linearGradient id={`${chartGradientId}-runsCompleted`} x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="10%" stopColor="var(--color-completed)" stopOpacity={0.45} />
+                          <stop offset="90%" stopColor="var(--color-completed)" stopOpacity={0.06} />
+                        </linearGradient>
+                        <linearGradient id={`${chartGradientId}-runsFailed`} x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="10%" stopColor="var(--color-failed)" stopOpacity={0.4} />
+                          <stop offset="90%" stopColor="var(--color-failed)" stopOpacity={0.04} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid vertical={false} strokeDasharray="4 4" strokeOpacity={0.3} />
+                      <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={10} minTickGap={22} />
+                      <YAxis hide />
+                      <ChartTooltip content={<ChartTooltipContent indicator="line" />} cursor={false} />
+                      <Area
+                        type="monotone"
+                        dataKey="completed"
+                        stroke="var(--color-completed)"
+                        fill={`url(#${chartGradientId}-runsCompleted)`}
+                        fillOpacity={1}
+                        strokeWidth={2}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="failed"
+                        stroke="var(--color-failed)"
+                        fill={`url(#${chartGradientId}-runsFailed)`}
+                        fillOpacity={1}
+                        strokeWidth={2}
+                      />
+                    </AreaChart>
+                  </ChartContainer>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No completed or failed runs in the last 14 days.</p>
+                )}
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle>Assigned issue activity</CardTitle>
+                <CardDescription>
+                  Issues counted on the day they were last updated, stacked by status (last 14 days).
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {hasAgentIssuesTrend ? (
+                  <ChartContainer config={AGENT_ISSUES_AREA_CHART_CONFIG} className="ui-agent-dashboard-chart">
+                    <AreaChart accessibilityLayer data={agentIssueActivityByDay} margin={{ top: 8, left: -8, right: -8 }}>
+                      <defs>
+                        <linearGradient id={`${chartGradientId}-issDone`} x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="10%" stopColor="var(--color-done)" stopOpacity={0.45} />
+                          <stop offset="90%" stopColor="var(--color-done)" stopOpacity={0.06} />
+                        </linearGradient>
+                        <linearGradient id={`${chartGradientId}-issReview`} x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="10%" stopColor="var(--color-inReview)" stopOpacity={0.4} />
+                          <stop offset="90%" stopColor="var(--color-inReview)" stopOpacity={0.06} />
+                        </linearGradient>
+                        <linearGradient id={`${chartGradientId}-issActive`} x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="10%" stopColor="var(--color-active)" stopOpacity={0.38} />
+                          <stop offset="90%" stopColor="var(--color-active)" stopOpacity={0.05} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid vertical={false} strokeDasharray="4 4" strokeOpacity={0.3} />
+                      <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={10} minTickGap={22} />
+                      <YAxis hide />
+                      <ChartTooltip content={<ChartTooltipContent indicator="line" />} cursor={false} />
+                      <Area
+                        type="monotone"
+                        dataKey="done"
+                        stackId="issues"
+                        stroke="var(--color-done)"
+                        fill={`url(#${chartGradientId}-issDone)`}
+                        fillOpacity={1}
+                        strokeWidth={2}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="inReview"
+                        stackId="issues"
+                        stroke="var(--color-inReview)"
+                        fill={`url(#${chartGradientId}-issReview)`}
+                        fillOpacity={1}
+                        strokeWidth={2}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="active"
+                        stackId="issues"
+                        stroke="var(--color-active)"
+                        fill={`url(#${chartGradientId}-issActive)`}
+                        fillOpacity={1}
+                        strokeWidth={2}
+                      />
+                    </AreaChart>
+                  </ChartContainer>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No assigned issue updates in the last 14 days.</p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
 
-      <Card>
-        <CardContent className="ui-detail-sidebar-section">
-          {agent.bootstrapPrompt?.trim() ? (
-            <CollapsibleMarkdown
-              content={agent.bootstrapPrompt}
-              className="ui-markdown"
-              maxHeightPx={COLLAPSIBLE_MARKDOWN_BODY_MAX_HEIGHT_PX}
+          <SectionHeading
+            title="Bootstrap prompt"
+            description="System-style instructions injected when this agent starts or resumes."
+          />
+          <Card>
+            <CardContent className="ui-detail-sidebar-section">
+              {agent.bootstrapPrompt?.trim() ? (
+                <CollapsibleMarkdown
+                  content={agent.bootstrapPrompt}
+                  className="ui-markdown"
+                  maxHeightPx={COLLAPSIBLE_MARKDOWN_BODY_MAX_HEIGHT_PX}
+                />
+              ) : (
+                <p className="text-sm text-muted-foreground">No bootstrap prompt configured.</p>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="issues" className="ui-issue-tabs-content">
+          <SectionHeading title="Issues" description="Latest done and in-review issues assigned to this agent." />
+          <DataTable
+            columns={completedIssueColumns}
+            data={recentDeliveryIssues}
+            emptyMessage="No done or in-review issues match the current filters."
+            filterColumn="title"
+            filterPlaceholder="Search titles…"
+            defaultPageSize={10}
+            renderToolbarActions={(table) => (
+              <div className="ui-toolbar-filters">
+                <Select
+                  value={(table.getColumn("status")?.getFilterValue() as string | undefined) ?? "all"}
+                  onValueChange={(value) => table.getColumn("status")?.setFilterValue(value === "all" ? undefined : value)}
+                >
+                  <SelectTrigger className="ui-toolbar-filter-select">
+                    <SelectValue placeholder="Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All statuses</SelectItem>
+                    <SelectItem value="done">Done</SelectItem>
+                    <SelectItem value="in_review">In review</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={(table.getColumn("priority")?.getFilterValue() as string | undefined) ?? "all"}
+                  onValueChange={(value) => table.getColumn("priority")?.setFilterValue(value === "all" ? undefined : value)}
+                >
+                  <SelectTrigger className="ui-toolbar-filter-select">
+                    <SelectValue placeholder="Priority" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All priorities</SelectItem>
+                    {agentIssuePriorityOptions.map((priority) => (
+                      <SelectItem key={priority} value={priority}>
+                        {priority}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          />
+        </TabsContent>
+
+        <TabsContent value="loops" className="ui-issue-tabs-content">
+          <SectionHeading
+            title="Loops"
+            description="Scheduled loops where this agent is the assignee (opens issues on each run)."
+          />
+          {loopsLoading ? <p className="text-sm text-muted-foreground">Loading work loops…</p> : null}
+          {loopsError ? <p className="text-sm text-destructive">{loopsError}</p> : null}
+          {!loopsLoading && !loopsError ? (
+            <DataTable
+              columns={agentLoopColumns}
+              data={agentWorkLoops}
+              emptyMessage="No loops match the current filters."
+              filterColumn="title"
+              filterPlaceholder="Search loop titles…"
+              defaultPageSize={10}
+              renderToolbarActions={(table) => (
+                <div className="ui-toolbar-filters">
+                  <Select
+                    value={(table.getColumn("projectId")?.getFilterValue() as string | undefined) ?? "all"}
+                    onValueChange={(value) =>
+                      table.getColumn("projectId")?.setFilterValue(value === "all" ? undefined : value)
+                    }
+                  >
+                    <SelectTrigger className="ui-toolbar-filter-select">
+                      <SelectValue placeholder="Project" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All projects</SelectItem>
+                      {agentLoopProjectFilterOptions.map(({ projectId, name }) => (
+                        <SelectItem key={projectId} value={projectId}>
+                          {name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select
+                    value={(table.getColumn("status")?.getFilterValue() as string | undefined) ?? "all"}
+                    onValueChange={(value) => table.getColumn("status")?.setFilterValue(value === "all" ? undefined : value)}
+                  >
+                    <SelectTrigger className="ui-toolbar-filter-select">
+                      <SelectValue placeholder="Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All statuses</SelectItem>
+                      {agentLoopStatusOptions.map((status) => (
+                        <SelectItem key={status} value={status}>
+                          {status}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             />
-          ) : (
-            <p className="text-sm text-muted-foreground">No bootstrap prompt configured.</p>
-          )}
-        </CardContent>
-      </Card>
+          ) : null}
+        </TabsContent>
 
-      <SectionHeading title="Issues" description="Latest done and in-review issues assigned to this agent." />
-      <DataTable
-        columns={completedIssueColumns}
-        data={recentDeliveryIssues}
-        emptyMessage="No done or in-review issues for this agent yet."
-        showViewOptions={false}
-      />
-
-      <SectionHeading
-        title="Loops"
-        description="Scheduled loops where this agent is the assignee (opens issues on each run)."
-      />
-      {loopsLoading ? <p className="text-sm text-muted-foreground">Loading work loops…</p> : null}
-      {loopsError ? <p className="text-sm text-destructive">{loopsError}</p> : null}
-      {!loopsLoading && !loopsError ? (
-        <DataTable
-          columns={agentLoopColumns}
-          data={agentWorkLoops}
-          emptyMessage="No loops assign this agent yet."
-          showViewOptions={false}
-        />
-      ) : null}
-
-      <SectionHeading title="Runs" description="Heartbeat runs scoped to this agent." />
-      <DataTable
-        columns={agentRunColumns}
-        data={agentRuns}
-        emptyMessage="No runs have executed for this agent yet."
-        showViewOptions={false}
-      />
+        <TabsContent value="runs" className="ui-issue-tabs-content">
+          <SectionHeading title="Runs" description="Heartbeat runs scoped to this agent." />
+          <DataTable
+            columns={agentRunColumns}
+            data={agentRuns}
+            emptyMessage="No runs match the current filters."
+            filterColumn="searchAll"
+            filterPlaceholder="Search id or message…"
+            defaultPageSize={10}
+            initialColumnVisibility={{ searchAll: false, runType: false }}
+            renderToolbarActions={(table) => (
+              <div className="ui-toolbar-filters">
+                <Select
+                  value={(table.getColumn("status")?.getFilterValue() as string | undefined) ?? "all"}
+                  onValueChange={(value) => table.getColumn("status")?.setFilterValue(value === "all" ? undefined : value)}
+                >
+                  <SelectTrigger className="ui-toolbar-filter-select">
+                    <SelectValue placeholder="Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All statuses</SelectItem>
+                    {agentRunStatusFilterOptions.map((status) => (
+                      <SelectItem key={status} value={status}>
+                        {formatRunStatusLabel(status)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={(table.getColumn("runType")?.getFilterValue() as string | undefined) ?? "all"}
+                  onValueChange={(value) => table.getColumn("runType")?.setFilterValue(value === "all" ? undefined : value)}
+                >
+                  <SelectTrigger className="ui-toolbar-filter-select">
+                    <SelectValue placeholder="Run type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All run types</SelectItem>
+                    {agentRunTypeFilterOptions.map((runType) => (
+                      <SelectItem key={runType} value={runType}>
+                        {formatAgentRunTypeLabel(runType)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 
