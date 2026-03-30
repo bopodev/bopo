@@ -1253,7 +1253,7 @@ export function AgentDetailPageClient({
           </div>
 
           <SectionHeading
-            title="Bootstrap prompt"
+            title="Prompt"
             description="System-style instructions injected when this agent starts or resumes."
           />
           <Card>
