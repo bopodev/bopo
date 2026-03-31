@@ -311,6 +311,8 @@ async function applyApprovalAction(db: BopoDb, companyId: string, action: string
       heartbeatCron: parsed.data.heartbeatCron,
       monthlyBudgetUsd: parsed.data.monthlyBudgetUsd.toFixed(4),
       canHireAgents: parsed.data.canHireAgents,
+      canAssignAgents: parsed.data.canAssignAgents,
+      canCreateIssues: parsed.data.canCreateIssues,
       ...runtimeConfigToDb(runtimeConfig),
       initialState: runtimeConfigToStateBlobPatch(runtimeConfig)
     });

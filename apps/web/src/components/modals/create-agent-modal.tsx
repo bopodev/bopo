@@ -173,6 +173,8 @@ export function CreateAgentModal({
     heartbeatCron?: string;
     monthlyBudgetUsd?: number;
     canHireAgents?: boolean;
+    canAssignAgents?: boolean;
+    canCreateIssues?: boolean;
     runtimeCommand?: string | null;
     runtimeArgsJson?: string | null;
     runtimeCwd?: string | null;
@@ -223,6 +225,8 @@ export function CreateAgentModal({
     String(heartbeatCronToIntervalSec(agent?.heartbeatCron, 300))
   );
   const [canHireAgents, setCanHireAgents] = useState(agent?.canHireAgents ?? false);
+  const [canAssignAgents, setCanAssignAgents] = useState(agent?.canAssignAgents ?? true);
+  const [canCreateIssues, setCanCreateIssues] = useState(agent?.canCreateIssues ?? true);
   const [runtimeCommand, setRuntimeCommand] = useState("");
   const [runtimeArgs, setRuntimeArgs] = useState("");
   const [runtimeCwd, setRuntimeCwd] = useState("");
@@ -499,6 +503,8 @@ export function CreateAgentModal({
       setHeartbeatIntervalSec(String(heartbeatCronToIntervalSec(agent.heartbeatCron, 300)));
       setBudget(agent.monthlyBudgetUsd?.toString() ?? "30");
       setCanHireAgents(agent.canHireAgents ?? false);
+      setCanAssignAgents(agent.canAssignAgents ?? true);
+      setCanCreateIssues(agent.canCreateIssues ?? true);
       setRuntimeCommand(agent.runtimeCommand ?? runtime.command);
       setRuntimeArgs(runtimeArgs);
       setRuntimeCwd(agent.runtimeCwd ?? runtime.cwd);
@@ -547,6 +553,8 @@ export function CreateAgentModal({
     setHeartbeatIntervalSec(effectiveDefaults.heartbeatIntervalSec);
     setBudget(effectiveDefaults.monthlyBudgetUsd);
     setCanHireAgents(false);
+    setCanAssignAgents(true);
+    setCanCreateIssues(true);
     setRuntimeCommand(effectiveDefaults.runtimeCommand);
     setRuntimeArgs(effectiveDefaults.runtimeArgs);
     const initialRuntimeCwd = effectiveDefaults.runtimeCwd || suggestedRuntimeCwd || "";
@@ -888,6 +896,8 @@ export function CreateAgentModal({
           heartbeatCron: heartbeatIntervalSecToCron(heartbeatIntervalSeconds),
           monthlyBudgetUsd: Number(budget),
           canHireAgents,
+          canAssignAgents,
+          canCreateIssues,
           runtimeConfig
         });
       } else {
@@ -902,6 +912,8 @@ export function CreateAgentModal({
           heartbeatCron: heartbeatIntervalSecToCron(heartbeatIntervalSeconds),
           monthlyBudgetUsd: Number(budget),
           canHireAgents,
+          canAssignAgents,
+          canCreateIssues,
           requestApproval: true,
           runtimeConfig
         });
@@ -1354,6 +1366,34 @@ export function CreateAgentModal({
                   />
                   <FieldContent>
                     <FieldLabel htmlFor="agent-can-hire">Can create new agents</FieldLabel>
+                  </FieldContent>
+                </Field>
+                <Field orientation="horizontal">
+                  <Checkbox
+                    id="agent-can-assign"
+                    checked={canAssignAgents}
+                    onCheckedChange={(checked) => setCanAssignAgents(Boolean(checked))}
+                  />
+                  <FieldContent>
+                    <FieldLabelWithHelp
+                      htmlFor="agent-can-assign"
+                      helpText="Delegate or reassign issues to other agents (and unassign). Assigning to self is always allowed.">
+                      Can assign tasks to other agents
+                    </FieldLabelWithHelp>
+                  </FieldContent>
+                </Field>
+                <Field orientation="horizontal">
+                  <Checkbox
+                    id="agent-can-create-issues"
+                    checked={canCreateIssues}
+                    onCheckedChange={(checked) => setCanCreateIssues(Boolean(checked))}
+                  />
+                  <FieldContent>
+                    <FieldLabelWithHelp
+                      htmlFor="agent-can-create-issues"
+                      helpText="Create top-level issues and sub-issues via the control plane API.">
+                      Can create issues
+                    </FieldLabelWithHelp>
                   </FieldContent>
                 </Field>
               </FieldGroup>

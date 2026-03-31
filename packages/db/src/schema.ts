@@ -86,6 +86,8 @@ export const agents = pgTable("agents", {
     .default("0"),
   tokenUsage: integer("token_usage").notNull().default(0),
   canHireAgents: boolean("can_hire_agents").notNull().default(false),
+  canAssignAgents: boolean("can_assign_agents").notNull().default(true),
+  canCreateIssues: boolean("can_create_issues").notNull().default(true),
   avatarSeed: text("avatar_seed").notNull().default(""),
   runtimeCommand: text("runtime_command"),
   runtimeArgsJson: text("runtime_args_json").notNull().default("[]"),

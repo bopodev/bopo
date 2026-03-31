@@ -104,7 +104,9 @@ function sanitizeAgentRow(row: Record<string, unknown>) {
     managerAgentId: row.managerAgentId ?? null,
     providerType: row.providerType,
     heartbeatCron: row.heartbeatCron,
-    canHireAgents: row.canHireAgents ?? null
+    canHireAgents: row.canHireAgents ?? null,
+    canAssignAgents: row.canAssignAgents ?? null,
+    canCreateIssues: row.canCreateIssues ?? null
   };
 }
 

@@ -108,6 +108,8 @@ const UPDATE_AGENT_ALLOWED_KEYS = new Set([
   "heartbeatCron",
   "monthlyBudgetUsd",
   "canHireAgents",
+  "canAssignAgents",
+  "canCreateIssues",
   "runtimeConfig",
   "runtimeCommand",
   "runtimeArgs",
@@ -485,6 +487,8 @@ export function createAgentsRouter(ctx: AppContext) {
       heartbeatCron: parsed.data.heartbeatCron,
       monthlyBudgetUsd: parsed.data.monthlyBudgetUsd.toFixed(4),
       canHireAgents: parsed.data.canHireAgents,
+      canAssignAgents: parsed.data.canAssignAgents,
+      canCreateIssues: parsed.data.canCreateIssues,
       ...runtimeConfigToDb(runtimeConfig),
       initialState: runtimeConfigToStateBlobPatch(runtimeConfig)
     });
@@ -536,6 +540,12 @@ export function createAgentsRouter(ctx: AppContext) {
       const forbiddenFieldUpdates: string[] = [];
       if (parsed.data.canHireAgents !== undefined) {
         forbiddenFieldUpdates.push("canHireAgents");
+      }
+      if (parsed.data.canAssignAgents !== undefined) {
+        forbiddenFieldUpdates.push("canAssignAgents");
+      }
+      if (parsed.data.canCreateIssues !== undefined) {
+        forbiddenFieldUpdates.push("canCreateIssues");
       }
       if (parsed.data.status !== undefined) {
         forbiddenFieldUpdates.push("status");
@@ -639,6 +649,8 @@ export function createAgentsRouter(ctx: AppContext) {
         monthlyBudgetUsd:
           typeof parsed.data.monthlyBudgetUsd === "number" ? parsed.data.monthlyBudgetUsd.toFixed(4) : undefined,
         canHireAgents: parsed.data.canHireAgents,
+        canAssignAgents: parsed.data.canAssignAgents,
+        canCreateIssues: parsed.data.canCreateIssues,
         ...runtimeConfigToDb(nextRuntime),
         stateBlob: runtimeConfigToStateBlobPatch(nextRuntime)
       });

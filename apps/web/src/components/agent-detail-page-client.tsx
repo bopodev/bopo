@@ -54,6 +54,8 @@ interface AgentRow {
   monthlyBudgetUsd?: number;
   usedBudgetUsd?: number;
   canHireAgents?: boolean;
+  canAssignAgents?: boolean;
+  canCreateIssues?: boolean;
   runtimeCommand?: string | null;
   runtimeArgsJson?: string | null;
   runtimeCwd?: string | null;
@@ -1480,6 +1482,8 @@ export function AgentDetailPageClient({
           heartbeatCron: agent.heartbeatCron,
           monthlyBudgetUsd: agent.monthlyBudgetUsd,
           canHireAgents: agent.canHireAgents,
+          canAssignAgents: agent.canAssignAgents,
+          canCreateIssues: agent.canCreateIssues,
           runtimeCommand: agent.runtimeCommand,
           runtimeArgsJson: agent.runtimeArgsJson,
           runtimeCwd: agent.runtimeCwd,

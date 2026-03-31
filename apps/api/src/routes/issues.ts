@@ -16,6 +16,7 @@ import {
   deleteIssue,
   desc,
   eq,
+  getCompanyAgent,
   getIssue,
   heartbeatRuns,
   getIssueAttachment,
@@ -40,6 +41,11 @@ import {
   type CommentRecipientInput,
   type PersistedCommentRecipient
 } from "../lib/comment-recipients";
+import {
+  agentIssueCreateAssigneeForbiddenMessage,
+  agentIssueCreateForbiddenMessage,
+  agentIssuePutAssigneeChangeForbiddenMessage
+} from "../lib/agent-issue-permissions";
 import { isInsidePath, normalizeCompanyWorkspacePath, resolveProjectWorkspacePath } from "../lib/instance-paths";
 import { requireCompanyScope } from "../middleware/company-scope";
 import { enforcePermission } from "../middleware/request-actor";
@@ -169,6 +175,28 @@ export function createIssuesRouter(ctx: AppContext) {
     const parsed = createIssueSchema.safeParse(req.body);
     if (!parsed.success) {
       return sendError(res, parsed.error.message, 422);
+    }
+    if (req.actor?.type === "agent") {
+      const agentRow = await getCompanyAgent(ctx.db, req.companyId!, req.actor.id);
+      if (!agentRow) {
+        return sendError(res, "Agent not found.", 403);
+      }
+      const orchestration = {
+        canAssignAgents: agentRow.canAssignAgents ?? true,
+        canCreateIssues: agentRow.canCreateIssues ?? true
+      };
+      const createDeny = agentIssueCreateForbiddenMessage(orchestration);
+      if (createDeny) {
+        return sendError(res, createDeny, 403);
+      }
+      const assignDeny = agentIssueCreateAssigneeForbiddenMessage(
+        orchestration,
+        req.actor.id,
+        parsed.data.assigneeAgentId ?? null
+      );
+      if (assignDeny) {
+        return sendError(res, assignDeny, 403);
+      }
     }
     if (parsed.data.assigneeAgentId) {
       const assignmentValidation = await validateIssueAssignmentScope(
@@ -537,6 +565,26 @@ export function createIssuesRouter(ctx: AppContext) {
         .limit(1);
       if (!existingIssue) {
         return sendError(res, "Issue not found.", 404);
+      }
+      if (req.actor?.type === "agent" && parsed.data.assigneeAgentId !== undefined) {
+        const agentRow = await getCompanyAgent(ctx.db, req.companyId!, req.actor.id);
+        if (!agentRow) {
+          return sendError(res, "Agent not found.", 403);
+        }
+        const orchestration = {
+          canAssignAgents: agentRow.canAssignAgents ?? true,
+          canCreateIssues: agentRow.canCreateIssues ?? true
+        };
+        const prevAssignee = existingIssue.assigneeAgentId;
+        const putDeny = agentIssuePutAssigneeChangeForbiddenMessage(
+          orchestration,
+          req.actor.id,
+          prevAssignee,
+          parsed.data.assigneeAgentId!
+        );
+        if (putDeny) {
+          return sendError(res, putDeny, 403);
+        }
       }
       const effectiveProjectId = parsed.data.projectId ?? existingIssue.projectId;
       const effectiveAssigneeAgentId =

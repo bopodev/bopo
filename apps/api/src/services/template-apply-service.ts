@@ -69,6 +69,8 @@ export async function applyTemplateManifest(
       heartbeatCron: agent.heartbeatCron,
       monthlyBudgetUsd: agent.monthlyBudgetUsd.toFixed(4),
       canHireAgents: agent.canHireAgents,
+      canAssignAgents: agent.canAssignAgents,
+      canCreateIssues: agent.canCreateIssues,
       runtimeCommand: agent.runtimeConfig?.runtimeCommand,
       runtimeArgsJson,
       runtimeCwd: agent.runtimeConfig?.runtimeCwd,

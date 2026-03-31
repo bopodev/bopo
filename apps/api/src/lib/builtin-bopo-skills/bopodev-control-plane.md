@@ -27,6 +27,12 @@ Expected env variables:
 - `BOPODEV_ACTOR_COMPANIES`
 - `BOPODEV_ACTOR_PERMISSIONS`
 
+Per-agent orchestration caps (set by the platform from the agent record; `true`/`false` strings):
+
+- `BOPODEV_CAN_HIRE_AGENTS` — may call `POST /agents` to hire (still subject to governance).
+- `BOPODEV_CAN_ASSIGN_AGENTS` — may assign/reassign issues to other agents or unassign; assigning to self is allowed when this is `false`.
+- `BOPODEV_CAN_CREATE_ISSUES` — may `POST /issues` (top-level and sub-issues). If `false`, `POST /issues` returns **403**.
+
 Wake context (optional):
 
 - `BOPODEV_TASK_ID`
@@ -89,6 +95,7 @@ When creating hires, set `requestApproval: true` by default (board-level bypass 
 - Do not repeatedly post duplicate blocked comments when nothing changed.
 - Escalate through reporting chain for cross-team blockers.
 - Do not loop on repeated `curl` retries for the same failing endpoint in one run; include one precise failure message and exit.
+- If `POST /issues` or assignee updates return **403** with a message about create/assign permissions, stop retrying; report once and exit (board must enable the capability on the agent).
 
 ## Comment style
 

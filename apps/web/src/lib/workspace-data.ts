@@ -61,6 +61,8 @@ export interface WorkspaceData {
     monthlyBudgetUsd?: number;
     usedBudgetUsd?: number;
     canHireAgents?: boolean;
+    canAssignAgents?: boolean;
+    canCreateIssues?: boolean;
     runtimeCommand?: string | null;
     runtimeArgsJson?: string | null;
     runtimeCwd?: string | null;

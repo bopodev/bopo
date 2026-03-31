@@ -723,6 +723,8 @@ export async function runHeartbeatForAgent(
         agentId: agent.id,
         heartbeatRunId: runId,
         canHireAgents: agent.canHireAgents,
+        canAssignAgents: agent.canAssignAgents ?? true,
+        canCreateIssues: agent.canCreateIssues ?? true,
         wakeContext: options?.wakeContext
       }),
       ...(linkedMaterialized.root ? { BOPODEV_MATERIALIZED_LINKED_SKILLS_ROOT: linkedMaterialized.root } : {})
@@ -4077,6 +4079,8 @@ function buildHeartbeatRuntimeEnv(input: {
   agentId: string;
   heartbeatRunId: string;
   canHireAgents: boolean;
+  canAssignAgents: boolean;
+  canCreateIssues: boolean;
   wakeContext?: HeartbeatWakeContext;
 }) {
   const companyWorkspaceRoot = resolveCompanyWorkspaceRootPath(input.companyId);
@@ -4085,6 +4089,7 @@ function buildHeartbeatRuntimeEnv(input: {
   const apiBaseUrl = resolveControlPlaneApiBaseUrl();
   // agents:write is required for PUT /agents/:self (bootstrapPrompt, runtimeConfig). Route handlers
   // still forbid agents from updating other agents' rows and from POST /agents unless canHireAgents.
+  // Issue create/assignee changes for agent actors are gated by canCreateIssues / canAssignAgents (see issues routes).
   const actorPermissions = ["issues:write", "agents:write"].join(",");
   const actorHeaders = JSON.stringify({
     "x-company-id": input.companyId,
@@ -4115,6 +4120,8 @@ function buildHeartbeatRuntimeEnv(input: {
     BOPODEV_REQUEST_HEADERS_JSON: actorHeaders,
     BOPODEV_REQUEST_APPROVAL_DEFAULT: "true",
     BOPODEV_CAN_HIRE_AGENTS: input.canHireAgents ? "true" : "false",
+    BOPODEV_CAN_ASSIGN_AGENTS: input.canAssignAgents ? "true" : "false",
+    BOPODEV_CAN_CREATE_ISSUES: input.canCreateIssues ? "true" : "false",
     ...(input.wakeContext?.reason ? { BOPODEV_WAKE_REASON: input.wakeContext.reason } : {}),
     ...(input.wakeContext?.commentId ? { BOPODEV_WAKE_COMMENT_ID: input.wakeContext.commentId } : {}),
     ...(input.wakeContext?.issueIds?.length ? { BOPODEV_LINKED_ISSUE_IDS: input.wakeContext.issueIds.join(",") } : {}),

@@ -89,6 +89,8 @@ const builtinTemplateDefinitions: BuiltinTemplateDefinition[] = [
           heartbeatCron: "*/15 * * * *",
           monthlyBudgetUsd: 150,
           canHireAgents: true,
+          canAssignAgents: true,
+          canCreateIssues: true,
           runtimeConfig: {
             bootstrapPrompt: [
               "You are Founder CEO for {{brandName}}.",
@@ -139,6 +141,8 @@ const builtinTemplateDefinitions: BuiltinTemplateDefinition[] = [
           heartbeatCron: "*/15 * * * *",
           monthlyBudgetUsd: 300,
           canHireAgents: false,
+          canAssignAgents: true,
+          canCreateIssues: true,
           runtimeConfig: {
             bootstrapPrompt: [
               "You are Founding Engineer for {{productName}}.",
@@ -176,6 +180,8 @@ const builtinTemplateDefinitions: BuiltinTemplateDefinition[] = [
           heartbeatCron: "*/30 * * * *",
           monthlyBudgetUsd: 200,
           canHireAgents: false,
+          canAssignAgents: true,
+          canCreateIssues: true,
           runtimeConfig: {
             bootstrapPrompt: [
               "You are Growth Operator for {{brandName}}.",
@@ -304,6 +310,8 @@ const builtinTemplateDefinitions: BuiltinTemplateDefinition[] = [
           heartbeatCron: "*/20 * * * *",
           monthlyBudgetUsd: 250,
           canHireAgents: true,
+          canAssignAgents: true,
+          canCreateIssues: true,
           runtimeConfig: {
             bootstrapPrompt: [
               "You are Head of Marketing for {{brandName}}.",
@@ -345,6 +353,8 @@ const builtinTemplateDefinitions: BuiltinTemplateDefinition[] = [
           heartbeatCron: "*/30 * * * *",
           monthlyBudgetUsd: 180,
           canHireAgents: false,
+          canAssignAgents: true,
+          canCreateIssues: true,
           runtimeConfig: {
             bootstrapPrompt: [
               "You are Content Strategist for {{brandName}}.",
@@ -378,6 +388,8 @@ const builtinTemplateDefinitions: BuiltinTemplateDefinition[] = [
           heartbeatCron: "*/30 * * * *",
           monthlyBudgetUsd: 220,
           canHireAgents: false,
+          canAssignAgents: true,
+          canCreateIssues: true,
           runtimeConfig: {
             bootstrapPrompt: [
               "You are Content Writer for {{brandName}}.",
@@ -412,6 +424,8 @@ const builtinTemplateDefinitions: BuiltinTemplateDefinition[] = [
           heartbeatCron: "*/30 * * * *",
           monthlyBudgetUsd: 180,
           canHireAgents: false,
+          canAssignAgents: true,
+          canCreateIssues: true,
           runtimeConfig: {
             bootstrapPrompt: [
               "You are Distribution Manager for {{brandName}}.",

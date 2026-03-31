@@ -1079,6 +1079,8 @@ export async function createAgent(
     heartbeatCron: string;
     monthlyBudgetUsd: string;
     canHireAgents?: boolean;
+    canAssignAgents?: boolean;
+    canCreateIssues?: boolean;
     avatarSeed?: string;
     runtimeCommand?: string | null;
     runtimeArgsJson?: string;
@@ -1111,6 +1113,8 @@ export async function createAgent(
     heartbeatCron: input.heartbeatCron,
     monthlyBudgetUsd: input.monthlyBudgetUsd,
     canHireAgents: input.canHireAgents ?? false,
+    canAssignAgents: input.canAssignAgents ?? true,
+    canCreateIssues: input.canCreateIssues ?? true,
     avatarSeed,
     runtimeCommand: input.runtimeCommand ?? null,
     runtimeArgsJson: input.runtimeArgsJson ?? "[]",
@@ -1130,6 +1134,15 @@ export async function createAgent(
 
 export async function listAgents(db: BopoDb, companyId: string) {
   return db.select().from(agents).where(eq(agents.companyId, companyId)).orderBy(desc(agents.createdAt));
+}
+
+export async function getCompanyAgent(db: BopoDb, companyId: string, agentId: string) {
+  const [row] = await db
+    .select()
+    .from(agents)
+    .where(and(eq(agents.companyId, companyId), eq(agents.id, agentId)))
+    .limit(1);
+  return row ?? null;
 }
 
 export async function updateAgent(
@@ -1158,6 +1171,8 @@ export async function updateAgent(
     heartbeatCron?: string;
     monthlyBudgetUsd?: string;
     canHireAgents?: boolean;
+    canAssignAgents?: boolean;
+    canCreateIssues?: boolean;
     runtimeCommand?: string | null;
     runtimeArgsJson?: string;
     runtimeCwd?: string | null;
@@ -1189,6 +1204,8 @@ export async function updateAgent(
         heartbeatCron: input.heartbeatCron,
         monthlyBudgetUsd: input.monthlyBudgetUsd,
         canHireAgents: input.canHireAgents,
+        canAssignAgents: input.canAssignAgents,
+        canCreateIssues: input.canCreateIssues,
         runtimeCommand: input.runtimeCommand,
         runtimeArgsJson: input.runtimeArgsJson,
         runtimeCwd: input.runtimeCwd,

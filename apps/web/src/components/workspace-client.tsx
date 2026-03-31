@@ -148,6 +148,8 @@ interface AgentRow {
   heartbeatCron?: string;
   monthlyBudgetUsd?: number;
   canHireAgents?: boolean;
+  canAssignAgents?: boolean;
+  canCreateIssues?: boolean;
   runtimeCommand?: string | null;
   runtimeArgsJson?: string | null;
   runtimeCwd?: string | null;

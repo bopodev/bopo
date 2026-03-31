@@ -146,6 +146,8 @@ export async function ensureOnboardingSeed(input: {
           heartbeatCron: "*/5 * * * *",
           monthlyBudgetUsd: "100.0000",
           canHireAgents: true,
+          canAssignAgents: true,
+          canCreateIssues: true,
           ...runtimeConfigToDb(ceoCreateRuntimeConfig),
           initialState: runtimeConfigToStateBlobPatch(ceoCreateRuntimeConfig)
         });

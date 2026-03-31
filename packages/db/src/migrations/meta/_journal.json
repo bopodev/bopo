@@ -64,6 +64,13 @@
       "when": 1743300000000,
       "tag": "0008_goals_parent_goal_fk",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1743400000000,
+      "tag": "0009_agent_issue_permissions",
+      "breakpoints": true
     }
   ]
 }

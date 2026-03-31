@@ -37,7 +37,9 @@ const BopoExportYamlSchema = z.object({
       managerSlug: z.string().nullable().optional(),
       providerType: z.string().min(1),
       heartbeatCron: z.string().min(1),
-      canHireAgents: z.boolean().optional()
+      canHireAgents: z.boolean().optional(),
+      canAssignAgents: z.boolean().optional(),
+      canCreateIssues: z.boolean().optional()
     })
   ),
   routines: z
@@ -197,6 +199,8 @@ export async function importCompanyFromZipBuffer(db: BopoDb, buffer: Buffer): Pr
         heartbeatCron: a.heartbeatCron,
         monthlyBudgetUsd: "100.0000",
         canHireAgents: a.canHireAgents ?? false,
+        canAssignAgents: a.canAssignAgents ?? true,
+        canCreateIssues: a.canCreateIssues ?? true,
         ...runtimeConfigToDb(defaultRt),
         initialState: runtimeConfigToStateBlobPatch(defaultRt)
       });

@@ -201,6 +201,8 @@ export async function buildCompanyExportFileMap(
       providerType: string;
       heartbeatCron: string;
       canHireAgents: boolean;
+      canAssignAgents: boolean;
+      canCreateIssues: boolean;
     }
   > = {};
 
@@ -221,7 +223,9 @@ export async function buildCompanyExportFileMap(
       managerSlug: mgrSlug,
       providerType: a.providerType,
       heartbeatCron: a.heartbeatCron,
-      canHireAgents: Boolean(a.canHireAgents)
+      canHireAgents: Boolean(a.canHireAgents),
+      canAssignAgents: a.canAssignAgents ?? true,
+      canCreateIssues: a.canCreateIssues ?? true
     };
   }
 

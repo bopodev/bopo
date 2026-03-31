@@ -380,6 +380,8 @@ export const TemplateManifestAgentSchema = z.object({
   heartbeatCron: z.string().default("*/5 * * * *"),
   monthlyBudgetUsd: z.number().nonnegative().default(0),
   canHireAgents: z.boolean().default(false),
+  canAssignAgents: z.boolean().default(true),
+  canCreateIssues: z.boolean().default(true),
   managerAgentKey: z.string().optional(),
   runtimeConfig: z.lazy(() => AgentRuntimeConfigSchema.partial()).optional()
 });
@@ -906,6 +908,8 @@ export const AgentCreateRequestSchema = z.object({
   heartbeatCron: z.string().min(1),
   monthlyBudgetUsd: z.number().nonnegative(),
   canHireAgents: z.boolean().default(false),
+  canAssignAgents: z.boolean().default(true),
+  canCreateIssues: z.boolean().default(true),
   sourceIssueId: z.string().min(1).optional(),
   sourceIssueIds: z.array(z.string().min(1)).default([]),
   delegationIntent: z
@@ -939,6 +943,8 @@ export const AgentUpdateRequestSchema = z
     heartbeatCron: z.string().min(1).optional(),
     monthlyBudgetUsd: z.number().nonnegative().optional(),
     canHireAgents: z.boolean().optional(),
+    canAssignAgents: z.boolean().optional(),
+    canCreateIssues: z.boolean().optional(),
     runtimeConfig: AgentRuntimeConfigSchema.partial().optional()
   })
   .refine((payload) => Object.keys(payload).length > 0, "At least one field must be provided.");
@@ -960,6 +966,8 @@ export const AgentSchema = z.object({
   usedBudgetUsd: z.number().nonnegative().default(0),
   tokenUsage: z.number().nonnegative().default(0),
   canHireAgents: z.boolean().default(false),
+  canAssignAgents: z.boolean().default(true),
+  canCreateIssues: z.boolean().default(true),
   avatarSeed: z.string().optional(),
   runtimeCommand: z.string().nullable().optional(),
   runtimeArgsJson: z.string().nullable().optional(),
