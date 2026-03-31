@@ -90,4 +90,25 @@ describe("assistant chat routes (no LLM)", { timeout: 30_000 }, () => {
     expect(byId[older.id]?.preview).toContain("First thread question");
     expect(threads[0]?.id).toBe(newer.id);
   });
+
+  it("DELETE /assistant/threads/:threadId removes thread and messages", async () => {
+    const thread = await createAssistantThread(db, companyId);
+    await insertAssistantMessage(db, {
+      threadId: thread.id,
+      companyId,
+      role: "user",
+      body: "To be deleted"
+    });
+
+    const del = await request(app)
+      .delete(`/assistant/threads/${encodeURIComponent(thread.id)}`)
+      .set("x-company-id", companyId);
+    expect(del.status).toBe(200);
+    expect(del.body.ok).toBe(true);
+
+    const messagesRes = await request(app)
+      .get(`/assistant/messages?threadId=${encodeURIComponent(thread.id)}`)
+      .set("x-company-id", companyId);
+    expect(messagesRes.status).toBe(404);
+  });
 });

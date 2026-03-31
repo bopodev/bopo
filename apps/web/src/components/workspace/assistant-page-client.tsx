@@ -16,7 +16,7 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { ApiError, apiGet, apiPost } from "@/lib/api";
+import { ApiError, apiDelete, apiGet, apiPost } from "@/lib/api";
 import { agentAvatarSeed, buildAgentAvatarUrl } from "@/lib/agent-avatar";
 import { getViewerChatProfile } from "@/lib/actor-token-client";
 import { cn } from "@/lib/utils";
@@ -216,6 +216,7 @@ export function AssistantPageClient({
   const [brains, setBrains] = useState<BrainOption[]>([]);
   const [brainSelection, setBrainSelection] = useState(DEFAULT_BRAIN);
   const [isStartingNewThread, setIsStartingNewThread] = useState(false);
+  const [isDeletingThread, setIsDeletingThread] = useState(false);
   const [revealMessageId, setRevealMessageId] = useState<string | null>(null);
   const [viewer, setViewer] = useState(() => getViewerChatProfile());
   const [ceoPersona, setCeoPersona] = useState<CeoPersona>(DEFAULT_CEO_PERSONA);
@@ -468,6 +469,42 @@ export function AssistantPageClient({
     }
   }
 
+  async function deleteCurrentConversation() {
+    if (!companyId || isDeletingThread || isStartingNewThread) {
+      return;
+    }
+    const threadId = readStoredChatThreadId(companyId);
+    if (!threadId) {
+      return;
+    }
+    if (
+      !window.confirm(
+        "Delete this conversation? All messages in it will be removed. This cannot be undone."
+      )
+    ) {
+      return;
+    }
+    setIsDeletingThread(true);
+    setSendError(null);
+    setLoadError(null);
+    setRevealMessageId(null);
+    try {
+      await apiDelete<{ deleted: boolean }>(
+        `/assistant/threads/${encodeURIComponent(threadId)}`,
+        companyId
+      );
+      if (typeof window !== "undefined") {
+        window.localStorage.removeItem(chatThreadStorageKey(companyId));
+      }
+      await refreshMessages();
+      void refreshThreads();
+    } catch (e) {
+      setLoadError(e instanceof ApiError ? e.message : "Could not delete this conversation.");
+    } finally {
+      setIsDeletingThread(false);
+    }
+  }
+
   const selectThread = useCallback(
     async (threadId: string) => {
       if (!companyId) {
@@ -543,15 +580,26 @@ export function AssistantPageClient({
                     </SelectContent>
                   </Select>
                 ) : null}
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-9 shrink-0 gap-2 whitespace-nowrap"
-                  disabled={isStartingNewThread}
-                  onClick={() => void startNewConversation()}
-                >
-                  New
-                </Button>
+                <div className="flex shrink-0 items-center gap-6">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-9 shrink-0 gap-2 whitespace-nowrap"
+                    disabled={isStartingNewThread || isDeletingThread}
+                    onClick={() => void startNewConversation()}
+                  >
+                    New
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-9 shrink-0 gap-2 whitespace-nowrap text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    disabled={isDeletingThread || isStartingNewThread || !readStoredChatThreadId(companyId)}
+                    onClick={() => void deleteCurrentConversation()}
+                  >
+                    Delete
+                  </Button>
+                </div>
               </div>
             ) : null
           }

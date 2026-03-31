@@ -45,6 +45,15 @@ export async function getAssistantThreadById(db: BopoDb, companyId: string, thre
   return row ?? null;
 }
 
+/** Removes the thread and its messages (cascade). Returns whether a row was deleted. */
+export async function deleteAssistantThread(db: BopoDb, companyId: string, threadId: string): Promise<boolean> {
+  const [row] = await db
+    .delete(companyAssistantThreads)
+    .where(and(eq(companyAssistantThreads.id, threadId), eq(companyAssistantThreads.companyId, companyId)))
+    .returning({ id: companyAssistantThreads.id });
+  return Boolean(row);
+}
+
 export type AssistantThreadSummary = {
   id: string;
   createdAt: Date;

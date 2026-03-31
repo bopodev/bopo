@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import {
   createAssistantThread,
+  deleteAssistantThread,
   getAssistantThreadById,
   getOrCreateAssistantThread,
   listAssistantMessages,
@@ -110,6 +111,19 @@ export function createAssistantRouter(ctx: AppContext) {
     const companyId = req.companyId!;
     const thread = await createAssistantThread(ctx.db, companyId);
     return sendOk(res, { threadId: thread.id });
+  });
+
+  router.delete("/threads/:threadId", async (req, res) => {
+    const companyId = req.companyId!;
+    const threadId = typeof req.params.threadId === "string" ? req.params.threadId.trim() : "";
+    if (!threadId) {
+      return sendError(res, "threadId is required.", 422);
+    }
+    const ok = await deleteAssistantThread(ctx.db, companyId, threadId);
+    if (!ok) {
+      return sendError(res, "Chat thread not found.", 404);
+    }
+    return sendOk(res, { deleted: true });
   });
 
   return router;
