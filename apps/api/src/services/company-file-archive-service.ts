@@ -4,7 +4,7 @@ import type { Readable } from "node:stream";
 import archiver from "archiver";
 import { stringify as yamlStringify } from "yaml";
 import type { BopoDb } from "bopodev-db";
-import { getCompany, listAgents, listProjects } from "bopodev-db";
+import { getCompany, listAgents, listGoals, listProjects } from "bopodev-db";
 import {
   resolveAgentMemoryRootPath,
   resolveAgentOperatingPath,
@@ -117,6 +117,7 @@ function buildReadmeMarkdown(input: {
   projectRows: { slug: string; name: string; description: string | null }[];
   skillFileCount: number;
   taskCount: number;
+  goalCount: number;
   exportedAt: string;
 }): string {
   const lines = [
@@ -128,6 +129,7 @@ function buildReadmeMarkdown(input: {
     "|---------|-------|",
     `| Agents | ${input.agentRows.length} |`,
     `| Projects | ${input.projectRows.length} |`,
+    `| Goals | ${input.goalCount} |`,
     `| Skills (files under skills/) | ${input.skillFileCount} |`,
     `| Scheduled tasks | ${input.taskCount} |`,
     "",
@@ -167,7 +169,11 @@ export async function buildCompanyExportFileMap(
     throw new CompanyFileArchiveError("Company not found.");
   }
 
-  const [projects, agents] = await Promise.all([listProjects(db, companyId), listAgents(db, companyId)]);
+  const [projects, agents, goalRows] = await Promise.all([
+    listProjects(db, companyId),
+    listAgents(db, companyId),
+    listGoals(db, companyId)
+  ]);
   const loops = await listWorkLoops(db, companyId);
 
   const usedSlugs = new Set<string>();
@@ -203,6 +209,8 @@ export async function buildCompanyExportFileMap(
       canHireAgents: boolean;
       canAssignAgents: boolean;
       canCreateIssues: boolean;
+      bootstrapPrompt: string | null;
+      monthlyBudgetUsd: string;
     }
   > = {};
 
@@ -225,7 +233,9 @@ export async function buildCompanyExportFileMap(
       heartbeatCron: a.heartbeatCron,
       canHireAgents: Boolean(a.canHireAgents),
       canAssignAgents: a.canAssignAgents ?? true,
-      canCreateIssues: a.canCreateIssues ?? true
+      canCreateIssues: a.canCreateIssues ?? true,
+      bootstrapPrompt: a.bootstrapPrompt?.trim() ? a.bootstrapPrompt : null,
+      monthlyBudgetUsd: String(a.monthlyBudgetUsd ?? "100.0000")
     };
   }
 
@@ -268,6 +278,43 @@ export async function buildCompanyExportFileMap(
     };
   }
 
+  const goalSlugById = new Map<string, string>();
+  const sortedGoals = [...goalRows].sort((a, b) => a.id.localeCompare(b.id));
+  for (const g of sortedGoals) {
+    const slug = slugify(g.title, usedSlugs);
+    goalSlugById.set(g.id, slug);
+  }
+
+  const goalManifest: Record<
+    string,
+    {
+      bopoGoalId: string;
+      level: string;
+      title: string;
+      description: string | null;
+      status: string;
+      projectSlug: string | null;
+      parentGoalSlug: string | null;
+      ownerAgentSlug: string | null;
+    }
+  > = {};
+  for (const g of sortedGoals) {
+    const slug = goalSlugById.get(g.id)!;
+    const projectSlug = g.projectId ? projectSlugById.get(g.projectId) ?? null : null;
+    const parentGoalSlug = g.parentGoalId ? goalSlugById.get(g.parentGoalId) ?? null : null;
+    const ownerAgentSlug = g.ownerAgentId ? agentSlugById.get(g.ownerAgentId) ?? null : null;
+    goalManifest[slug] = {
+      bopoGoalId: g.id,
+      level: g.level,
+      title: g.title,
+      description: g.description ?? null,
+      status: g.status,
+      projectSlug,
+      parentGoalSlug,
+      ownerAgentSlug
+    };
+  }
+
   const yamlDoc = {
     schema: EXPORT_SCHEMA,
     exportedAt: new Date().toISOString(),
@@ -279,6 +326,7 @@ export async function buildCompanyExportFileMap(
     },
     projects: Object.fromEntries(projectEntries.map((p) => [p.slug, { bopoProjectId: p.id, name: p.name, description: p.description, status: p.status }])),
     agents: agentManifest,
+    goals: goalManifest,
     routines: routineManifest
   };
 
@@ -311,6 +359,7 @@ export async function buildCompanyExportFileMap(
     projectRows: projectEntries.map((p) => ({ slug: p.slug, name: p.name, description: p.description })),
     skillFileCount,
     taskCount,
+    goalCount: sortedGoals.length,
     exportedAt: yamlDoc.exportedAt
   });
 

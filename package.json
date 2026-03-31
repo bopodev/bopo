@@ -22,6 +22,7 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
+    "zip:starter-packs": "node scripts/zip-starter-packs.mjs",
     "clear": "node scripts/clear.mjs",
     "unstick": "node scripts/unstick.mjs",
     "smoke:vps": "sh scripts/smoke-vps.sh",
@@ -30,6 +31,7 @@
     "publish:all:dry": "pnpm build && pnpm run publish:all:only -- --dry-run"
   },
   "devDependencies": {
+    "fflate": "^0.8.2",
     "@playwright/test": "^1.56.1",
     "@types/node": "^24.3.0",
     "@types/supertest": "^7.2.0",

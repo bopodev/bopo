@@ -497,6 +497,21 @@ const builtinTemplateDefinitions: BuiltinTemplateDefinition[] = [
   }
 ];
 
+export type BuiltinStarterTemplateDefinition = (typeof builtinTemplateDefinitions)[number];
+
+/** Built-in DB templates offered as “Start with” options when creating a company (full org, same as Templates UI). */
+export function listBuiltinStarterTemplates(): Array<{ id: string; label: string; description: string }> {
+  return builtinTemplateDefinitions.map((d) => ({
+    id: d.slug,
+    label: d.name,
+    description: d.description
+  }));
+}
+
+export function getBuiltinStarterTemplateBySlug(slug: string): BuiltinStarterTemplateDefinition | null {
+  return builtinTemplateDefinitions.find((d) => d.slug === slug) ?? null;
+}
+
 export async function ensureBuiltinTemplatesRegistered(db: BopoDb, companyIds: string[] = []) {
   for (const companyId of companyIds) {
     await ensureCompanyBuiltinTemplateDefaults(db, companyId);

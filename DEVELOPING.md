@@ -49,19 +49,12 @@ The dev script uses `scripts/dev-runner.mjs` (see [`docs/getting-started-and-dev
 - Manifest: `GET /companies/YOUR_COMPANY_ID/export/files/manifest`
 - Download zip: `POST /companies/YOUR_COMPANY_ID/export/files/zip` with JSON `{ "includeAgentMemory": false }` (optional `paths` to subset). Response is `application/zip`.
 - Import new company: `POST /companies/import/files` with form field `archive` (board actor).
+- Import preview (parse-only): `POST /companies/import/files/preview` with the same multipart field `archive` (board actor). Returns counts and validation errors without writing to the database.
+- Starters for **Create company**: `GET /companies/starter-packs` (board) lists builtin **template** slugs (full org) plus any optional zip-only packs. `POST /companies` with `starterPackId` applies that template (or zip) and wires the form’s CEO provider/model to the lead agent (`ceo` / `cmo` / first hiring-capable).
 
-The workspace **Templates** page includes a file picker, preview, and zip download when a company is selected.
+The workspace **Templates** page includes a file picker, optional import preview summary, and zip download when a company is selected.
 
-**Legacy JSON snapshot** — redacted rows (agent env and prompts stripped):
-
-```bash
-curl -sS -H "x-company-id: YOUR_COMPANY_ID" \
-  -H "x-actor-type: board" -H "x-actor-id: local" \
-  -H "x-actor-companies:" -H "x-actor-permissions:" \
-  "http://localhost:4020/companies/YOUR_COMPANY_ID/export"
-```
-
-In authenticated deployments, use a Bearer actor token instead of `x-actor-*` headers.
+**Legacy JSON snapshot** (`GET /companies/:companyId/export`) was removed; the API returns **410**. Use the zip export above for portable backups.
 
 ## CLI: issue shell environment
 

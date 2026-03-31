@@ -303,23 +303,57 @@ export function CompanyFileExportCard({ companyId, companyName }: { companyId: s
   );
 }
 
+type ImportPreviewPayload = {
+  ok: boolean;
+  companyName: string;
+  counts: { projects: number; agents: number; goals: number; routines: number; skillFiles: number };
+  hasCeo: boolean;
+  errors: string[];
+  warnings: string[];
+};
+
 export function CompanyFileImportCard() {
   const importInputId = useId();
   const [importBusy, setImportBusy] = useState(false);
+  const [previewBusy, setPreviewBusy] = useState(false);
+  const [stagedFile, setStagedFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState<ImportPreviewPayload | null>(null);
   const [importMessage, setImportMessage] = useState<string | null>(null);
 
-  const onImportZip = async (list: FileList | null) => {
+  const onFileChosen = async (list: FileList | null) => {
     const file = list?.[0];
+    setImportMessage(null);
+    setPreview(null);
+    setStagedFile(file ?? null);
     if (!file) {
+      return;
+    }
+    setPreviewBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append("archive", file);
+      const { data } = await apiPostFormData<ImportPreviewPayload>("/companies/import/files/preview", null, fd);
+      setPreview(data);
+    } catch (e) {
+      setImportMessage(e instanceof ApiError ? e.message : String(e));
+    } finally {
+      setPreviewBusy(false);
+    }
+  };
+
+  const onConfirmImport = async () => {
+    if (!stagedFile) {
       return;
     }
     setImportBusy(true);
     setImportMessage(null);
     try {
       const fd = new FormData();
-      fd.append("archive", file);
+      fd.append("archive", stagedFile);
       const { data } = await apiPostFormData<{ companyId: string; name: string }>("/companies/import/files", null, fd);
       setImportMessage(`Imported new company “${data.name}” (${data.companyId}). Refresh the company list to open it.`);
+      setStagedFile(null);
+      setPreview(null);
     } catch (e) {
       setImportMessage(e instanceof ApiError ? e.message : String(e));
     } finally {
@@ -345,11 +379,42 @@ export function CompanyFileImportCard() {
               id={importInputId}
               type="file"
               accept=".zip,application/zip"
-              disabled={importBusy}
-              onChange={(e) => void onImportZip(e.target.files)}
+              disabled={importBusy || previewBusy}
+              onChange={(e) => void onFileChosen(e.target.files)}
             />
+            {previewBusy ? <span className="ui-company-file-import-busy">Reading archive…</span> : null}
             {importBusy ? <span className="ui-company-file-import-busy">Importing…</span> : null}
           </div>
+          {preview && !importBusy ? (
+            <div className="ui-company-file-import-preview">
+              {preview.ok ? (
+                <>
+                  <p className="ui-company-file-import-preview-summary">
+                    <strong>{preview.companyName}</strong> — {preview.counts.projects} projects, {preview.counts.agents}{" "}
+                    agents, {preview.counts.goals} goals, {preview.counts.routines} scheduled loops, {preview.counts.skillFiles}{" "}
+                    skill files.
+                  </p>
+                  {!preview.hasCeo ? (
+                    <p className="ui-company-file-import-preview-warn">Warning: no CEO agent (roleKey ceo) in manifest.</p>
+                  ) : null}
+                  {preview.warnings.map((w) => (
+                    <p key={w} className="ui-company-file-import-preview-warn">
+                      {w}
+                    </p>
+                  ))}
+                  <Button type="button" size="sm" className="mt-2" disabled={!preview.ok} onClick={() => void onConfirmImport()}>
+                    Import this company
+                  </Button>
+                </>
+              ) : (
+                <ul className="ui-company-file-import-preview-errors">
+                  {preview.errors.map((err) => (
+                    <li key={err}>{err}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ) : null}
           {importMessage ? <p className="ui-company-file-import-message">{importMessage}</p> : null}
         </Field>
       </CardContent>

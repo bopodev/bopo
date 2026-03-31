@@ -17,6 +17,7 @@ import { CreateIssueModal } from "@/components/modals/create-issue-modal";
 import { CreateProjectModal } from "@/components/modals/create-project-modal";
 import { TextActionModal } from "@/components/modals/text-action-modal";
 import { CompanyFileExportCard, CompanyFileImportCard } from "@/components/company-file-export-panel";
+import { TemplatePreviewContent } from "@/components/template-preview-content";
 import { ApiError, apiDelete, apiGet, apiPost, apiPut } from "@/lib/api";
 import { agentAvatarSeed } from "@/lib/agent-avatar";
 import { cn } from "@/lib/utils";
@@ -4336,7 +4337,7 @@ export function WorkspaceClient({
                 disabled={applyPending}
                 onClick={() => applyTemplate(template.id)}
               >
-                {applyPending ? "Applying..." : "Apply"}
+                {applyPending ? "Importing..." : "Import"}
               </Button>
               <Button variant="outline" size="sm" onClick={() => openTemplateDetails(template)}>
                 View
@@ -6218,44 +6219,37 @@ export function WorkspaceClient({
                   }
                 />
                 <Dialog open={templateDetailsOpen} onOpenChange={setTemplateDetailsOpen}>
-                  <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-3xl">
-                    <DialogHeader>
+                  <DialogContent size="xl" className="min-h-0 max-h-[min(90vh,calc(100dvh-10rem))]">
+                    <DialogHeader className="shrink-0">
                       <DialogTitle>{selectedTemplate?.name ?? "Template details"}</DialogTitle>
                       <DialogDescription>
                         {selectedTemplate?.description?.trim() || "Portable org template details and manifest."}
                       </DialogDescription>
                     </DialogHeader>
-                    {selectedTemplate ? (
-                      <div className="space-y-4">
-                        <div className="grid gap-2 text-base sm:grid-cols-3">
-                          <div>
-                            <div className="text-muted-foreground">Slug</div>
-                            <div className="font-mono">{selectedTemplate.slug}</div>
+                    <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 [-webkit-overflow-scrolling:touch]">
+                      {selectedTemplate ? (
+                        <div className="space-y-6">
+                          <div className="grid gap-3 text-base sm:grid-cols-3">
+                            <div className="rounded-lg border bg-muted/40 px-3 py-2">
+                              <div className="text-muted-foreground text-base">Slug</div>
+                              <div className="font-mono text-base">{selectedTemplate.slug}</div>
+                            </div>
+                            <div className="rounded-lg border bg-muted/40 px-3 py-2">
+                              <div className="text-muted-foreground text-base">Version</div>
+                              <div className="font-mono text-base">{selectedTemplate.currentVersion}</div>
+                            </div>
+                            <div className="rounded-lg border bg-muted/40 px-3 py-2">
+                              <div className="text-muted-foreground text-base">Status</div>
+                              <Badge variant="outline" className="mt-1">
+                                {selectedTemplate.status}
+                              </Badge>
+                            </div>
                           </div>
-                          <div>
-                            <div className="text-muted-foreground">Version</div>
-                            <div className="font-mono">{selectedTemplate.currentVersion}</div>
-                          </div>
-                          <div>
-                            <div className="text-muted-foreground">Status</div>
-                            <div>{selectedTemplate.status}</div>
-                          </div>
+                          <TemplatePreviewContent template={selectedTemplate} />
                         </div>
-                        <div>
-                          <div className="mb-1 text-base text-muted-foreground">Variables</div>
-                          <pre className="rounded-md border bg-muted p-3 text-base whitespace-pre-wrap break-all">
-                            {JSON.stringify(selectedTemplate.variables ?? [], null, 2)}
-                          </pre>
-                        </div>
-                        <div>
-                          <div className="mb-1 text-base text-muted-foreground">Manifest</div>
-                          <pre className="rounded-md border bg-muted p-3 text-base whitespace-pre-wrap break-all">
-                            {JSON.stringify(selectedTemplate.manifest ?? {}, null, 2)}
-                          </pre>
-                        </div>
-                      </div>
-                    ) : null}
-                    <DialogFooter>
+                      ) : null}
+                    </div>
+                    <DialogFooter className="shrink-0">
                       <Button type="button" variant="outline" onClick={() => setTemplateDetailsOpen(false)}>
                         Close
                       </Button>

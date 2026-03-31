@@ -63,7 +63,7 @@ Supported
 3. Use **work loops** for calendar-style recurring jobs that open issues and wake the assignee’s heartbeat ([work loops](docs/product/loops.md))—separate from each agent’s general heartbeat schedule.
 4. **Review approvals**, run **heartbeats**, and watch **runs, traces, and costs** in one place.
 5. Use **`bopodev issue shell-env`** to jump from an issue to the right folder and `BOPODEV_*` env in your terminal ([DEVELOPING.md](./DEVELOPING.md)).
-6. **Export** a redacted company snapshot via the API for backup or templates (`GET /companies/:id/export` — see [DEVELOPING.md](./DEVELOPING.md)).
+6. **Export** a portable company folder as a zip via the API (`POST /companies/:id/export/files/zip` — see [DEVELOPING.md](./DEVELOPING.md)).
 
 ## What you get
 

@@ -4,7 +4,7 @@ import { unzipSync } from "fflate";
 import { parse as yamlParse } from "yaml";
 import { z } from "zod";
 import type { BopoDb } from "bopodev-db";
-import { createAgent, createCompany, createProject } from "bopodev-db";
+import { createAgent, createCompany, createGoal, createProject, updateAgent, updateGoal } from "bopodev-db";
 import { normalizeRuntimeConfig, runtimeConfigToDb, runtimeConfigToStateBlobPatch } from "../lib/agent-config";
 import {
   resolveAgentMemoryRootPath,
@@ -16,16 +16,22 @@ import { ensureBuiltinPluginsRegistered } from "./plugin-runtime";
 import { ensureCompanyBuiltinTemplateDefaults } from "./template-catalog";
 import { addWorkLoopTrigger, createWorkLoop } from "./work-loop-service/work-loop-service";
 
-const EXPORT_SCHEMA = "bopo/company-export/v1";
+export const EXPORT_SCHEMA = "bopo/company-export/v1";
 
-const BopoExportYamlSchema = z.object({
+const goalLevelSchema = z.enum(["company", "project", "agent"]);
+const goalStatusSchema = z.enum(["draft", "active", "completed", "archived"]);
+
+export const BopoExportYamlSchema = z.object({
   schema: z.string(),
   company: z.object({
     name: z.string().min(1),
     mission: z.string().nullable().optional(),
     slug: z.string().optional()
   }),
-  projects: z.record(z.string(), z.object({ name: z.string().min(1), description: z.string().nullable().optional(), status: z.string().optional() })),
+  projects: z.record(
+    z.string(),
+    z.object({ name: z.string().min(1), description: z.string().nullable().optional(), status: z.string().optional() })
+  ),
   agents: z.record(
     z.string(),
     z.object({
@@ -39,9 +45,25 @@ const BopoExportYamlSchema = z.object({
       heartbeatCron: z.string().min(1),
       canHireAgents: z.boolean().optional(),
       canAssignAgents: z.boolean().optional(),
-      canCreateIssues: z.boolean().optional()
+      canCreateIssues: z.boolean().optional(),
+      bootstrapPrompt: z.string().nullable().optional(),
+      monthlyBudgetUsd: z.union([z.string(), z.number()]).optional()
     })
   ),
+  goals: z
+    .record(
+      z.string(),
+      z.object({
+        level: goalLevelSchema,
+        title: z.string().min(1),
+        description: z.string().nullable().optional(),
+        status: goalStatusSchema.optional(),
+        projectSlug: z.string().nullable().optional(),
+        parentGoalSlug: z.string().nullable().optional(),
+        ownerAgentSlug: z.string().nullable().optional()
+      })
+    )
+    .optional(),
   routines: z
     .record(
       z.string(),
@@ -64,6 +86,13 @@ const BopoExportYamlSchema = z.object({
     .optional()
 });
 
+export type BopoExportDoc = z.infer<typeof BopoExportYamlSchema>;
+
+export type ParsedCompanyPackage = {
+  doc: BopoExportDoc;
+  entries: Record<string, string>;
+};
+
 export class CompanyFileImportError extends Error {
   constructor(message: string) {
     super(message);
@@ -79,7 +108,7 @@ function normalizeZipPath(key: string): string | null {
   return t;
 }
 
-function decodeZipEntries(buffer: Buffer): Record<string, string> {
+export function decodeZipEntries(buffer: Buffer): Record<string, string> {
   let raw: Record<string, Uint8Array>;
   try {
     raw = unzipSync(new Uint8Array(buffer));
@@ -101,26 +130,8 @@ function decodeZipEntries(buffer: Buffer): Record<string, string> {
   return out;
 }
 
-const PROVIDER_TYPES = new Set([
-  "claude_code",
-  "codex",
-  "cursor",
-  "opencode",
-  "gemini_cli",
-  "openai_api",
-  "anthropic_api",
-  "openclaw_gateway",
-  "http",
-  "shell"
-]);
-
-type AgentProvider = NonNullable<Parameters<typeof createAgent>[1]["providerType"]>;
-
-function coerceProviderType(raw: string): AgentProvider {
-  return PROVIDER_TYPES.has(raw) ? (raw as AgentProvider) : "shell";
-}
-
-export async function importCompanyFromZipBuffer(db: BopoDb, buffer: Buffer): Promise<{ companyId: string; name: string }> {
+/** Parse and validate a company zip; throws CompanyFileImportError on failure. */
+export function parseCompanyZipBuffer(buffer: Buffer): ParsedCompanyPackage {
   const entries = decodeZipEntries(buffer);
   const yamlText = entries[".bopo.yaml"] ?? entries["bopo.yaml"];
   if (!yamlText?.trim()) {
@@ -140,16 +151,82 @@ export async function importCompanyFromZipBuffer(db: BopoDb, buffer: Buffer): Pr
   if (doc.schema !== EXPORT_SCHEMA) {
     throw new CompanyFileImportError(`Unsupported export schema '${doc.schema}' (expected ${EXPORT_SCHEMA}).`);
   }
+  return { doc, entries };
+}
 
-  const created = await createCompany(db, {
-    name: doc.company.name,
-    mission: doc.company.mission ?? null
-  });
-  const companyId = created.id;
+const PROVIDER_TYPES = new Set([
+  "claude_code",
+  "codex",
+  "cursor",
+  "opencode",
+  "gemini_cli",
+  "openai_api",
+  "anthropic_api",
+  "openclaw_gateway",
+  "http",
+  "shell"
+]);
+
+type AgentProvider = NonNullable<Parameters<typeof createAgent>[1]["providerType"]>;
+
+function coerceProviderType(raw: string): AgentProvider {
+  return PROVIDER_TYPES.has(raw) ? (raw as AgentProvider) : "shell";
+}
+
+function formatMonthlyBudgetUsdFromManifest(raw: string | number | undefined): string {
+  if (raw === undefined) {
+    return "100.0000";
+  }
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    return raw.toFixed(4);
+  }
+  const s = String(raw).trim();
+  if (!s) {
+    return "100.0000";
+  }
+  const n = Number(s);
+  return Number.isFinite(n) ? n.toFixed(4) : "100.0000";
+}
+
+function sortGoalSlugsForImport(
+  goals: Record<string, { parentGoalSlug?: string | null | undefined }>
+): string[] {
+  const slugs = Object.keys(goals);
+  const slugSet = new Set(slugs);
+  const remaining = new Set(slugs);
+  const order: string[] = [];
+  while (remaining.size > 0) {
+    const ready = [...remaining].filter((slug) => {
+      const p = goals[slug]?.parentGoalSlug?.trim();
+      if (!p) {
+        return true;
+      }
+      if (!slugSet.has(p)) {
+        throw new CompanyFileImportError(`Goal '${slug}' references unknown parent goal slug '${p}'.`);
+      }
+      return !remaining.has(p);
+    });
+    if (ready.length === 0) {
+      throw new CompanyFileImportError("Circular goal parent chain in manifest.");
+    }
+    ready.sort((a, b) => a.localeCompare(b));
+    for (const s of ready) {
+      order.push(s);
+      remaining.delete(s);
+    }
+  }
+  return order;
+}
+
+/**
+ * Seeds projects, agents, workspace files, goals, and routines for an existing company.
+ * Does not create the company row or call ensureCompanyBuiltinTemplateDefaults.
+ */
+export async function seedOperationalDataFromPackage(db: BopoDb, companyId: string, parsed: ParsedCompanyPackage): Promise<void> {
+  const { doc, entries } = parsed;
   const cwd = await resolveDefaultRuntimeCwdForCompany(db, companyId);
   await mkdir(cwd, { recursive: true });
   await ensureBuiltinPluginsRegistered(db, [companyId]);
-  await ensureCompanyBuiltinTemplateDefaults(db, companyId);
 
   const projectSlugToId = new Map<string, string>();
   const projectStatuses = new Set(["planned", "active", "paused", "blocked", "completed", "archived"]);
@@ -185,7 +262,11 @@ export async function importCompanyFromZipBuffer(db: BopoDb, buffer: Buffer): Pr
       }
       const defaultRt = normalizeRuntimeConfig({
         defaultRuntimeCwd: cwd,
-        runtimeConfig: { runtimeModel: undefined, runtimeEnv: {} }
+        runtimeConfig: {
+          runtimeModel: undefined,
+          runtimeEnv: {},
+          bootstrapPrompt: a.bootstrapPrompt?.trim() || undefined
+        }
       });
       const createdAgent = await createAgent(db, {
         companyId,
@@ -197,7 +278,7 @@ export async function importCompanyFromZipBuffer(db: BopoDb, buffer: Buffer): Pr
         name: a.name,
         providerType: coerceProviderType(a.providerType),
         heartbeatCron: a.heartbeatCron,
-        monthlyBudgetUsd: "100.0000",
+        monthlyBudgetUsd: formatMonthlyBudgetUsdFromManifest(a.monthlyBudgetUsd),
         canHireAgents: a.canHireAgents ?? false,
         canAssignAgents: a.canAssignAgents ?? true,
         canCreateIssues: a.canCreateIssues ?? true,
@@ -250,6 +331,54 @@ export async function importCompanyFromZipBuffer(db: BopoDb, buffer: Buffer): Pr
     }
   }
 
+  const goalsManifest = doc.goals ?? {};
+  const goalSlugToId = new Map<string, string>();
+  for (const slug of sortGoalSlugsForImport(goalsManifest)) {
+    const g = goalsManifest[slug]!;
+    const level = g.level;
+    const projectSlug = g.projectSlug?.trim() || null;
+    const projectId = projectSlug ? projectSlugToId.get(projectSlug) ?? null : null;
+    if (level === "project" && !projectId) {
+      throw new CompanyFileImportError(`Goal '${slug}' (project level) references unknown project slug '${projectSlug ?? ""}'.`);
+    }
+    if (level === "company" && projectId) {
+      throw new CompanyFileImportError(`Goal '${slug}' is company-level but specifies a project.`);
+    }
+    const parentSlug = g.parentGoalSlug?.trim() || null;
+    const parentGoalId = parentSlug ? goalSlugToId.get(parentSlug) ?? null : null;
+    if (parentSlug && !parentGoalId) {
+      throw new CompanyFileImportError(`Goal '${slug}' references unknown parent goal slug '${parentSlug}'.`);
+    }
+    const ownerSlug = g.ownerAgentSlug?.trim() || null;
+    const ownerAgentId = ownerSlug ? agentSlugToId.get(ownerSlug) ?? null : null;
+    if (ownerSlug && !ownerAgentId) {
+      throw new CompanyFileImportError(`Goal '${slug}' references unknown owner agent slug '${ownerSlug}'.`);
+    }
+    const agentLevelProjectId = level === "agent" ? projectId : null;
+    if (level === "agent" && g.projectSlug?.trim() && !projectId) {
+      throw new CompanyFileImportError(`Goal '${slug}' (agent level) references unknown project slug '${g.projectSlug.trim()}'.`);
+    }
+
+    const created = await createGoal(db, {
+      companyId,
+      projectId: level === "project" ? projectId : agentLevelProjectId,
+      parentGoalId,
+      ownerAgentId,
+      level,
+      title: g.title,
+      description: g.description?.trim() || undefined
+    });
+    goalSlugToId.set(slug, created.id);
+    const st = g.status?.trim();
+    if (st && st !== "draft") {
+      await updateGoal(db, {
+        companyId,
+        id: created.id,
+        status: st
+      });
+    }
+  }
+
   const routines = doc.routines ?? {};
   for (const [, r] of Object.entries(routines)) {
     const projectId = projectSlugToId.get(r.projectSlug);
@@ -278,6 +407,52 @@ export async function importCompanyFromZipBuffer(db: BopoDb, buffer: Buffer): Pr
       });
     }
   }
+}
 
+export function assertManifestHasCeoAgent(doc: BopoExportDoc): void {
+  const hasCeo = Object.values(doc.agents).some((a) => (a.roleKey ?? "").trim().toLowerCase() === "ceo");
+  if (!hasCeo) {
+    throw new CompanyFileImportError("Company package must include an agent with roleKey 'ceo'.");
+  }
+}
+
+export function summarizeCompanyPackageForPreview(parsed: ParsedCompanyPackage): {
+  companyName: string;
+  counts: {
+    projects: number;
+    agents: number;
+    goals: number;
+    routines: number;
+    skillFiles: number;
+  };
+  hasCeo: boolean;
+} {
+  const doc = parsed.doc;
+  const skillFiles = Object.keys(parsed.entries).filter((k) => k.startsWith("skills/") && !k.endsWith("/")).length;
+  const hasCeo = Object.values(doc.agents).some((a) => (a.roleKey ?? "").trim().toLowerCase() === "ceo");
+  return {
+    companyName: doc.company.name,
+    counts: {
+      projects: Object.keys(doc.projects).length,
+      agents: Object.keys(doc.agents).length,
+      goals: Object.keys(doc.goals ?? {}).length,
+      routines: Object.keys(doc.routines ?? {}).length,
+      skillFiles
+    },
+    hasCeo
+  };
+}
+
+export async function importCompanyFromZipBuffer(db: BopoDb, buffer: Buffer): Promise<{ companyId: string; name: string }> {
+  const parsed = parseCompanyZipBuffer(buffer);
+  const doc = parsed.doc;
+
+  const created = await createCompany(db, {
+    name: doc.company.name,
+    mission: doc.company.mission ?? null
+  });
+  const companyId = created.id;
+  await ensureCompanyBuiltinTemplateDefaults(db, companyId);
+  await seedOperationalDataFromPackage(db, companyId, parsed);
   return { companyId, name: doc.company.name };
 }

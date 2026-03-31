@@ -3,8 +3,18 @@ import type { NextFunction, Request, Response } from "express";
 import { Router } from "express";
 import multer from "multer";
 import { z } from "zod";
-import { CompanySchema } from "bopodev-contracts";
-import { createAgent, createCompany, deleteCompany, listCompanies, updateCompany } from "bopodev-db";
+import { CompanySchema, TemplateManifestSchema } from "bopodev-contracts";
+import {
+  createAgent,
+  createCompany,
+  deleteCompany,
+  getCurrentTemplateVersion,
+  getTemplateBySlug,
+  listAgents,
+  listCompanies,
+  updateAgent,
+  updateCompany
+} from "bopodev-db";
 import type { AppContext } from "../context";
 import { sendError, sendOk, sendOkValidated } from "../http";
 import { normalizeRuntimeConfig, resolveRuntimeModelForProvider, runtimeConfigToDb, runtimeConfigToStateBlobPatch } from "../lib/agent-config";
@@ -19,10 +29,22 @@ import {
   pipeCompanyExportZip,
   readCompanyExportFileText
 } from "../services/company-file-archive-service";
-import { buildCompanyPortabilityExport } from "../services/company-export-service";
-import { CompanyFileImportError, importCompanyFromZipBuffer } from "../services/company-file-import-service";
-import { ensureCompanyBuiltinPluginDefaults } from "../services/plugin-runtime";
-import { ensureCompanyBuiltinTemplateDefaults } from "../services/template-catalog";
+import {
+  assertManifestHasCeoAgent,
+  CompanyFileImportError,
+  importCompanyFromZipBuffer,
+  parseCompanyZipBuffer,
+  seedOperationalDataFromPackage,
+  summarizeCompanyPackageForPreview
+} from "../services/company-file-import-service";
+import { ensureBuiltinPluginsRegistered, ensureCompanyBuiltinPluginDefaults } from "../services/plugin-runtime";
+import { listStarterPackMetadata, readStarterPackZipBuffer, resolveStarterPackDefinition } from "../services/starter-pack-registry";
+import { TemplateApplyError, applyTemplateManifest } from "../services/template-apply-service";
+import {
+  ensureCompanyBuiltinTemplateDefaults,
+  getBuiltinStarterTemplateBySlug,
+  type BuiltinStarterTemplateDefinition
+} from "../services/template-catalog";
 
 const zipUpload = multer({
   storage: multer.memoryStorage(),
@@ -43,7 +65,8 @@ const createCompanySchema = z.object({
   providerType: z
     .enum(["codex", "claude_code", "cursor", "gemini_cli", "opencode", "openai_api", "anthropic_api", "http", "shell"])
     .optional(),
-  runtimeModel: z.string().optional()
+  runtimeModel: z.string().optional(),
+  starterPackId: z.string().min(1).optional()
 });
 
 const updateCompanySchema = z
@@ -71,6 +94,36 @@ export function createCompaniesRouter(ctx: AppContext) {
       companies.filter((company) => visibleCompanyIds.has(company.id)),
       "companies.list.filtered"
     );
+  });
+
+  router.get("/starter-packs", requireBoardRole, async (_req, res) => {
+    return sendOk(res, { starterPacks: listStarterPackMetadata() });
+  });
+
+  router.post("/import/files/preview", requireBoardRole, zipUpload.single("archive"), async (req, res) => {
+    const file = req.file;
+    if (!file?.buffer) {
+      return sendError(res, 'Upload a .zip file in field "archive".', 422);
+    }
+    try {
+      const parsed = parseCompanyZipBuffer(file.buffer);
+      const summary = summarizeCompanyPackageForPreview(parsed);
+      const warnings: string[] = [];
+      if (!summary.hasCeo) {
+        warnings.push("No agent with roleKey 'ceo' found; the company may not be ready to run until you add a CEO.");
+      }
+      return sendOk(res, { ok: true, ...summary, errors: [] as string[], warnings });
+    } catch (err) {
+      const message = err instanceof CompanyFileImportError ? err.message : String(err);
+      return sendOk(res, {
+        ok: false,
+        companyName: "",
+        counts: { projects: 0, agents: 0, goals: 0, routines: 0, skillFiles: 0 },
+        hasCeo: false,
+        errors: [message],
+        warnings: [] as string[]
+      });
+    }
   });
 
   router.post("/import/files", requireBoardRole, zipUpload.single("archive"), async (req, res) => {
@@ -173,11 +226,11 @@ export function createCompaniesRouter(ctx: AppContext) {
     if (!canAccessCompany(req, companyId)) {
       return sendError(res, "Actor does not have access to this company.", 403);
     }
-    const payload = await buildCompanyPortabilityExport(ctx.db, companyId);
-    if (!payload) {
-      return sendError(res, "Company not found.", 404);
-    }
-    return sendOk(res, payload);
+    return sendError(
+      res,
+      "JSON company export was removed. Use POST /companies/:companyId/export/files/zip for the portable company zip.",
+      410
+    );
   });
 
   router.post("/", requireBoardRole, async (req, res) => {
@@ -185,14 +238,142 @@ export function createCompaniesRouter(ctx: AppContext) {
     if (!parsed.success) {
       return sendError(res, parsed.error.message, 422);
     }
-    const company = await createCompany(ctx.db, parsed.data);
     const providerType =
       parseAgentProvider(parsed.data.providerType) ??
       parseAgentProvider(process.env[DEFAULT_AGENT_PROVIDER_ENV]) ??
       "shell";
+    const requestedModel = parsed.data.runtimeModel?.trim() || process.env[DEFAULT_AGENT_MODEL_ENV]?.trim() || undefined;
+
+    const companyInput = {
+      name: parsed.data.name,
+      mission: parsed.data.mission ?? null
+    };
+
+    if (parsed.data.starterPackId?.trim()) {
+      const packId = parsed.data.starterPackId.trim();
+      const builtinTemplate = getBuiltinStarterTemplateBySlug(packId);
+      const zipPack = resolveStarterPackDefinition(packId);
+      if (!builtinTemplate && !zipPack) {
+        return sendError(res, `Unknown starter pack: ${packId}`, 422);
+      }
+
+      const company = await createCompany(ctx.db, companyInput);
+      await ensureCompanyBuiltinTemplateDefaults(ctx.db, company.id);
+      await ensureBuiltinPluginsRegistered(ctx.db, [company.id]);
+
+      try {
+        if (builtinTemplate) {
+          const templateRow = await getTemplateBySlug(ctx.db, company.id, packId);
+          if (!templateRow) {
+            return sendError(res, `Starter template '${packId}' was not registered.`, 500);
+          }
+          const templateVersion = await getCurrentTemplateVersion(ctx.db, company.id, templateRow.id);
+          if (!templateVersion) {
+            return sendError(res, `Starter template '${packId}' has no current version.`, 500);
+          }
+          let manifestRaw: unknown;
+          try {
+            manifestRaw = JSON.parse(templateVersion.manifestJson) as unknown;
+          } catch {
+            return sendError(res, `Starter template '${packId}' has invalid manifest JSON.`, 500);
+          }
+          const manifestParsed = TemplateManifestSchema.safeParse(manifestRaw);
+          if (!manifestParsed.success) {
+            return sendError(res, `Starter template '${packId}' has invalid manifest: ${manifestParsed.error.message}`, 422);
+          }
+          const variables = buildStarterTemplateVariables(builtinTemplate, companyInput);
+          await applyTemplateManifest(ctx.db, {
+            companyId: company.id,
+            templateId: templateRow.id,
+            templateVersion: templateVersion.version,
+            templateVersionId: templateVersion.id,
+            manifest: manifestParsed.data,
+            variables
+          });
+        } else {
+          let packBuffer: Buffer;
+          try {
+            packBuffer = await readStarterPackZipBuffer(packId);
+          } catch (err) {
+            return sendError(res, `Failed to read starter pack: ${String(err)}`, 500);
+          }
+          let parsedPackage;
+          try {
+            parsedPackage = parseCompanyZipBuffer(packBuffer);
+            assertManifestHasCeoAgent(parsedPackage.doc);
+          } catch (err) {
+            const message = err instanceof CompanyFileImportError ? err.message : String(err);
+            return sendError(res, message, 422);
+          }
+          await seedOperationalDataFromPackage(ctx.db, company.id, parsedPackage);
+        }
+      } catch (err) {
+        const message =
+          err instanceof TemplateApplyError
+            ? err.message
+            : err instanceof CompanyFileImportError
+              ? err.message
+              : String(err);
+        return sendError(res, message, 422);
+      }
+
+      const agents = await listAgents(ctx.db, company.id);
+      const rk = (a: (typeof agents)[number]) => (a.roleKey ?? "").toLowerCase();
+      const leaderAgent =
+        agents.find((a) => rk(a) === "ceo") ??
+        agents.find((a) => rk(a) === "cmo") ??
+        agents.find((a) => a.canHireAgents) ??
+        agents[0] ??
+        null;
+      if (!leaderAgent) {
+        return sendError(res, "Starter did not yield an agent to attach the selected CEO runtime to.", 422);
+      }
+
+      const defaultRuntimeCwd = await resolveDefaultRuntimeCwdForCompany(ctx.db, company.id);
+      const resolvedRuntimeModel = resolveRuntimeModelForProvider(
+        providerType,
+        await resolveOpencodeRuntimeModel(
+          providerType,
+          normalizeRuntimeConfig({
+            defaultRuntimeCwd,
+            runtimeConfig: {
+              runtimeModel: requestedModel,
+              runtimeEnv: resolveSeedRuntimeEnv(providerType)
+            }
+          })
+        )
+      );
+      const bootstrapPrompt = leaderAgent.bootstrapPrompt?.trim()
+        ? leaderAgent.bootstrapPrompt
+        : buildDefaultCeoBootstrapPrompt();
+      const defaultRuntimeConfig = normalizeRuntimeConfig({
+        defaultRuntimeCwd,
+        runtimeConfig: {
+          runtimeModel: resolvedRuntimeModel,
+          bootstrapPrompt,
+          runtimeEnv: resolveSeedRuntimeEnv(providerType),
+          ...(providerType === "shell"
+            ? {
+                runtimeCommand: "echo",
+                runtimeArgs: ["ceo bootstrap heartbeat"]
+              }
+            : {})
+        }
+      });
+      await updateAgent(ctx.db, {
+        companyId: company.id,
+        id: leaderAgent.id,
+        providerType,
+        ...runtimeConfigToDb(defaultRuntimeConfig),
+        stateBlob: runtimeConfigToStateBlobPatch(defaultRuntimeConfig)
+      });
+
+      return sendOk(res, company);
+    }
+
+    const company = await createCompany(ctx.db, companyInput);
     const defaultRuntimeCwd = await resolveDefaultRuntimeCwdForCompany(ctx.db, company.id);
     await mkdir(defaultRuntimeCwd, { recursive: true });
-    const requestedModel = parsed.data.runtimeModel?.trim() || process.env[DEFAULT_AGENT_MODEL_ENV]?.trim() || undefined;
     const resolvedRuntimeModel = resolveRuntimeModelForProvider(
       providerType,
       await resolveOpencodeRuntimeModel(
@@ -272,6 +453,35 @@ export function createCompaniesRouter(ctx: AppContext) {
   });
 
   return router;
+}
+
+function buildStarterTemplateVariables(
+  definition: BuiltinStarterTemplateDefinition,
+  input: { name: string; mission: string | null }
+): Record<string, unknown> {
+  const name = input.name.trim();
+  const missionTail = (input.mission ?? "").trim() || name;
+  const defaults: Record<string, string> = {
+    brandName: name,
+    productName: name,
+    targetAudience: missionTail,
+    primaryChannel: "LinkedIn"
+  };
+  const out: Record<string, unknown> = {};
+  for (const v of definition.variables) {
+    const key = v.key;
+    if (defaults[key] !== undefined) {
+      out[key] = defaults[key]!;
+      continue;
+    }
+    const dv = v.defaultValue;
+    if (dv !== undefined && dv !== null && String(dv).length > 0) {
+      out[key] = dv;
+      continue;
+    }
+    out[key] = missionTail;
+  }
+  return out;
 }
 
 function requireCompanyWriteAccess(req: Request, res: Response, next: NextFunction) {

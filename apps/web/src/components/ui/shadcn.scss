@@ -355,6 +355,22 @@ body {
   @apply mt-2 text-base;
 }
 
+.ui-company-file-import-preview {
+  @apply mt-3 space-y-2 rounded-md border border-border bg-muted/30 p-3 text-base;
+}
+
+.ui-company-file-import-preview-summary {
+  @apply text-base text-foreground;
+}
+
+.ui-company-file-import-preview-warn {
+  @apply text-base text-amber-700 dark:text-amber-400;
+}
+
+.ui-company-file-import-preview-errors {
+  @apply list-inside list-disc text-base text-destructive;
+}
+
 .ui-checkbox {
   @apply size-4 shrink-0 rounded-[4px] border border-input transition-shadow outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground dark:bg-input/30 dark:aria-invalid:ring-destructive/40 dark:data-[state=checked]:bg-primary;
 }

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { ApiError, apiPost } from "@/lib/api";
+import { ApiError, apiGet, apiPost } from "@/lib/api";
 import { fetchAdapterModelsForProvider } from "@/lib/adapter-models-api";
 import { readAgentRuntimeDefaults } from "@/lib/agent-defaults";
 import {
@@ -40,6 +40,8 @@ type CompanyModalAdapterModelsState =
   | { status: "error" }
   | { status: "ok"; models: ServerAdapterModelEntry[] };
 
+type StarterPackMeta = { id: string; label: string; description: string };
+
 export function CreateCompanyModal({
   companyId,
   trigger,
@@ -61,6 +63,8 @@ export function CreateCompanyModal({
   const [runtimeModel, setRuntimeModel] = useState(defaults.runtimeModel || "");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [starterPacks, setStarterPacks] = useState<StarterPackMeta[]>([]);
+  const [starterPackId, setStarterPackId] = useState<string>("");
   const serverModelsForPicker =
     adapterModelsFetch.status === "ok" ? adapterModelsFetch.models : undefined;
   const modelOptions = useMemo(
@@ -77,9 +81,14 @@ export function CreateCompanyModal({
 
   useEffect(() => {
     if (!open) {
+      setStarterPacks([]);
+      setStarterPackId("");
       setAdapterModelsFetch({ status: "idle" });
       return;
     }
+    void apiGet<{ starterPacks: StarterPackMeta[] }>("/companies/starter-packs", companyId)
+      .then((res) => setStarterPacks(res.data.starterPacks ?? []))
+      .catch(() => setStarterPacks([]));
     setAdapterModelsFetch({ status: "loading" });
     void fetchAdapterModelsForProvider(companyId, providerType, { runtimeConfig: {} })
       .then((models) => setAdapterModelsFetch({ status: "ok", models }))
@@ -114,12 +123,16 @@ export function CreateCompanyModal({
     setIsSubmitting(true);
     setError(null);
     try {
-      const created = await apiPost<{ id: string }>("/companies", companyId, {
+      const body: Record<string, unknown> = {
         name,
         mission: mission || undefined,
         providerType,
         runtimeModel: runtimeModel || undefined
-      });
+      };
+      if (starterPackId.trim()) {
+        body.starterPackId = starterPackId.trim();
+      }
+      const created = await apiPost<{ id: string }>("/companies", companyId, body);
       setName("");
       setMission("");
       setOpen(false);
@@ -169,6 +182,32 @@ export function CreateCompanyModal({
                   placeholder="Describe the company mission and operating context."
                 />
               </Field>
+              {starterPacks.length > 0 ? (
+                <Field>
+                  <FieldLabel>Start with</FieldLabel>
+                  <Select
+                    value={starterPackId || "blank"}
+                    onValueChange={(value) => setStarterPackId(value === "blank" ? "" : value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Choose a starter" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="blank">Blank workspace</SelectItem>
+                      {starterPacks.map((pack) => (
+                        <SelectItem key={pack.id} value={pack.id}>
+                          {pack.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {starterPackId ? (
+                    <FieldDescription>
+                      {starterPacks.find((p) => p.id === starterPackId)?.description ?? ""}
+                    </FieldDescription>
+                  ) : null}
+                </Field>
+              ) : null}
               <Field>
                 <FieldLabel>CEO provider</FieldLabel>
                 <Select value={providerType} onValueChange={(value) => setProviderType(value as RuntimeProviderType)}>

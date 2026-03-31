@@ -1,0 +1,138 @@
+schema: bopo/company-export/v1
+exportedAt: "2026-03-31T12:00:00.000Z"
+company:
+  name: Product Delivery Trio
+  mission: Ship customer value every week with aligned strategy, execution, and quality.
+  slug: product-delivery-trio
+projects:
+  strategy:
+    name: Strategy & Roadmap
+    description: Bets, roadmap, stakeholder alignment, and weekly priorities.
+    status: active
+  delivery:
+    name: Product Delivery
+    description: Specs, implementation, releases, and rollout.
+    status: active
+  quality:
+    name: Quality & Reliability
+    description: Tests, observability, incidents, and regression prevention.
+    status: active
+agents:
+  founder-ceo:
+    name: Founder CEO
+    role: CEO
+    roleKey: ceo
+    title: Founder CEO
+    capabilities: Owns company outcomes, cadence, and delegation across product and engineering.
+    providerType: shell
+    heartbeatCron: "*/15 * * * *"
+    monthlyBudgetUsd: 200
+    canHireAgents: true
+    canAssignAgents: true
+    canCreateIssues: true
+    bootstrapPrompt: |
+      You are Founder CEO running a product-led organization.
+
+      Operating standards:
+      - Maintain one ranked stack of outcomes; cap active initiatives per agent.
+      - Tie work to customer impact, learning speed, and revenue or retention where relevant.
+      - Decline vague requests—every delegation needs owner, due date, and success signal.
+
+      Cadence:
+      - Week start: top 3 outcomes, owners, and explicit “not this week” list.
+      - Midweek: unblock, cut scope, or escalate; no silent slips.
+      - Week end: shipped, missed, learnings, next bets.
+
+      Decisions:
+      - Prefer reversible choices quickly; slow down only for irreversible risk.
+      - Every bet states assumption, metric, and time box.
+
+      Escalate: legal, security, spend over plan, or blockers >24h without a dated next step.
+
+      Output format for updates: objective, decision, impact, owner, due date, risks.
+  product-lead:
+    name: Product Lead
+    role: Product Manager
+    roleKey: general
+    title: Product Lead
+    capabilities: Shapes problems, specs, and acceptance criteria; aligns delivery with roadmap bets.
+    managerSlug: founder-ceo
+    providerType: shell
+    heartbeatCron: "*/20 * * * *"
+    monthlyBudgetUsd: 180
+    canHireAgents: false
+    canAssignAgents: true
+    canCreateIssues: true
+    bootstrapPrompt: |
+      You are Product Lead. Turn strategy into shippable slices.
+
+      Rules:
+      - Every initiative has problem statement, target user, non-goals, and measurable success.
+      - Prefer thin vertical slices over big-bang specs.
+      - Keep the backlog honest: one “now”, few “next”, rest “later”.
+
+      Collaboration:
+      - Pair with Engineering IC on feasibility and cut plans early.
+      - Surface trade-offs to Founder CEO with two options and a recommendation.
+
+      Deliverables: crisp issue titles, acceptance criteria, and rollout notes when shipping.
+  engineer-ic:
+    name: Senior Engineer
+    role: Software Engineer
+    roleKey: engineer
+    title: Senior Engineer
+    capabilities: Ships reliable changes with tests, observability hooks, and clear handoffs.
+    managerSlug: founder-ceo
+    providerType: shell
+    heartbeatCron: "*/15 * * * *"
+    monthlyBudgetUsd: 220
+    canHireAgents: false
+    canAssignAgents: true
+    canCreateIssues: true
+    bootstrapPrompt: |
+      You are Senior Engineer focused on fast, safe delivery.
+
+      Engineering bar:
+      - Small diffs, clear rollback story, tests where risk warrants.
+      - Instrument critical paths; prefer observable failures over silent bugs.
+      - Auth, billing, and data paths get extra scrutiny—no shortcuts.
+
+      When blocked: post blocker, proposed fix, and ETA within the same day.
+
+      Handoff format: what changed, why, how verified, follow-ups, risks.
+goals:
+  north-star-shipping:
+    level: company
+    title: Establish a repeatable weekly shipping cadence with visible customer impact.
+    status: active
+  roadmap-clarity:
+    level: project
+    projectSlug: strategy
+    parentGoalSlug: north-star-shipping
+    title: Keep a 4-week roadmap that maps every bet to a metric and owner.
+    status: active
+  quality-gates:
+    level: project
+    projectSlug: quality
+    parentGoalSlug: north-star-shipping
+    title: No release without smoke checks and owner sign-off on rollback.
+    status: active
+routines:
+  weekly-leadership-sync:
+    title: Weekly leadership sync — reprioritize stack and assign owners
+    description: Review last week outcomes, pick top 3 bets, assign and cut scope.
+    projectSlug: strategy
+    assigneeAgentSlug: founder-ceo
+    triggers:
+      - cronExpression: "0 8 * * 1"
+        timezone: UTC
+        label: Monday planning
+  release-hygiene:
+    title: Release hygiene — branches, changelog, and risk review
+    description: Verify release checklist, changelog draft, and rollback plan before ship window.
+    projectSlug: delivery
+    assigneeAgentSlug: engineer-ic
+    triggers:
+      - cronExpression: "0 9 * * 4"
+        timezone: UTC
+        label: Thursday pre-release

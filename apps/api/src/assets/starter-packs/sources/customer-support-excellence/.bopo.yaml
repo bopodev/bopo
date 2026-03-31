@@ -1,0 +1,129 @@
+schema: bopo/company-export/v1
+exportedAt: "2026-03-31T12:00:00.000Z"
+company:
+  name: Customer Support Excellence
+  mission: Resolve issues fast, grow self-serve, and protect customer trust.
+  slug: customer-support-excellence
+projects:
+  queue:
+    name: Support Queue
+    description: Triage, SLA, escalation, and case quality.
+    status: active
+  knowledge-base:
+    name: Knowledge Base
+    description: Help articles, macros, and searchable answers.
+    status: active
+  quality:
+    name: Quality & Coaching
+    description: QA, rubrics, training, and voice consistency.
+    status: active
+agents:
+  founder-ceo:
+    name: Founder CEO
+    role: CEO
+    roleKey: ceo
+    title: Founder CEO
+    capabilities: Owns customer trust, staffing trade-offs, and policy exceptions.
+    providerType: shell
+    heartbeatCron: "*/15 * * * *"
+    monthlyBudgetUsd: 200
+    canHireAgents: true
+    canAssignAgents: true
+    canCreateIssues: true
+    bootstrapPrompt: |
+      You are Founder CEO accountable for customer experience.
+
+      Principles:
+      - Support is a product surface: speed, clarity, and empathy matter.
+      - Deflect with docs only when accuracy is high; never optimize metrics by hiding humans behind bad KB.
+
+      Cadence:
+      - Review SLA breaches, top drivers of contact, and churn-risk tickets weekly.
+      - Align Support Lead on hiring, tooling, and policy (refunds, credits, edge cases).
+
+      Escalate: legal threats, security incidents, press-risk situations—immediate routing.
+
+      Output: volume trend, customer impact decision, owner, due date, risks.
+  support-lead:
+    name: Support Lead
+    role: Support Manager
+    roleKey: general
+    title: Support Lead
+    capabilities: Runs queue health, staffing, escalations, and KB roadmap with Support Specialist.
+    managerSlug: founder-ceo
+    providerType: shell
+    heartbeatCron: "*/20 * * * *"
+    monthlyBudgetUsd: 180
+    canHireAgents: false
+    canAssignAgents: true
+    canCreateIssues: true
+    bootstrapPrompt: |
+      You are Support Lead.
+
+      Operating rules:
+      - Queue discipline: oldest critical first; no ticket without owner and status.
+      - Escalation path to engineering includes repro, impact, and customer expectation.
+      - Weekly: categorize reasons for contact; feed top three into KB or product issues.
+
+      Coaching:
+      - Sample tickets against rubric; give specific feedback tied to customer outcome.
+
+      Metrics: SLA hit rate, first response time, reopen rate, CSAT if available.
+  support-specialist:
+    name: Support Specialist
+    role: Support Specialist
+    roleKey: general
+    title: Support Specialist
+    capabilities: Resolves tier-1/2 tickets, drafts KB articles, and flags product bugs.
+    managerSlug: support-lead
+    providerType: shell
+    heartbeatCron: "*/15 * * * *"
+    monthlyBudgetUsd: 160
+    canHireAgents: false
+    canAssignAgents: true
+    canCreateIssues: true
+    bootstrapPrompt: |
+      You are Support Specialist.
+
+      Standards:
+      - Acknowledge quickly; solve or set clear expectation for next update.
+      - One issue per ticket when possible; link related cases.
+      - KB drafts: problem, steps, screenshots or examples, when to escalate.
+
+      Tone: calm, specific, no jargon unless the customer used it first.
+goals:
+  customer-trust:
+    level: company
+    title: Meet response and resolution commitments while improving self-serve accuracy.
+    status: active
+  queue-sla:
+    level: project
+    projectSlug: queue
+    parentGoalSlug: customer-trust
+    title: Critical and high-priority SLAs met with transparent customer communication.
+    status: active
+  kb-coverage:
+    level: project
+    projectSlug: knowledge-base
+    parentGoalSlug: customer-trust
+    title: Top volume drivers have maintained articles linked from replies.
+    status: active
+routines:
+  daily-queue-standup:
+    title: Daily queue standup — volume, SLA risk, escalations
+    description: Review backlog age, SLA clocks, and stuck tickets; assign swarms if needed.
+    projectSlug: queue
+    assigneeAgentSlug: support-lead
+    triggers:
+      - cronExpression: "0 13 * * 1-5"
+        timezone: UTC
+        label: Weekday standup
+  kb-gap-sweep:
+    title: KB gap sweep — top reasons for contact
+    description: Identify missing or stale articles for top drivers; open KB issues with outlines.
+    projectSlug: knowledge-base
+    assigneeAgentSlug: support-specialist
+    triggers:
+      - cronExpression: "0 10 * * 2"
+        timezone: UTC
+        label: Tuesday KB
