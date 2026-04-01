@@ -489,7 +489,7 @@
 }
 
 .agentsViewToggleButton {
-  @apply h-9 rounded-md px-4 text-sidebar-foreground;
+  @apply shrink-0 text-sidebar-foreground;
 }
 
 .agentsViewToggleButton[data-variant="outline"].agentsViewToggleButtonActive {

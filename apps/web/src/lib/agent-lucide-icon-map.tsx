@@ -18,6 +18,7 @@ import {
   Folder,
   Gem,
   GitBranch,
+  Globe,
   Hammer,
   Headphones,
   Heart,
@@ -89,5 +90,6 @@ export const AGENT_LUCIDE_ICON_MAP: Record<AgentLucideIconName, LucideIcon> = {
   Users,
   Workflow,
   Wrench,
-  Zap
+  Zap,
+  Globe
 };

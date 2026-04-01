@@ -1362,6 +1362,7 @@ export function IssueDetailPageClient({
                   defaultProjectId={issue.projectId}
                   defaultParentIssueId={issue.id}
                   triggerLabel="Add sub-issue"
+                  triggerSize="sm"
                   triggerVariant="outline"
                 />
               </div>

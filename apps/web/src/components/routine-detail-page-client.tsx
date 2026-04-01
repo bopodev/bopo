@@ -698,7 +698,7 @@ export function RoutineDetailPageClient(
     }
   }
 
-  function openTriggerEdit(trigger: TriggerRow) {
+  const openTriggerEdit = useCallback((trigger: TriggerRow) => {
     const parsed = parseTriggerCron(trigger.cronExpression);
     setEditingTriggerId(trigger.id);
     setTriggerEditScheduleKind(parsed.scheduleKind);
@@ -708,7 +708,66 @@ export function RoutineDetailPageClient(
     setTriggerEditDayOfMonth(parsed.dayOfMonth);
     setTriggerEditCustomCron(parsed.customCron);
     setTriggerEditEnabled(trigger.enabled ? "enabled" : "disabled");
-  }
+  }, []);
+
+  const loopTriggerColumns = useMemo<ColumnDef<TriggerRow>[]>(
+    () => [
+      {
+        accessorKey: "cronExpression",
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Schedule" />,
+        cell: ({ row }) => <span className="ui-run-table-cell-muted">{formatScheduleLabel(row.original.cronExpression)}</span>
+      },
+      {
+        accessorKey: "nextRunAt",
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Next run" />,
+        cell: ({ row }) =>
+          row.original.nextRunAt ? (
+            <time
+              className="ui-run-table-datetime"
+              dateTime={row.original.nextRunAt}
+              title={formatDateTime(row.original.nextRunAt)}
+            >
+              {formatSmartDateTime(row.original.nextRunAt)}
+            </time>
+          ) : (
+            <span className="ui-run-table-cell-muted">Not scheduled</span>
+          )
+      },
+      {
+        accessorKey: "lastFiredAt",
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Last fired" />,
+        cell: ({ row }) =>
+          row.original.lastFiredAt ? (
+            <time
+              className="ui-run-table-datetime"
+              dateTime={row.original.lastFiredAt}
+              title={formatDateTime(row.original.lastFiredAt)}
+            >
+              {formatSmartDateTime(row.original.lastFiredAt)}
+            </time>
+          ) : (
+            <span className="ui-run-table-cell-muted">Never</span>
+          )
+      },
+      {
+        accessorKey: "lastResult",
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Last result" />,
+        enableSorting: false,
+        cell: ({ row }) => <div className="ui-run-table-message">{formatTriggerLastResult(row.original.lastResult, companyId)}</div>
+      },
+      {
+        id: "actions",
+        header: "",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <Button type="button" size="sm" variant="outline" onClick={() => openTriggerEdit(row.original)}>
+            Edit
+          </Button>
+        )
+      }
+    ],
+    [companyId, openTriggerEdit]
+  );
 
   async function saveTriggerEdits(e: FormEvent) {
     e.preventDefault();
@@ -1218,7 +1277,7 @@ export function RoutineDetailPageClient(
                     </CardContent>
                   </Card>
                 </TabsContent>
-                <TabsContent value="triggers">
+                <TabsContent value="triggers" className="ui-issue-tabs-content">
                   <Card>
                     <form onSubmit={addTrigger}>
                       <CardContent className="ui-loop-trigger-form-card-body">
@@ -1373,41 +1432,13 @@ export function RoutineDetailPageClient(
                       title="Triggers"
                       description="Triggers for this routine."
                     />
-                    {detail.triggers.length === 0 ? (
-                      <p className="ui-issue-muted-text">No triggers yet.</p>
-                    ) : (
-                      detail.triggers.map((t) => (
-                        <Card key={t.id}>
-                          <CardContent className="ui-loop-trigger-detail-rows">
-                            <div className="ui-loop-trigger-meta-row">
-                              <span className="ui-loop-trigger-meta-label">Schedule</span>
-                              <span className="ui-loop-trigger-meta-value">{formatScheduleLabel(t.cronExpression)}</span>
-                            </div>
-                            <div className="ui-loop-trigger-meta-row">
-                              <span className="ui-loop-trigger-meta-label">Next run</span>
-                              <span className="ui-loop-trigger-meta-value">
-                                {t.nextRunAt ? formatSmartDateTime(t.nextRunAt) : "Not scheduled"}
-                              </span>
-                            </div>
-                            <div className="ui-loop-trigger-meta-row">
-                              <span className="ui-loop-trigger-meta-label">Last fired</span>
-                              <span className="ui-loop-trigger-meta-value">
-                                {t.lastFiredAt ? formatSmartDateTime(t.lastFiredAt) : "Never"}
-                              </span>
-                            </div>
-                            <div className="ui-loop-trigger-meta-row">
-                              <span className="ui-loop-trigger-meta-label">Last result</span>
-                              <span className="ui-loop-trigger-meta-value">
-                                {formatTriggerLastResult(t.lastResult, companyId)}
-                              </span>
-                            </div>
-                          </CardContent>
-                          <CardFooter className="ui-loop-card-footer-actions">
-                            <Button type="button" size="sm" variant="outline" onClick={() => openTriggerEdit(t)}>Edit</Button>
-                          </CardFooter>
-                        </Card>
-                      ))
-                    )}
+                    <DataTable
+                      columns={loopTriggerColumns}
+                      data={detail.triggers}
+                      emptyMessage="No triggers yet."
+                      defaultPageSize={10}
+                      showViewOptions={false}
+                    />
                   </div>
                   <Dialog open={!!editingTriggerId} onOpenChange={(open) => (!open ? setEditingTriggerId(null) : undefined)}>
                     <DialogContent>

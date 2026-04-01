@@ -272,7 +272,7 @@ export function CreateIssueModal({
       }}
     >
       <DialogTrigger asChild>
-        <Button variant={triggerVariant} size={triggerSize}>
+        <Button variant={triggerVariant} size="sm">
           {triggerLabel}
         </Button>
       </DialogTrigger>

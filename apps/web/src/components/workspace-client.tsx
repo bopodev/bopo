@@ -63,7 +63,7 @@ import {
   XAxis,
   YAxis
 } from "recharts";
-import { SlidersHorizontal } from "lucide-react";
+import { LayoutGrid, Network, SlidersHorizontal, Table } from "lucide-react";
 import { AGENT_ROLE_LABELS, AGENT_ROLE_KEYS, type AgentRoleKey } from "bopodev-contracts";
 import styles from "./workspace-client.module.scss";
 import {
@@ -81,6 +81,7 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { ModelPricingRow, TemplateRow } from "@/components/workspace/types";
 import {
   MODELS_PROVIDER_FALLBACKS,
@@ -2725,36 +2726,57 @@ export function WorkspaceClient({
   );
   const agentsViewToggle = (
     <ButtonGroup className={styles.agentsViewToggleGroup}>
-      <Button
-        variant="outline"
-        className={cn(
-          styles.agentsViewToggleButton,
-          agentsViewMode === "table" ? styles.agentsViewToggleButtonActive : undefined
-        )}
-        onClick={() => setAgentsViewMode("table")}
-      >
-        Table
-      </Button>
-      <Button
-        variant="outline"
-        className={cn(
-          styles.agentsViewToggleButton,
-          agentsViewMode === "cards" ? styles.agentsViewToggleButtonActive : undefined
-        )}
-        onClick={() => setAgentsViewMode("cards")}
-      >
-        Cards
-      </Button>
-      <Button
-        variant="outline"
-        className={cn(
-          styles.agentsViewToggleButton,
-          agentsViewMode === "structure" ? styles.agentsViewToggleButtonActive : undefined
-        )}
-        onClick={() => setAgentsViewMode("structure")}
-      >
-        Org
-      </Button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="outline"
+            size="icon"
+            className={cn(
+              styles.agentsViewToggleButton,
+              agentsViewMode === "table" ? styles.agentsViewToggleButtonActive : undefined
+            )}
+            onClick={() => setAgentsViewMode("table")}
+            aria-label="Table view"
+          >
+            <Table className="size-4" aria-hidden />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Table</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="outline"
+            size="icon"
+            className={cn(
+              styles.agentsViewToggleButton,
+              agentsViewMode === "cards" ? styles.agentsViewToggleButtonActive : undefined
+            )}
+            onClick={() => setAgentsViewMode("cards")}
+            aria-label="Cards view"
+          >
+            <LayoutGrid className="size-4" aria-hidden />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Cards</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="outline"
+            size="icon"
+            className={cn(
+              styles.agentsViewToggleButton,
+              agentsViewMode === "structure" ? styles.agentsViewToggleButtonActive : undefined
+            )}
+            onClick={() => setAgentsViewMode("structure")}
+            aria-label="Org chart view"
+          >
+            <Network className="size-4" aria-hidden />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Org</TooltipContent>
+      </Tooltip>
     </ButtonGroup>
   );
   const pluginKindOptions = useMemo(

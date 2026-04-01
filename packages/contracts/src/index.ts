@@ -937,7 +937,8 @@ export const AGENT_LUCIDE_ICON_NAMES = [
   "Users",
   "Workflow",
   "Wrench",
-  "Zap"
+  "Zap",
+  "Globe"
 ] as const;
 
 export type AgentLucideIconName = (typeof AGENT_LUCIDE_ICON_NAMES)[number];

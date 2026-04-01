@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -265,6 +266,7 @@ export function RoutinesPageClient(props: WorkspacePageProps) {
                 <DialogContent>
                   <DialogHeader>
                     <DialogTitle>Create routine</DialogTitle>
+                    <DialogDescription>Create a new routine to open issues and wake assignees on a schedule.</DialogDescription>
                   </DialogHeader>
                   <form onSubmit={onCreate}>
                     <div className="ui-dialog-content-scrollable">

@@ -101,7 +101,7 @@ export function AgentAppearanceModal({
         <DialogHeader>
           <DialogTitle>Agent appearance</DialogTitle>
           <DialogDescription>
-            Choose an avatar portrait or a Lucide icon for {agent.name}.
+            Choose an avatar or an icon for {agent.name}.
           </DialogDescription>
         </DialogHeader>
 
