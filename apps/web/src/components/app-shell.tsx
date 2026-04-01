@@ -14,7 +14,6 @@ import {
   BriefcaseBusiness,
   Inbox,
   FolderKanban,
-  GitBranch,
   LayoutDashboard,
   Map,
   Target,
@@ -86,7 +85,6 @@ const navGroups: Array<{
     label: "Company",
     items: [
       { slug: "goals", label: "Goals", icon: Target },
-      { slug: "org-chart", label: "Organization", icon: GitBranch },
       { slug: "office-space", label: "Office", icon: Map },
       { slug: "costs", label: "Costs", icon: BarChart3 },
       { slug: "settings", label: "Settings", icon: Settings, href: "/settings" }

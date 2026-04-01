@@ -972,7 +972,7 @@ export function WorkspaceClient({
   const [agentsReportToFilter, setAgentsReportToFilter] = useState<string>("all");
   const [agentsModelFilter, setAgentsModelFilter] = useState<string>("all");
   const [agentsQuery, setAgentsQuery] = useState("");
-  const [agentsViewMode, setAgentsViewMode] = useState<"table" | "cards">("table");
+  const [agentsViewMode, setAgentsViewMode] = useState<"table" | "cards" | "structure">("table");
   const [agentsMobileFiltersOpen, setAgentsMobileFiltersOpen] = useState(false);
   const [inboxQuery, setInboxQuery] = useState("");
   const [inboxStateFilter, setInboxStateFilter] = useState<"all" | "pending" | "resolved">("all");
@@ -2743,6 +2743,16 @@ export function WorkspaceClient({
         onClick={() => setAgentsViewMode("cards")}
       >
         Cards
+      </Button>
+      <Button
+        variant="outline"
+        className={cn(
+          styles.agentsViewToggleButton,
+          agentsViewMode === "structure" ? styles.agentsViewToggleButtonActive : undefined
+        )}
+        onClick={() => setAgentsViewMode("structure")}
+      >
+        Org
       </Button>
     </ButtonGroup>
   );
@@ -4850,7 +4860,7 @@ export function WorkspaceClient({
                   toolbarActions={agentsToolbarFilters}
                   toolbarTrailing={agentsViewToggle}
                 />
-              ) : (
+              ) : agentsViewMode === "cards" ? (
                 <div className="ui-data-table">
                   <div className="ui-data-table-toolbar">
                     <div className="ui-data-table-toolbar-actions ui-data-table-toolbar-actions-inline">{agentsToolbarFilters}</div>
@@ -4944,6 +4954,46 @@ export function WorkspaceClient({
                         );
                       })}
                     </div>
+                  )}
+                </div>
+              ) : (
+                <div className="ui-data-table">
+                  <div className="ui-data-table-toolbar">
+                    <div className="ui-data-table-toolbar-actions ui-data-table-toolbar-actions-inline">{agentsToolbarFilters}</div>
+                    <div className="ui-data-table-toolbar-actions ui-data-table-toolbar-actions-mobile">
+                      <Drawer open={agentsMobileFiltersOpen} onOpenChange={setAgentsMobileFiltersOpen}>
+                        <DrawerTrigger asChild>
+                          <Button variant="outline" size="sm" className="ui-data-table-mobile-actions-trigger">
+                            <SlidersHorizontal />
+                            Filters
+                          </Button>
+                        </DrawerTrigger>
+                        <DrawerContent className="ui-mobile-safe-bottom">
+                          <DrawerHeader>
+                            <DrawerTitle>Filters</DrawerTitle>
+                            <DrawerDescription>Refine agents with quick mobile controls.</DrawerDescription>
+                          </DrawerHeader>
+                          <div className="space-y-3 pb-2">{agentsToolbarFilters}</div>
+                        </DrawerContent>
+                      </Drawer>
+                    </div>
+                    <div className="ui-data-table-toolbar-right">{agentsViewToggle}</div>
+                  </div>
+                  {filteredAgents.length === 0 ? (
+                    <div className="ui-data-table-surface">
+                      <div className="ui-data-table-empty-cell flex min-h-24 items-center justify-center px-4 py-8">
+                        No agents match current filters.
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Same filters as table/cards; managers outside filteredAgents appear as extra roots (OrgChart orphan banner). */}
+                      <OrgChart
+                        agents={filteredAgents}
+                        embedded
+                        onAgentSelect={(agentId) => router.push(`/agents/${agentId}?companyId=${companyId || ""}` as Route)}
+                      />
+                    </>
                   )}
                 </div>
               )}

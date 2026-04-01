@@ -7,6 +7,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { Badge } from "@/components/ui/badge";
 import { Minus, Plus, ScanSearch } from "lucide-react";
 import { Tree, TreeNode } from "react-organizational-chart";
+import { cn } from "@/lib/utils";
 import styles from "./org-chart.module.scss";
 
 interface AgentNode {
@@ -147,10 +148,13 @@ function formatRole(agent: Pick<AgentNode, "role" | "roleKey" | "title">) {
 
 export function OrgChart({
   agents,
-  onAgentSelect
+  onAgentSelect,
+  embedded = false
 }: {
   agents: AgentNode[];
   onAgentSelect?: (agentId: string) => void;
+  /** Agents page: viewport sized for shell + heading + filter toolbar (Organization nav uses full-page height). */
+  embedded?: boolean;
 }) {
   const { roots, orphanCount, cycleCount } = useMemo(() => buildOrgForest(agents), [agents]);
   const [zoom, setZoom] = useState(1);
@@ -310,7 +314,7 @@ export function OrgChart({
             </Accordion>
           </div>
           <div className="hidden md:block">
-            <div className={styles.viewport}>
+            <div className={cn(styles.viewport, embedded ? styles.viewportEmbedded : undefined)}>
               {(orphanCount > 0 || cycleCount > 0) && (
                 <div className={styles.warningBanner} role="status" aria-live="polite">
                   {orphanCount > 0 ? `${orphanCount} orphaned reporting link${orphanCount > 1 ? "s" : ""} shown as root.` : null}
