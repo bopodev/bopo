@@ -14,7 +14,6 @@ import {
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ApiError, apiPut } from "@/lib/api";
 import { agentAvatarSeed } from "@/lib/agent-avatar";
@@ -37,7 +36,6 @@ export function AgentAppearanceModal({
   const router = useRouter();
   const [tab, setTab] = useState<"avatar" | "icon">("avatar");
   const [selectedIcon, setSelectedIcon] = useState<AgentLucideIconName>("Bot");
-  /** When set, preview and save use this stored seed; `undefined` means keep server value until user randomizes. */
   const [draftAvatarSeed, setDraftAvatarSeed] = useState<string | undefined>(undefined);
   const [query, setQuery] = useState("");
   const [saving, setSaving] = useState(false);
