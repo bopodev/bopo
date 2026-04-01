@@ -5829,12 +5829,6 @@ export function WorkspaceClient({
                 )}
               </TabsContent>
               <TabsContent value="by-model" className={styles.costTabsByProviderContent}>
-                {activeCostMonth === "all" ? (
-                  <p className={styles.costProviderDailyAllTimeHint}>
-                    Daily charts use {providerDailyChartMonthLabel} — the same calendar month as the Overview &quot;Daily spend
-                    trend&quot; when &quot;All time&quot; is selected.
-                  </p>
-                ) : null}
                 {!costDailyTargetMonthKey ? (
                   <EmptyState>No months with cost data yet.</EmptyState>
                 ) : modelDailyCostBreakdown.length === 0 ? (
@@ -5858,12 +5852,6 @@ export function WorkspaceClient({
                 )}
               </TabsContent>
               <TabsContent value="by-agent" className={styles.costTabsByProviderContent}>
-                {activeCostMonth === "all" ? (
-                  <p className={styles.costProviderDailyAllTimeHint}>
-                    Daily charts use {providerDailyChartMonthLabel} — the same calendar month as the Overview &quot;Daily spend
-                    trend&quot; when &quot;All time&quot; is selected.
-                  </p>
-                ) : null}
                 {!costDailyTargetMonthKey ? (
                   <EmptyState>No months with cost data yet.</EmptyState>
                 ) : agentCostBudgetBreakdown.length === 0 ? (
@@ -5887,12 +5875,6 @@ export function WorkspaceClient({
                 )}
               </TabsContent>
               <TabsContent value="by-chats" className={styles.costTabsByProviderContent}>
-                {activeCostMonth === "all" ? (
-                  <p className={styles.costProviderDailyAllTimeHint}>
-                    Daily charts use {providerDailyChartMonthLabel} — the same calendar month as the Overview &quot;Daily spend
-                    trend&quot; when &quot;All time&quot; is selected.
-                  </p>
-                ) : null}
                 {!costDailyTargetMonthKey ? (
                   <EmptyState>No months with cost data yet.</EmptyState>
                 ) : !ownerAssistantMonthlyChatsCost || ownerAssistantMonthlyChatsCost.activeThreadCount === 0 ? (
