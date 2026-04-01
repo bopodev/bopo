@@ -202,6 +202,7 @@ function OfficeSpaceCanvas({
                                 name={occupant.displayName}
                                 className={styles.avatarBadge}
                                 size={64}
+                                lucideIconName={occupant.lucideIconName}
                               />
                               <span className="min-w-0 flex-1 text-left">
                                 <span className="block truncate">{occupant.displayName}</span>
@@ -276,6 +277,7 @@ function OfficeSpaceCanvas({
                                 name={occupant.displayName}
                                 className={styles.avatarBadge}
                                 size={96}
+                                lucideIconName={occupant.lucideIconName}
                               />
                               <span className={styles.occupantName}>{occupant.displayName}</span>
                             </Button>

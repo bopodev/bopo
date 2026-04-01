@@ -202,6 +202,7 @@ export function LoopsPageClient(props: WorkspacePageProps) {
               <AgentAvatar
                 seed={agentAvatarSeed(row.original.assigneeAgentId, name, agent?.avatarSeed ?? undefined)}
                 name={name}
+                lucideIconName={agent?.lucideIconName}
                 className="h-6 w-6 shrink-0"
                 size={48}
               />

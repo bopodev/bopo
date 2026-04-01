@@ -1,0 +1,93 @@
+import type { AgentLucideIconName } from "bopodev-contracts";
+import { AGENT_LUCIDE_ICON_NAMES } from "bopodev-contracts";
+import type { LucideIcon } from "lucide-react";
+import {
+  Bot,
+  Brain,
+  Briefcase,
+  Building2,
+  Calendar,
+  ChartColumn,
+  Clock,
+  Cloud,
+  Code,
+  Cpu,
+  Crown,
+  Database,
+  FileText,
+  Folder,
+  Gem,
+  GitBranch,
+  Hammer,
+  Headphones,
+  Heart,
+  Layers,
+  Lightbulb,
+  Mail,
+  MessageSquare,
+  Mic,
+  Network,
+  Package,
+  Rocket,
+  Server,
+  Settings,
+  Shield,
+  Sparkles,
+  Star,
+  Target,
+  Terminal,
+  User,
+  Users,
+  Workflow,
+  Wrench,
+  Zap
+} from "lucide-react";
+
+const nameSet = new Set<string>(AGENT_LUCIDE_ICON_NAMES);
+
+export function isAgentLucideIconName(value: string | null | undefined): value is AgentLucideIconName {
+  return Boolean(value && nameSet.has(value));
+}
+
+/** Static map for agent appearance icons (keys match `AGENT_LUCIDE_ICON_NAMES` in contracts). */
+export const AGENT_LUCIDE_ICON_MAP: Record<AgentLucideIconName, LucideIcon> = {
+  Bot,
+  Brain,
+  Briefcase,
+  Building2,
+  Calendar,
+  ChartColumn,
+  Clock,
+  Cloud,
+  Code,
+  Cpu,
+  Crown,
+  Database,
+  FileText,
+  Folder,
+  Gem,
+  GitBranch,
+  Hammer,
+  Headphones,
+  Heart,
+  Layers,
+  Lightbulb,
+  Mail,
+  MessageSquare,
+  Mic,
+  Network,
+  Package,
+  Rocket,
+  Server,
+  Settings,
+  Shield,
+  Sparkles,
+  Star,
+  Target,
+  Terminal,
+  User,
+  Users,
+  Workflow,
+  Wrench,
+  Zap
+};

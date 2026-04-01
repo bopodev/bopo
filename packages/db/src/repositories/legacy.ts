@@ -1116,6 +1116,7 @@ export async function createAgent(
     canAssignAgents: input.canAssignAgents ?? true,
     canCreateIssues: input.canCreateIssues ?? true,
     avatarSeed,
+    lucideIconName: "",
     runtimeCommand: input.runtimeCommand ?? null,
     runtimeArgsJson: input.runtimeArgsJson ?? "[]",
     runtimeCwd: input.runtimeCwd ?? null,
@@ -1184,6 +1185,8 @@ export async function updateAgent(
     interruptGraceSec?: number;
     runPolicyJson?: string;
     stateBlob?: Record<string, unknown>;
+    lucideIconName?: string;
+    avatarSeed?: string;
   }
 ) {
   if (input.managerAgentId) {
@@ -1206,6 +1209,8 @@ export async function updateAgent(
         canHireAgents: input.canHireAgents,
         canAssignAgents: input.canAssignAgents,
         canCreateIssues: input.canCreateIssues,
+        lucideIconName: input.lucideIconName,
+        avatarSeed: input.avatarSeed,
         runtimeCommand: input.runtimeCommand,
         runtimeArgsJson: input.runtimeArgsJson,
         runtimeCwd: input.runtimeCwd,

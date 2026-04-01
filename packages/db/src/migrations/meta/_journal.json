@@ -71,6 +71,13 @@
       "when": 1743400000000,
       "tag": "0009_agent_issue_permissions",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1743500000000,
+      "tag": "0010_agent_lucide_icon",
+      "breakpoints": true
     }
   ]
 }

@@ -122,7 +122,9 @@ const UPDATE_AGENT_ALLOWED_KEYS = new Set([
   "interruptGraceSec",
   "runtimeEnv",
   "runPolicy",
-  "enabledSkillIds"
+  "enabledSkillIds",
+  "lucideIconName",
+  "avatarSeed"
 ]);
 const UPDATE_RUNTIME_CONFIG_ALLOWED_KEYS = new Set([
   "runtimeCommand",
@@ -626,10 +628,18 @@ export function createAgentsRouter(ctx: AppContext) {
       if (requiresRuntimeCwd(effectiveProviderType) && hasText(effectiveRuntimeCwd)) {
         await mkdir(effectiveRuntimeCwd, { recursive: true });
       }
+      const nextLucideIconName =
+        parsed.data.lucideIconName === undefined ? undefined : parsed.data.lucideIconName.trim();
+
+      const nextAvatarSeed =
+        parsed.data.avatarSeed === undefined ? undefined : parsed.data.avatarSeed.trim();
+
       const agent = await updateAgent(ctx.db, {
         companyId: req.companyId!,
         id: req.params.agentId,
         managerAgentId: parsed.data.managerAgentId,
+        lucideIconName: nextLucideIconName,
+        avatarSeed: nextAvatarSeed,
         role:
           parsed.data.role !== undefined || parsed.data.roleKey !== undefined || parsed.data.title !== undefined
             ? resolveAgentRoleText(

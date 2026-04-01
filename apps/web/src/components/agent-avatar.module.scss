@@ -1,0 +1,20 @@
+.glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 9999px;
+  box-sizing: border-box;
+  overflow: hidden;
+  background: linear-gradient(135deg, #b6e3f4, #c0aede, #d1d4f9);
+  color: oklch(0.28 0.04 270);
+}
+
+/* Scale icon to match visual weight of the Dicebear portrait inside the same box (className sets the box, e.g. size-8). */
+.glyphIcon {
+  flex-shrink: 0;
+  width: 58% !important;
+  height: 58% !important;
+  max-width: 100%;
+  max-height: 100%;
+}

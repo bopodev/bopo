@@ -71,6 +71,7 @@ interface AgentRow {
   roleKey?: AgentRoleKey | null;
   title?: string | null;
   avatarSeed?: string | null;
+  lucideIconName?: string | null;
   managerAgentId?: string | null;
   status?: string;
 }
@@ -1231,6 +1232,7 @@ export function IssueDetailPageClient({
                               name={formatCommentAuthorLabel(comment, agents)}
                               size={32}
                               className="ui-issue-comment-avatar"
+                              lucideIconName={agents.find((a) => a.id === comment.authorId)?.lucideIconName}
                             />
                           ) : (
                             <div className="ui-issue-comment-avatar-fallback" aria-hidden>

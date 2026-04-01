@@ -139,6 +139,7 @@ interface AgentRow {
   id: string;
   name: string;
   avatarSeed?: string | null;
+  lucideIconName?: string | null;
   role: string;
   roleKey?: AgentRoleKey | null;
   title?: string | null;
@@ -3597,6 +3598,7 @@ export function WorkspaceClient({
               name={row.original.name}
               className={styles.agentTableAvatar}
               size={64}
+              lucideIconName={row.original.lucideIconName}
             />
             <Link
               href={`/agents/${row.original.id}?companyId=${companyId || ""}` as Route}
@@ -3971,6 +3973,7 @@ export function WorkspaceClient({
                 seed={agentAvatarSeed(row.original.agentId, runAgentName, runAgent?.avatarSeed)}
                 name={runAgentName}
                 className={styles.agentTableAvatar}
+                lucideIconName={runAgent?.lucideIconName}
               />
               <span className={styles.formatDurationContainer5}>{runAgentName}</span>
             </div>
@@ -4912,6 +4915,7 @@ export function WorkspaceClient({
                                   name={agent.name}
                                   className={styles.agentsDirectoryCardAvatar}
                                   size={56}
+                                  lucideIconName={agent.lucideIconName}
                                 />
                                 <div className={styles.agentsDirectoryCardTitleBlock}>
                                   <CardTitle className={styles.agentsDirectoryCardName}>{agent.name}</CardTitle>

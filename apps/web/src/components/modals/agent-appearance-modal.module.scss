@@ -1,0 +1,27 @@
+@reference "../../app/globals.css";
+
+.previewRow {
+  @apply gap-6 items-center flex-wrap flex;
+}
+
+.iconGrid {
+  @apply grid grid-cols-10 gap-4
+}
+
+.iconChoice {
+  @apply inline-flex items-center justify-center aspect-square rounded-md border border-border bg-transparent cursor-pointer text-inherit;
+  svg {
+    @apply size-4;
+  }
+  &:hover {
+    @apply border-ring bg-accent/12;
+  }
+}
+
+.iconChoiceSelected {
+  @apply border-ring bg-accent/18;
+}
+
+.search {
+  @apply mb-3;
+}

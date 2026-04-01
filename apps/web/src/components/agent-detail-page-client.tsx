@@ -11,6 +11,7 @@ import { AgentAvatar } from "@/components/agent-avatar";
 import { DataTable } from "@/components/ui/data-table";
 import { DataTableColumnHeader } from "@/components/ui/data-table-column-header";
 import { CollapsibleMarkdown, COLLAPSIBLE_MARKDOWN_BODY_MAX_HEIGHT_PX } from "@/components/markdown-view";
+import { AgentAppearanceModal } from "@/components/modals/agent-appearance-modal";
 import { CreateAgentModal } from "@/components/modals/create-agent-modal";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -45,6 +46,7 @@ interface AgentRow {
   id: string;
   name: string;
   avatarSeed?: string | null;
+  lucideIconName?: string | null;
   role: string;
   capabilities?: string | null;
   managerAgentId: string | null;
@@ -405,6 +407,7 @@ export function AgentDetailPageClient({
   const [sidebarError, setSidebarError] = useState<string | null>(null);
   const [pendingActionKeys, setPendingActionKeys] = useState<Record<string, boolean>>({});
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [appearanceDialogOpen, setAppearanceDialogOpen] = useState(false);
   const [terminateDialogOpen, setTerminateDialogOpen] = useState(false);
   const [agentWorkLoops, setAgentWorkLoops] = useState<AgentWorkLoopRow[]>([]);
   const [loopsLoading, setLoopsLoading] = useState(true);
@@ -1051,12 +1054,21 @@ export function AgentDetailPageClient({
     <div className="ui-page-stack">
       <div className="ui-agent-header-bar">
         <div className="ui-agent-header-identity">
-          <AgentAvatar
-            seed={agentAvatarSeed(agent.id, agent.name, agent.avatarSeed)}
-            name={agent.name}
-            className="ui-agent-header-avatar"
-            size={128}
-          />
+          <button
+            type="button"
+            className="ui-agent-header-avatar-trigger shrink-0 rounded-full border-0 bg-transparent p-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            onClick={() => setAppearanceDialogOpen(true)}
+            aria-label={`Change appearance for ${agent.name}`}
+            title="Change appearance"
+          >
+            <AgentAvatar
+              seed={agentAvatarSeed(agent.id, agent.name, agent.avatarSeed)}
+              name={agent.name}
+              className="ui-agent-header-avatar"
+              size={128}
+              lucideIconName={agent.lucideIconName}
+            />
+          </button>
           <SectionHeading
             title={agent.name}
             description="The active things your AI workforce is working on."
@@ -1460,6 +1472,17 @@ export function AgentDetailPageClient({
         </Alert>
       ) : null}
       <AppShell leftPane={leftPane} rightPane={rightPane} activeNav="Agents" companies={companies} activeCompanyId={companyId} />
+      <AgentAppearanceModal
+        companyId={companyId}
+        agent={{
+          id: agent.id,
+          name: agent.name,
+          avatarSeed: agent.avatarSeed,
+          lucideIconName: agent.lucideIconName
+        }}
+        open={appearanceDialogOpen}
+        onOpenChange={setAppearanceDialogOpen}
+      />
       <CreateAgentModal
         companyId={companyId}
         availableAgents={agents.map((entry) => ({ id: entry.id, name: entry.name }))}

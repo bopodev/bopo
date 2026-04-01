@@ -89,6 +89,7 @@ export const agents = pgTable("agents", {
   canAssignAgents: boolean("can_assign_agents").notNull().default(true),
   canCreateIssues: boolean("can_create_issues").notNull().default(true),
   avatarSeed: text("avatar_seed").notNull().default(""),
+  lucideIconName: text("lucide_icon_name").notNull().default(""),
   runtimeCommand: text("runtime_command"),
   runtimeArgsJson: text("runtime_args_json").notNull().default("[]"),
   runtimeCwd: text("runtime_cwd"),

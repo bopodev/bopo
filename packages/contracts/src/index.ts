@@ -897,6 +897,56 @@ export const PluginInvocationResultSchema = z.object({
 });
 export type PluginInvocationResult = z.infer<typeof PluginInvocationResultSchema>;
 
+/** Curated Lucide icon names for agent appearance (must match `lucide-react` exports used in the web app). */
+export const AGENT_LUCIDE_ICON_NAMES = [
+  "Bot",
+  "Brain",
+  "Briefcase",
+  "Building2",
+  "Calendar",
+  "ChartColumn",
+  "Clock",
+  "Cloud",
+  "Code",
+  "Cpu",
+  "Crown",
+  "Database",
+  "FileText",
+  "Folder",
+  "Gem",
+  "GitBranch",
+  "Hammer",
+  "Headphones",
+  "Heart",
+  "Layers",
+  "Lightbulb",
+  "Mail",
+  "MessageSquare",
+  "Mic",
+  "Network",
+  "Package",
+  "Rocket",
+  "Server",
+  "Settings",
+  "Shield",
+  "Sparkles",
+  "Star",
+  "Target",
+  "Terminal",
+  "User",
+  "Users",
+  "Workflow",
+  "Wrench",
+  "Zap"
+] as const;
+
+export type AgentLucideIconName = (typeof AGENT_LUCIDE_ICON_NAMES)[number];
+
+export const AgentLucideIconNameSchema = z.enum(AGENT_LUCIDE_ICON_NAMES);
+
+/** Set to `""` to use the Dicebear illustration instead of an icon. */
+export const AgentLucideIconOrClearSchema = z.union([AgentLucideIconNameSchema, z.literal("")]);
+
 export const AgentCreateRequestSchema = z.object({
   managerAgentId: z.string().optional(),
   role: z.string().min(1).optional(),
@@ -945,7 +995,15 @@ export const AgentUpdateRequestSchema = z
     canHireAgents: z.boolean().optional(),
     canAssignAgents: z.boolean().optional(),
     canCreateIssues: z.boolean().optional(),
-    runtimeConfig: AgentRuntimeConfigSchema.partial().optional()
+    runtimeConfig: AgentRuntimeConfigSchema.partial().optional(),
+    lucideIconName: AgentLucideIconOrClearSchema.optional(),
+    /** New Dicebear seed (Open Peeps). URL-safe characters; used when randomizing the avatar. */
+    avatarSeed: z
+      .string()
+      .min(1)
+      .max(64)
+      .regex(/^[a-zA-Z0-9_-]+$/)
+      .optional()
   })
   .refine((payload) => Object.keys(payload).length > 0, "At least one field must be provided.");
 export type AgentUpdateRequest = z.infer<typeof AgentUpdateRequestSchema>;
@@ -969,6 +1027,7 @@ export const AgentSchema = z.object({
   canAssignAgents: z.boolean().default(true),
   canCreateIssues: z.boolean().default(true),
   avatarSeed: z.string().optional(),
+  lucideIconName: z.string().optional(),
   runtimeCommand: z.string().nullable().optional(),
   runtimeArgsJson: z.string().nullable().optional(),
   runtimeCwd: z.string().nullable().optional(),
@@ -1132,6 +1191,7 @@ export const OfficeOccupantSchema = z.object({
   taskLabel: z.string().min(1),
   providerType: ProviderTypeSchema.nullable(),
   avatarSeed: z.string().nullable().optional(),
+  lucideIconName: z.string().nullable().optional(),
   focusEntityType: z.enum(["issue", "approval", "agent", "system"]).nullable(),
   focusEntityId: z.string().nullable(),
   updatedAt: z.string()

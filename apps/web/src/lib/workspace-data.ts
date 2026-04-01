@@ -53,6 +53,7 @@ export interface WorkspaceData {
     id: string;
     name: string;
     avatarSeed?: string | null;
+    lucideIconName?: string | null;
     role: string;
     managerAgentId: string | null;
     status: string;

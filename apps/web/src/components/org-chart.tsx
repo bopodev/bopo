@@ -14,6 +14,7 @@ interface AgentNode {
   id: string;
   name: string;
   avatarSeed?: string | null;
+  lucideIconName?: string | null;
   role: string;
   roleKey?: AgentRoleKey | null;
   title?: string | null;
@@ -176,6 +177,7 @@ export function OrgChart({
           <AgentAvatar
             seed={agentAvatarSeed(agent.id, agent.name, agent.avatarSeed)}
             name={agent.name}
+            lucideIconName={agent.lucideIconName}
             className={styles.orgCardAvatar}
             size={96}
           />
@@ -222,6 +224,7 @@ export function OrgChart({
               <AgentAvatar
                 seed={agentAvatarSeed(node.agent.id, node.agent.name, node.agent.avatarSeed)}
                 name={node.agent.name}
+                lucideIconName={node.agent.lucideIconName}
                 className="size-6 rounded-full"
                 size={24}
               />

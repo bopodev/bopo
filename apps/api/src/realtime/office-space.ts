@@ -139,6 +139,7 @@ async function loadOfficeOccupantForAgent(db: BopoDb, companyId: string, agentId
       companyId: agents.companyId,
       name: agents.name,
       avatarSeed: agents.avatarSeed,
+      lucideIconName: agents.lucideIconName,
       role: agents.role,
       status: agents.status,
       providerType: agents.providerType,
@@ -222,6 +223,7 @@ function deriveAgentOccupant(
     companyId: string;
     name: string;
     avatarSeed?: string | null;
+    lucideIconName?: string | null;
     role: string;
     status: string;
     providerType: string;
@@ -300,6 +302,7 @@ function deriveAgentOccupant(
       taskLabel: `${formatActionLabel(pendingApproval.action)} approval`,
       providerType: normalizeProviderType(agent.providerType),
       avatarSeed: agent.avatarSeed ?? null,
+      lucideIconName: agent.lucideIconName?.trim() ? agent.lucideIconName.trim() : null,
       focusEntityType: "approval",
       focusEntityId: pendingApproval.id,
       updatedAt: pendingApproval.createdAt.toISOString()
@@ -320,6 +323,7 @@ function deriveAgentOccupant(
       taskLabel: claimedIssues[0]?.title ?? "Checking in on work",
       providerType: normalizeProviderType(agent.providerType),
       avatarSeed: agent.avatarSeed ?? null,
+      lucideIconName: agent.lucideIconName?.trim() ? agent.lucideIconName.trim() : null,
       focusEntityType: claimedIssues[0] ? "issue" : "agent",
       focusEntityId: claimedIssues[0]?.id ?? agent.id,
       updatedAt: activeRun.startedAt.toISOString()
@@ -340,6 +344,7 @@ function deriveAgentOccupant(
       taskLabel: "Paused",
       providerType: normalizeProviderType(agent.providerType),
       avatarSeed: agent.avatarSeed ?? null,
+      lucideIconName: agent.lucideIconName?.trim() ? agent.lucideIconName.trim() : null,
       focusEntityType: "agent",
       focusEntityId: agent.id,
       updatedAt: agent.updatedAt.toISOString()
@@ -359,6 +364,7 @@ function deriveAgentOccupant(
     taskLabel: nextAssignedIssue ? `Up next: ${nextAssignedIssue.title}` : "Waiting for work",
     providerType: normalizeProviderType(agent.providerType),
     avatarSeed: agent.avatarSeed ?? null,
+    lucideIconName: agent.lucideIconName?.trim() ? agent.lucideIconName.trim() : null,
     focusEntityType: nextAssignedIssue ? "issue" : "agent",
     focusEntityId: nextAssignedIssue?.id ?? agent.id,
     updatedAt: nextAssignedIssue?.updatedAt.toISOString() ?? agent.updatedAt.toISOString()
@@ -396,6 +402,7 @@ function deriveHireCandidateOccupant(approval: {
     taskLabel: "Awaiting hire approval",
     providerType,
     avatarSeed: null,
+    lucideIconName: null,
     focusEntityType: "approval",
     focusEntityId: approval.id,
     updatedAt: approval.createdAt.toISOString()

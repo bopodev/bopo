@@ -23,6 +23,7 @@ export interface AgentRow {
   id: string;
   name: string;
   avatarSeed?: string | null;
+  lucideIconName?: string | null;
   role: string;
   roleKey?: AgentRoleKey | null;
   title?: string | null;
