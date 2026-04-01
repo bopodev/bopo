@@ -147,8 +147,8 @@ export function DataTable<TData, TValue>({
           ) : null}
           {toolbarTrailing || showViewOptions ? (
             <div className="ui-data-table-toolbar-right">
-              {toolbarTrailing}
               {showViewOptions ? <DataTableViewOptions table={table} /> : null}
+              {toolbarTrailing}
             </div>
           ) : null}
         </div>

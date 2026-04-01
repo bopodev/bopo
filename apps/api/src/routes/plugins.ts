@@ -5,6 +5,7 @@ import { z } from "zod";
 import { PluginManifestV2Schema } from "bopodev-contracts";
 import {
   appendPluginInstall,
+  countPluginInstallRevisionsByCompany,
   createApprovalRequest,
   deletePluginById,
   getPluginInstallById,
@@ -61,7 +62,11 @@ export function createPluginsRouter(ctx: AppContext) {
   router.use(requireCompanyScope);
 
   router.get("/", async (req, res) => {
-    const [catalog, configs] = await Promise.all([listPlugins(ctx.db), listCompanyPluginConfigs(ctx.db, req.companyId!)]);
+    const [catalog, configs, installRevisionCounts] = await Promise.all([
+      listPlugins(ctx.db),
+      listCompanyPluginConfigs(ctx.db, req.companyId!),
+      countPluginInstallRevisionsByCompany(ctx.db, req.companyId!)
+    ]);
     const configByPluginId = new Map(configs.map((row) => [row.pluginId, row]));
     return sendOk(
       res,
@@ -106,7 +111,8 @@ export function createPluginsRouter(ctx: AppContext) {
                 config: safeParseJsonObject(config.configJson),
                 grantedCapabilities: safeParseStringArray(config.grantedCapabilitiesJson)
               }
-            : null
+            : null,
+          installRevisionCount: installRevisionCounts.get(plugin.id) ?? 0
         };
       })
     );

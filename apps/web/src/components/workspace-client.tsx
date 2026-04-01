@@ -442,6 +442,8 @@ interface PluginRow {
   uiSlots?: Array<Record<string, unknown>>;
   hooks: string[];
   capabilities: string[];
+  /** Rows in `plugin_installs` for this company; rollback needs ≥2. */
+  installRevisionCount?: number;
   companyConfig: {
     enabled: boolean;
     priority: number;
@@ -1358,7 +1360,9 @@ export function WorkspaceClient({
       const installs = await apiGet<Array<{ id: string }>>(`/plugins/${pluginId}/installs?limit=2`, companyId);
       const rows = installs.data ?? [];
       if (rows.length < 2) {
-        throw new Error("No prior install revision found.");
+        throw new Error(
+          "Rollback needs at least two recorded installs for this plugin (for example, upgrade the same package twice from the registry). Filesystem-only plugins have no install history yet."
+        );
       }
       await apiPost(`/plugins/${pluginId}/rollback`, companyId, {
         installId: rows[1]?.id
@@ -1368,7 +1372,12 @@ export function WorkspaceClient({
     } catch (error) {
       setPluginActionNotice({
         kind: "error",
-        message: error instanceof ApiError ? error.message : "Failed to rollback plugin."
+        message:
+          error instanceof ApiError
+            ? error.message
+            : error instanceof Error
+              ? error.message
+              : "Failed to rollback plugin."
       });
     } finally {
       setPendingActionKeys((prev) => {
@@ -2902,16 +2911,6 @@ export function WorkspaceClient({
       );
     });
   }, [isTemplatesNav, templates, templatesQuery, templatesStatusFilter, templatesVisibilityFilter]);
-  const templatesSummary = useMemo(() => {
-    const total = templates.length;
-    const published = templates.filter((template) => template.status === "published").length;
-    const draft = templates.filter((template) => template.status === "draft").length;
-    const archived = templates.filter((template) => template.status === "archived").length;
-    const companyVisible = templates.filter((template) => template.visibility === "company").length;
-    const privateVisible = templates.filter((template) => template.visibility === "private").length;
-    const variables = templates.reduce((sum, template) => sum + template.variables.length, 0);
-    return { total, published, draft, archived, companyVisible, privateVisible, variables };
-  }, [templates]);
   const pluginBuilderValidationError = useMemo(() => {
     if (!pluginPackageName.trim()) {
       return "npm package name is required.";
@@ -4321,7 +4320,14 @@ export function WorkspaceClient({
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={isActionPending(`plugin:${plugin.id}:rollback`)}
+                  disabled={
+                    isActionPending(`plugin:${plugin.id}:rollback`) || (plugin.installRevisionCount ?? 0) < 2
+                  }
+                  title={
+                    (plugin.installRevisionCount ?? 0) < 2
+                      ? "Rollback needs at least two recorded installs (e.g. two registry upgrades). Filesystem plugins have no install history until you install or upgrade from the registry."
+                      : undefined
+                  }
                   onClick={() => rollbackPlugin(plugin.id)}
                 >
                   Rollback
@@ -6178,15 +6184,6 @@ export function WorkspaceClient({
                 ) : null}
               </TabsList>
               <TabsContent value="templates" className="mt-0">
-                <div className="ui-stats mb-6">
-                  <MetricCard label="Templates in scope" value={templatesSummary.total} />
-                  <MetricCard label="Published" value={templatesSummary.published} />
-                  <MetricCard label="Draft / Archived" value={`${templatesSummary.draft} / ${templatesSummary.archived}`} />
-                  <MetricCard
-                    label="Company / Private · Variables"
-                    value={`${templatesSummary.companyVisible} / ${templatesSummary.privateVisible} · ${templatesSummary.variables}`}
-                  />
-                </div>
                 <DataTable
                   columns={templateColumns}
                   data={filteredTemplates}

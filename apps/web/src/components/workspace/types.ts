@@ -258,6 +258,8 @@ export interface PluginRow {
   install?: Record<string, unknown> | null;
   hooks: string[];
   capabilities: string[];
+  /** Rows in `plugin_installs` for this company; rollback needs ≥2. */
+  installRevisionCount?: number;
   companyConfig: {
     enabled: boolean;
     priority: number;

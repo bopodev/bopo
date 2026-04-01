@@ -10,12 +10,12 @@
   "capabilityNamespaces": ["audit.emit", "events.subscribe", "actions.execute", "data.read"],
   "runtime": {
     "type": "stdio",
-    "entrypoint": "dist/worker.js",
+    "entrypoint": "worker/worker.js",
     "timeoutMs": 5000,
     "retryCount": 0
   },
   "entrypoints": {
-    "worker": "dist/worker.js",
+    "worker": "worker/worker.js",
     "ui": "ui"
   },
   "jobs": [

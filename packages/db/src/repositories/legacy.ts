@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, gte, inArray, lt, notInArray, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, gte, inArray, lt, notInArray, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import type { BopoDb } from "../client";
 import {
@@ -2373,6 +2373,19 @@ export async function listPluginInstalls(
     .where(and(eq(pluginInstalls.companyId, input.companyId), eq(pluginInstalls.pluginId, input.pluginId)))
     .orderBy(desc(pluginInstalls.createdAt))
     .limit(limit);
+}
+
+/** Per-plugin counts of `plugin_installs` rows for rollback UX (need ≥2 revisions to roll back). */
+export async function countPluginInstallRevisionsByCompany(db: BopoDb, companyId: string): Promise<Map<string, number>> {
+  const rows = await db
+    .select({
+      pluginId: pluginInstalls.pluginId,
+      revisionCount: count()
+    })
+    .from(pluginInstalls)
+    .where(eq(pluginInstalls.companyId, companyId))
+    .groupBy(pluginInstalls.pluginId);
+  return new Map(rows.map((row) => [row.pluginId, Number(row.revisionCount)]));
 }
 
 export async function getPluginInstallById(

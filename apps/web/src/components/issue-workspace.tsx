@@ -7,6 +7,7 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { DndContext, DragOverlay, PointerSensor, closestCenter, useDroppable, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import type { IssueStatus } from "bopodev-contracts";
+import { Kanban, Table } from "lucide-react";
 import { ApiError, apiPut } from "@/lib/api";
 import { getStatusBadgeClassName } from "@/lib/status-presentation";
 import { selectedProjectNameFor } from "@/lib/workspace-logic";
@@ -14,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable } from "@/components/ui/data-table";
 import { DataTableColumnHeader } from "@/components/ui/data-table-column-header";
@@ -407,20 +409,34 @@ export function IssueWorkspace({
 
   const issueViewToggle = (
     <ButtonGroup className={styles.issueViewToggleGroup}>
-      <Button
-        variant="outline"
-        className={cn(styles.issueViewToggleButton, viewMode === "list" ? styles.issueViewToggleButtonActive : undefined)}
-        onClick={() => setViewMode("list")}
-      >
-        List
-      </Button>
-      <Button
-        variant="outline"
-        className={cn(styles.issueViewToggleButton, viewMode === "board" ? styles.issueViewToggleButtonActive : undefined)}
-        onClick={() => setViewMode("board")}
-      >
-        Board
-      </Button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="outline"
+            size="icon"
+            className={cn(styles.issueViewToggleButton, viewMode === "list" ? styles.issueViewToggleButtonActive : undefined)}
+            onClick={() => setViewMode("list")}
+            aria-label="List view"
+          >
+            <Table className="size-4" aria-hidden />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>List</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="outline"
+            size="icon"
+            className={cn(styles.issueViewToggleButton, viewMode === "board" ? styles.issueViewToggleButtonActive : undefined)}
+            onClick={() => setViewMode("board")}
+            aria-label="Board view"
+          >
+            <Kanban className="size-4" aria-hidden />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Board</TooltipContent>
+      </Tooltip>
     </ButtonGroup>
   );
 

@@ -142,7 +142,7 @@
 }
 
 .issueViewToggleButton {
-  @apply h-9 rounded-md px-4 text-sidebar-foreground;
+  @apply shrink-0 text-sidebar-foreground;
 }
 
 .issueViewToggleButton[data-variant="outline"].issueViewToggleButtonActive {

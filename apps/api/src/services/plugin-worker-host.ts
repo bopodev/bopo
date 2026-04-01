@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
 import type { PluginManifest } from "bopodev-contracts";
 import { PluginManifestV2Schema } from "bopodev-contracts";
 import { z } from "zod";
@@ -25,6 +27,22 @@ type PluginManifestV2 = z.infer<typeof PluginManifestV2Schema>;
 
 function parseBoolEnv(value: string | undefined): boolean {
   return value === "1" || value === "true";
+}
+
+/**
+ * Older demos used `dist/worker.js`, which is often missing (and gitignored). Prefer `worker/worker.js` in the same plugin directory.
+ */
+function resolveWorkerExecutable(manifest: PluginManifestV2): string {
+  const workerPath = manifest.entrypoints.worker;
+  if (existsSync(workerPath)) {
+    return workerPath;
+  }
+  const pluginRoot = dirname(dirname(workerPath));
+  const fallback = join(pluginRoot, "worker", "worker.js");
+  if (existsSync(fallback)) {
+    return fallback;
+  }
+  return workerPath;
 }
 
 export class PluginWorkerHost {
@@ -92,7 +110,8 @@ export class PluginWorkerHost {
       return existing;
     }
     const command = process.env.BOPO_PLUGIN_WORKER_COMMAND ?? "node";
-    const child = spawn(command, [manifest.entrypoints.worker], {
+    const workerScript = resolveWorkerExecutable(manifest);
+    const child = spawn(command, [workerScript], {
       stdio: "pipe",
       env: process.env
     });
@@ -121,13 +140,23 @@ export class PluginWorkerHost {
       // eslint-disable-next-line no-console
       console.warn(`[plugins] worker '${manifest.id}' stderr: ${String(chunk).trim()}`);
     });
-    child.on("exit", () => {
+    child.on("exit", (code, signal) => {
+      if (code !== 0 && code !== null) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[plugins] worker '${manifest.id}' exited with code ${code}${signal ? ` signal ${signal}` : ""} (script: ${workerScript})`
+        );
+      }
       this.workers.delete(manifest.id);
       for (const wait of pending.values()) {
         clearTimeout(wait.timeout);
         wait.reject(new Error(`plugin worker '${manifest.id}' exited`));
       }
       pending.clear();
+    });
+    child.on("error", (error) => {
+      // eslint-disable-next-line no-console
+      console.warn(`[plugins] worker '${manifest.id}' failed to spawn: ${String(error.message)}`);
     });
     const entry: WorkerEntry = { process: child, parser, pending };
     this.workers.set(manifest.id, entry);
