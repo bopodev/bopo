@@ -191,6 +191,43 @@ export async function apiFetchAttachmentText(downloadPath: string, companyId: st
   return response.text();
 }
 
+/**
+ * Loads plugin UI HTML from the API (same auth as JSON calls). Use a blob URL in an iframe so
+ * authenticated deployments work; a bare `/plugins/.../ui` path on the web app would 404.
+ */
+export async function fetchPluginUiDocument(companyId: string, pluginId: string): Promise<string> {
+  const traceId = createTraceId();
+  const startedAt = Date.now();
+  const path = `/plugins/${encodeURIComponent(pluginId)}/ui?companyId=${encodeURIComponent(companyId)}`;
+  const response = await fetch(`${apiBase}${path}`, {
+    method: "GET",
+    headers: {
+      "x-company-id": companyId,
+      "x-client-trace-id": traceId,
+      ...(readActorToken() ? { authorization: `Bearer ${readActorToken()}` } : {})
+    },
+    cache: "no-store"
+  });
+  const requestId = response.headers.get("x-request-id") ?? undefined;
+  const durationMs = Date.now() - startedAt;
+  if (!response.ok) {
+    const raw = await response.text();
+    let message = `Plugin UI failed (${response.status})`;
+    try {
+      const parsed = JSON.parse(raw) as { error?: string };
+      if (typeof parsed.error === "string" && parsed.error.trim()) {
+        message = parsed.error.trim();
+      }
+    } catch {
+      if (raw.trim()) {
+        message = raw.trim().slice(0, 300);
+      }
+    }
+    throw new ApiError(message, response.status, { requestId, traceId, durationMs });
+  }
+  return response.text();
+}
+
 export function getRealtimeUrl(companyId: string, channels: RealtimeChannel[]) {
   const url = new URL("/realtime", apiBase);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
