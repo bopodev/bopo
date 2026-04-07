@@ -8,6 +8,9 @@ const MAX_OBSERVABILITY_FILES = 200;
 const MAX_OBSERVABILITY_FILE_BYTES = 512 * 1024;
 const SKILL_MD = "SKILL.md";
 export const SKILL_LINK_BASENAME = ".bopo-skill-link.json";
+/** Optional UI-only label for the skill in Settings (does not rename files or the skill id). */
+export const SKILL_SIDEBAR_TITLE_BASENAME = ".bopo-skill-sidebar-title.json";
+const MAX_SKILL_SIDEBAR_TITLE_CHARS = 200;
 const SKILL_ID_RE = /^[a-zA-Z0-9_-]+$/;
 const TEXT_EXT = new Set([".md", ".yaml", ".yml", ".txt", ".json"]);
 
@@ -27,6 +30,8 @@ export type CompanySkillPackageListItem = {
   skillId: string;
   linkedUrl: string | null;
   linkLastFetchedAt: string | null;
+  /** When set, shown in Settings sidebar instead of `skillId`. */
+  sidebarTitle: string | null;
 };
 
 export function assertCompanySkillId(skillId: string): string {
@@ -101,6 +106,24 @@ export async function readOptionalSkillLinkUrl(root: string): Promise<string | n
   return rec?.url ?? null;
 }
 
+export async function readOptionalSkillSidebarTitle(root: string): Promise<string | null> {
+  try {
+    const raw = await readFile(join(root, SKILL_SIDEBAR_TITLE_BASENAME), "utf8");
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") {
+      return null;
+    }
+    const t = (parsed as { sidebarTitle?: unknown }).sidebarTitle;
+    if (typeof t !== "string") {
+      return null;
+    }
+    const s = t.trim();
+    return s.length > 0 ? s : null;
+  } catch {
+    return null;
+  }
+}
+
 async function writeSkillLinkMetadata(root: string, url: string): Promise<{ lastFetchedAt: string }> {
   const lastFetchedAt = new Date().toISOString();
   await writeFile(
@@ -131,10 +154,12 @@ export async function listCompanySkillPackages(input: { companyId: string; maxSk
     if (!hasMd && !linkedUrl) {
       continue;
     }
+    const sidebarTitle = await readOptionalSkillSidebarTitle(skillDir);
     items.push({
       skillId: ent.name,
       linkedUrl,
-      linkLastFetchedAt: linkRec?.lastFetchedAt ?? null
+      linkLastFetchedAt: linkRec?.lastFetchedAt ?? null,
+      sidebarTitle
     });
     if (items.length >= maxSkills) {
       break;
@@ -225,6 +250,47 @@ export async function readCompanySkillFile(input: {
     content,
     sizeBytes: info.size
   };
+}
+
+function assertSkillSidebarTitle(trimmed: string): string {
+  if (!trimmed) {
+    throw new Error("Title is empty.");
+  }
+  if (trimmed.length > MAX_SKILL_SIDEBAR_TITLE_CHARS) {
+    throw new Error(`Title must be at most ${MAX_SKILL_SIDEBAR_TITLE_CHARS} characters.`);
+  }
+  if (/[\r\n]/.test(trimmed)) {
+    throw new Error("Title cannot contain line breaks.");
+  }
+  return trimmed;
+}
+
+/** Set or clear the Settings-only sidebar label for a company skill package. */
+export async function setCompanySkillSidebarTitle(input: {
+  companyId: string;
+  skillId: string;
+  /** Empty / whitespace removes the custom title (sidebar falls back to skill id). */
+  title: string;
+}) {
+  const { root, id } = await skillRoot(input.companyId, input.skillId);
+  const hasMd = await skillDirHasSkillMd(root);
+  const linkedUrl = await readOptionalSkillLinkUrl(root);
+  if (!hasMd && !linkedUrl) {
+    throw new Error("Skill not found.");
+  }
+  const metaPath = join(root, SKILL_SIDEBAR_TITLE_BASENAME);
+  const trimmedAll = input.title.trim();
+  if (!trimmedAll || trimmedAll === id) {
+    try {
+      await rm(metaPath, { force: true });
+    } catch {
+      /* noop */
+    }
+    return { skillId: id, sidebarTitle: null as string | null };
+  }
+  const t = assertSkillSidebarTitle(trimmedAll);
+  await writeFile(metaPath, JSON.stringify({ sidebarTitle: t }, null, 2), "utf8");
+  return { skillId: id, sidebarTitle: t };
 }
 
 export async function writeCompanySkillFile(input: {

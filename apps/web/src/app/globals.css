@@ -62,7 +62,8 @@
   --chart-3: oklch(59.6% 0.145 163.225);
   --chart-4: oklch(50.8% 0.118 165.612);
   --chart-5: oklch(43.2% 0.095 166.913);
-  --sidebar: oklch(0.205 0 0);
+  /* Shell sidebar only: deep indigo/purple-tinted rail (~#0a0810) */
+  --sidebar: oklch(0.085 0.042 292);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(76.5% 0.177 163.223);
   --sidebar-primary-foreground: oklch(0.145 0 0);

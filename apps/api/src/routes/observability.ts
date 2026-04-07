@@ -44,6 +44,7 @@ import {
   refreshCompanySkillFromUrl,
   readCompanySkillFile,
   renameCompanySkillFile,
+  setCompanySkillSidebarTitle,
   writeCompanySkillFile
 } from "../services/company-skill-file-service";
 import {
@@ -561,6 +562,7 @@ export function createObservabilityRouter(ctx: AppContext) {
             linkedUrl: pack.linkedUrl,
             linkLastFetchedAt: pack.linkLastFetchedAt,
             hasLocalSkillMd,
+            sidebarTitle: pack.sidebarTitle,
             files: relativePaths.map((relativePath) => ({ relativePath }))
           };
         })
@@ -635,6 +637,30 @@ export function createObservabilityRouter(ctx: AppContext) {
         skillId,
         fromRelativePath: body.from.trim(),
         toRelativePath: body.to.trim()
+      });
+      return sendOk(res, result);
+    } catch (error) {
+      return sendError(res, String(error), 422);
+    }
+  });
+
+  router.patch("/company-skills/sidebar-title", async (req, res) => {
+    if (!enforcePermission(req, res, "agents:write")) {
+      return;
+    }
+    const companyId = req.companyId!;
+    const body = req.body as { skillId?: unknown; title?: unknown };
+    if (typeof body?.skillId !== "string" || !body.skillId.trim()) {
+      return sendError(res, "Expected JSON body with string 'skillId'.", 422);
+    }
+    if (typeof body?.title !== "string") {
+      return sendError(res, "Expected JSON body with string 'title' (empty string resets to skill id).", 422);
+    }
+    try {
+      const result = await setCompanySkillSidebarTitle({
+        companyId,
+        skillId: body.skillId.trim(),
+        title: body.title
       });
       return sendOk(res, result);
     } catch (error) {

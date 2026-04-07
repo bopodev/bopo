@@ -11,7 +11,7 @@ import {
   resolveCompanyKnowledgePath,
   resolveCompanyProjectsWorkspacePath
 } from "../lib/instance-paths";
-import { SKILL_LINK_BASENAME } from "./company-skill-file-service";
+import { SKILL_LINK_BASENAME, SKILL_SIDEBAR_TITLE_BASENAME } from "./company-skill-file-service";
 import { listWorkLoopTriggers, listWorkLoops } from "./work-loop-service/work-loop-service";
 
 const EXPORT_SCHEMA = "bopo/company-export/v1";
@@ -70,7 +70,7 @@ async function walkTextFilesUnder(rootAbs: string, budget: { n: number }): Promi
         return;
       }
       const name = ent.name;
-      if (name.startsWith(".") && name !== SKILL_LINK_BASENAME) {
+      if (name.startsWith(".") && name !== SKILL_LINK_BASENAME && name !== SKILL_SIDEBAR_TITLE_BASENAME) {
         continue;
       }
       const full = join(dir, name);

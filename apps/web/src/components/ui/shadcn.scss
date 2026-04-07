@@ -2088,7 +2088,7 @@ body {
 }
 
 .ui-shell-sidebar {
-  @apply hidden self-stretch h-dvh min-h-dvh max-h-dvh overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground lg:fixed lg:inset-y-0 lg:left-0 lg:block lg:w-[296px];
+  @apply hidden self-stretch h-dvh min-h-dvh max-h-dvh overflow-hidden border-r border-sidebar-border bg-background text-sidebar-foreground lg:fixed lg:inset-y-0 lg:left-0 lg:block lg:w-[296px];
 }
 
 .ui-shell-sidebar-scroll {
