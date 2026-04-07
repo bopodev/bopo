@@ -2627,7 +2627,7 @@ body {
 }
 
 .ui-agent-docs-empty-state {
-  @apply text-sm text-muted-foreground;
+  @apply text-muted-foreground;
 }
 
 .ui-agent-docs-editor-shell {
@@ -2721,15 +2721,15 @@ body {
 }
 
 .ui-knowledge-tree-label {
-  @apply min-w-0 flex-1 gap-4 cursor-pointer truncate py-1.5 text-left font-normal hover:bg-muted/40 rounded-sm;
+  @apply min-w-0 flex-1 gap-4 cursor-pointer truncate py-1.5 text-left font-normal rounded-sm;
 }
 
 .ui-knowledge-tree-dir-name {
-  @apply min-w-0 flex-1 truncate text-left font-medium;
+  @apply min-w-0 flex-1 truncate text-left font-medium capitalize;
 }
 
 .ui-knowledge-tree-dir-toggle {
-  @apply flex min-w-0 flex-1 items-center gap-1.5 rounded-md py-1 pr-2 text-left hover:bg-muted/50;
+  @apply flex min-w-0 flex-1 items-center gap-1.5 rounded-md py-1 pr-2 text-left;
 }
 
 .ui-knowledge-plain-editor {

@@ -14,13 +14,15 @@ export function KnowledgeTiptapEditor({
   hydrateVersion,
   markdown,
   onMarkdownChange,
-  placeholder = "Write markdown…"
+  placeholder = "Write markdown…",
+  readOnly = false
 }: {
   /** Increment when a file load completes so the editor hydrates from disk without clobbering typing. */
   hydrateVersion: number;
   markdown: string;
   onMarkdownChange: (value: string) => void;
   placeholder?: string;
+  readOnly?: boolean;
 }) {
   const turndown = useMemo(
     () =>
@@ -69,6 +71,13 @@ export function KnowledgeTiptapEditor({
     const html = md.trim() ? markdownIt.render(md) : "<p></p>";
     editor.commands.setContent(html, { emitUpdate: false });
   }, [editor, hydrateVersion]);
+
+  useEffect(() => {
+    if (!editor) {
+      return;
+    }
+    editor.setEditable(!readOnly);
+  }, [editor, readOnly]);
 
   return (
     <div className="ui-knowledge-tiptap-shell">

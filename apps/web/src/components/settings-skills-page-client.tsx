@@ -2,11 +2,11 @@
 
 import type { Route } from "next";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { FilePenLine, Link2 } from "lucide-react";
+import { ChevronDown, ChevronRight, FilePenLine, FileText, Folder, Link2, Plus } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import createAgentModalStyles from "@/components/modals/create-agent-modal.module.scss";
-import { LazyMarkdownMdxEditor } from "@/components/modals/lazy-markdown-mdx-editor";
+import { KnowledgeTiptapEditor } from "@/components/knowledge-tiptap-editor";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dialog";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { ApiError, apiDelete, apiGet, apiPost, apiPut } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { SectionHeading } from "@/components/workspace/shared";
@@ -78,6 +79,202 @@ function parseOpenFromUrl(
   return null;
 }
 
+const SKILL_SIDEBAR_FILE_EXTS = new Set([".md", ".yaml", ".yml", ".txt", ".json"]);
+
+function skillSidebarFileDisplayName(relativePath: string): string {
+  const base = relativePath.includes("/")
+    ? relativePath.slice(relativePath.lastIndexOf("/") + 1)
+    : relativePath;
+  const lower = base.toLowerCase();
+  const dot = base.lastIndexOf(".");
+  if (dot > 0) {
+    const ext = lower.slice(dot);
+    if (SKILL_SIDEBAR_FILE_EXTS.has(ext)) {
+      return base.slice(0, dot);
+    }
+  }
+  return base;
+}
+
+type SkillsTreeNavNode =
+  | { kind: "builtinFile"; skillId: string; label: string }
+  | {
+      kind: "companyFile";
+      skillId: string;
+      relativePath: string;
+      label: string;
+      linked?: boolean;
+      linkTitle?: string;
+    }
+  | {
+      kind: "folder";
+      name: string;
+      showAdd?: boolean;
+      linked?: boolean;
+      linkTitle?: string;
+      emptyMessage?: string;
+      children: SkillsTreeNavNode[];
+    };
+
+type OpenSelection = { kind: DocKind; skillId: string; relativePath: string };
+
+function SkillsTreeNav({
+  nodes,
+  depth,
+  dirPrefix,
+  expandedDirs,
+  toggleDir,
+  open,
+  onSelectBuiltin,
+  onSelectCompanyFile,
+  onAddSkillInCustom
+}: {
+  nodes: SkillsTreeNavNode[];
+  depth: number;
+  dirPrefix: string;
+  expandedDirs: Set<string>;
+  toggleDir: (dirKey: string) => void;
+  open: OpenSelection | null;
+  onSelectBuiltin: (skillId: string) => void;
+  onSelectCompanyFile: (skillId: string, relativePath: string) => void;
+  onAddSkillInCustom: () => void;
+}) {
+  return (
+    <div className="ui-knowledge-tree-children">
+      {nodes.map((node) => {
+        if (node.kind === "builtinFile") {
+          const active = open?.kind === "builtin" && open.skillId === node.skillId;
+          return (
+            <div
+              key={`builtin-${node.skillId}`}
+              className={cn(
+                "ui-knowledge-tree-row",
+                "ui-knowledge-tree-row--file",
+                active && "ui-knowledge-tree-row--active"
+              )}
+              style={{ paddingLeft: `calc(0.25rem + ${depth} * 0.75rem)` }}
+            >
+              <span className="ui-knowledge-tree-chevron-spacer" aria-hidden />
+              <FileText className="ui-knowledge-tree-icon" aria-hidden />
+              <button
+                type="button"
+                className={cn("ui-knowledge-tree-label", active && "font-medium")}
+                title={node.skillId}
+                onClick={() => onSelectBuiltin(node.skillId)}
+              >
+                {node.label}
+              </button>
+            </div>
+          );
+        }
+        if (node.kind === "companyFile") {
+          const active =
+            open?.kind === "company" &&
+            open.skillId === node.skillId &&
+            open.relativePath === node.relativePath;
+          return (
+            <div
+              key={`company-${node.skillId}-${node.relativePath}`}
+              className={cn(
+                "ui-knowledge-tree-row",
+                "ui-knowledge-tree-row--file",
+                active && "ui-knowledge-tree-row--active"
+              )}
+              style={{ paddingLeft: `calc(0.25rem + ${depth} * 0.75rem)` }}
+            >
+              <span className="ui-knowledge-tree-chevron-spacer" aria-hidden />
+              <FileText className="ui-knowledge-tree-icon" aria-hidden />
+              <button
+                type="button"
+                className={cn("ui-knowledge-tree-label", active && "font-medium")}
+                title={`${node.skillId} · ${node.relativePath}`}
+                onClick={() => onSelectCompanyFile(node.skillId, node.relativePath)}
+              >
+                {node.label}
+              </button>
+              {node.linked ? (
+                <span className="ui-settings-skills-linked-pill" title={node.linkTitle ?? "Linked from URL"}>
+                  Linked
+                </span>
+              ) : null}
+            </div>
+          );
+        }
+        const dirKey = dirPrefix ? `${dirPrefix}/${node.name}` : node.name;
+        const expanded = expandedDirs.has(dirKey);
+        return (
+          <div key={dirKey}>
+            <div
+              className={cn("ui-knowledge-tree-row", "ui-knowledge-tree-row--dir")}
+              style={{ paddingLeft: `calc(0.25rem + ${depth} * 0.75rem)` }}
+            >
+              <button
+                type="button"
+                className="ui-knowledge-tree-chevron"
+                aria-expanded={expanded}
+                aria-label={expanded ? `Collapse ${node.name}` : `Expand ${node.name}`}
+                onClick={() => toggleDir(dirKey)}
+              >
+                {expanded ? <ChevronDown className="ui-icon-sm" /> : <ChevronRight className="ui-icon-sm" />}
+              </button>
+              <div className="ui-knowledge-tree-dir-row-body">
+                <button type="button" className="ui-knowledge-tree-dir-toggle" onClick={() => toggleDir(dirKey)}>
+                  <Folder className="ui-knowledge-tree-icon" aria-hidden />
+                  <span className="ui-knowledge-tree-dir-name">{node.name}</span>
+                </button>
+                {node.linked ? (
+                  <span className="ui-settings-skills-linked-pill" title={node.linkTitle ?? "Linked from URL"}>
+                    Linked
+                  </span>
+                ) : null}
+                {node.showAdd ? (
+                  <button
+                    type="button"
+                    className="ui-knowledge-tree-add-file"
+                    aria-label="Add skill"
+                    title="Add skill"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onAddSkillInCustom();
+                    }}
+                  >
+                    <Plus className="ui-icon-sm" aria-hidden />
+                  </button>
+                ) : null}
+              </div>
+            </div>
+            {expanded ? (
+              <>
+                {node.emptyMessage && node.children.length === 0 ? (
+                  <p
+                    className="ui-agent-docs-sidebar-empty"
+                    style={{ paddingLeft: `calc(0.25rem + ${(depth + 1) * 0.75}rem)` }}
+                  >
+                    {node.emptyMessage}
+                  </p>
+                ) : null}
+                {node.children.length > 0 ? (
+                  <SkillsTreeNav
+                    nodes={node.children}
+                    depth={depth + 1}
+                    dirPrefix={dirKey}
+                    expandedDirs={expandedDirs}
+                    toggleDir={toggleDir}
+                    open={open}
+                    onSelectBuiltin={onSelectBuiltin}
+                    onSelectCompanyFile={onSelectCompanyFile}
+                    onAddSkillInCustom={onAddSkillInCustom}
+                  />
+                ) : null}
+              </>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function SettingsSkillsPageClient({
   companyId,
   companies
@@ -88,8 +285,6 @@ export function SettingsSkillsPageClient({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [editorOverlayRoot, setEditorOverlayRoot] = useState<HTMLDivElement | null>(null);
-
   const [listsLoading, setListsLoading] = useState(true);
   const [listsError, setListsError] = useState<string | null>(null);
   const [builtinSkills, setBuiltinSkills] = useState<BuiltinSkillRow[]>([]);
@@ -103,6 +298,7 @@ export function SettingsSkillsPageClient({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [settledKey, setSettledKey] = useState("");
+  const [hydrateVersion, setHydrateVersion] = useState(0);
 
   type SkillAddStep = "intro" | "create" | "link";
   const [addSkillOpen, setAddSkillOpen] = useState(false);
@@ -120,6 +316,27 @@ export function SettingsSkillsPageClient({
   const [pendingDeleteSkillId, setPendingDeleteSkillId] = useState<string | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteDialogError, setDeleteDialogError] = useState<string | null>(null);
+
+  const [skillsExpandedDirs, setSkillsExpandedDirs] = useState(() => new Set<string>(["default", "custom"]));
+
+  const toggleSkillsDir = useCallback((dirKey: string) => {
+    setSkillsExpandedDirs((prev) => {
+      const next = new Set(prev);
+      if (next.has(dirKey)) {
+        next.delete(dirKey);
+      } else {
+        next.add(dirKey);
+      }
+      return next;
+    });
+  }, []);
+
+  const openAddSkillDialog = useCallback(() => {
+    setSkillAddStep("intro");
+    setCreateError(null);
+    setLinkError(null);
+    setAddSkillOpen(true);
+  }, []);
 
   const urlKind = searchParams.get("kind") as DocKind | null;
   const urlSkillId = searchParams.get("skillId") ?? "";
@@ -207,6 +424,63 @@ export function SettingsSkillsPageClient({
 
   const builtinIds = useMemo(() => builtinSkills.map((b) => b.id), [builtinSkills]);
 
+  const skillsSidebarTree = useMemo((): SkillsTreeNavNode[] => {
+    const linkTitle = (pack: CompanySkillsListResponse["items"][number]) =>
+      pack.linkLastFetchedAt
+        ? `Linked · last fetched ${pack.linkLastFetchedAt}`
+        : pack.linkedUrl
+          ? "Linked from URL"
+          : undefined;
+
+    const defaultChildren: SkillsTreeNavNode[] = builtinSkills.map((b) => ({
+      kind: "builtinFile",
+      skillId: b.id,
+      label: b.title?.trim() || b.id
+    }));
+
+    const customChildren: SkillsTreeNavNode[] = [];
+    for (const pack of companyItems) {
+      if (pack.files.length === 0) {
+        continue;
+      }
+      if (pack.files.length === 1) {
+        const f = pack.files[0]!;
+        customChildren.push({
+          kind: "companyFile",
+          skillId: pack.skillId,
+          relativePath: f.relativePath,
+          label: pack.skillId,
+          linked: Boolean(pack.linkedUrl),
+          linkTitle: linkTitle(pack)
+        });
+      } else {
+        customChildren.push({
+          kind: "folder",
+          name: pack.skillId,
+          linked: Boolean(pack.linkedUrl),
+          linkTitle: linkTitle(pack),
+          children: pack.files.map((f) => ({
+            kind: "companyFile" as const,
+            skillId: pack.skillId,
+            relativePath: f.relativePath,
+            label: skillSidebarFileDisplayName(f.relativePath)
+          }))
+        });
+      }
+    }
+
+    return [
+      { kind: "folder", name: "default", children: defaultChildren },
+      {
+        kind: "folder",
+        name: "custom",
+        showAdd: true,
+        emptyMessage: companyItems.length === 0 ? "No company skills yet." : undefined,
+        children: customChildren
+      }
+    ];
+  }, [builtinSkills, companyItems]);
+
   useEffect(() => {
     if (listsLoading || !companyId) {
       return;
@@ -229,38 +503,27 @@ export function SettingsSkillsPageClient({
   const syncDataRef = useRef({ builtinIds, companyItems });
   syncDataRef.current = { builtinIds, companyItems };
 
-  useEffect(() => {
-    const onPopState = () => {
-      const params = new URLSearchParams(window.location.search);
-      const k = params.get("kind") as DocKind | null;
-      const sid = params.get("skillId") ?? "";
-      const p = params.get("path") ?? "";
-      const { builtinIds: bi, companyItems: ci } = syncDataRef.current;
-      setOpen(parseOpenFromUrl(k, sid, p, bi, ci));
-    };
-    window.addEventListener("popstate", onPopState);
-    return () => window.removeEventListener("popstate", onPopState);
-  }, []);
-
   const loadKey = open ? `${open.kind}\0${open.skillId}\0${open.relativePath}` : "";
   const loadKeyRef = useRef(loadKey);
   loadKeyRef.current = loadKey;
 
-  const onEditorMarkdownChange = useCallback(
-    (next: string, initialMarkdownNormalize?: boolean) => {
-      if (initialMarkdownNormalize) {
-        setBaselineContent(next);
-        setDraftContent(next);
-        return;
-      }
-      setDraftContent(next);
-    },
-    []
-  );
-
   const dirtyRef = useRef(false);
   const readOnly = open?.kind === "builtin" || skillIsUrlLinkedOnly;
   dirtyRef.current = open !== null && !readOnly && draftContent !== baselineContent;
+
+  const draftContentRef = useRef(draftContent);
+  const baselineContentRef = useRef(baselineContent);
+  const companyIdRef = useRef(companyId);
+  const openRef = useRef(open);
+  const readOnlyRef = useRef(readOnly);
+  draftContentRef.current = draftContent;
+  baselineContentRef.current = baselineContent;
+  companyIdRef.current = companyId;
+  openRef.current = open;
+  readOnlyRef.current = readOnly;
+
+  const autosaveDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flushSkillsAutosaveRef = useRef<() => Promise<void>>(async () => {});
 
   useLayoutEffect(() => {
     setFileError(null);
@@ -295,6 +558,7 @@ export function SettingsSkillsPageClient({
       setDraftContent(text);
       setFileError(null);
       setSettledKey(snapshot);
+      setHydrateVersion((v) => v + 1);
       return;
     }
 
@@ -315,6 +579,7 @@ export function SettingsSkillsPageClient({
         setDraftContent(text);
         setFileError(null);
         setSettledKey(snapshot);
+        setHydrateVersion((v) => v + 1);
       } catch (error) {
         if (cancelled || loadKeyRef.current !== snapshot) {
           return;
@@ -333,21 +598,35 @@ export function SettingsSkillsPageClient({
   const dirty = open !== null && !readOnly && draftContent !== baselineContent;
   const editorReady = Boolean(loadKey && settledKey === loadKey && !fileError);
   const editorLoading = Boolean(loadKey && settledKey !== loadKey && !fileError);
+  const isSkillMarkdown =
+    open != null && (open.kind === "builtin" || open.relativePath.toLowerCase().endsWith(".md"));
 
-  async function save() {
-    if (!companyId || !open || open.kind !== "company" || !dirty) {
+  const flushSkillsAutosave = useCallback(async () => {
+    if (autosaveDebounceRef.current) {
+      clearTimeout(autosaveDebounceRef.current);
+      autosaveDebounceRef.current = null;
+    }
+    const cid = companyIdRef.current;
+    const o = openRef.current;
+    if (!cid || !o || o.kind !== "company" || readOnlyRef.current) {
+      return;
+    }
+    const content = draftContentRef.current;
+    const baseline = baselineContentRef.current;
+    if (content === baseline) {
       return;
     }
     const keyAtStart = loadKeyRef.current;
-    setSaveError(null);
     setSaving(true);
+    setSaveError(null);
     try {
-      const q = `?skillId=${encodeURIComponent(open.skillId)}&path=${encodeURIComponent(open.relativePath)}`;
-      await apiPut(`/observability/company-skills/file${q}`, companyId, { content: draftContent });
+      const q = `?skillId=${encodeURIComponent(o.skillId)}&path=${encodeURIComponent(o.relativePath)}`;
+      await apiPut(`/observability/company-skills/file${q}`, cid, { content });
       if (loadKeyRef.current !== keyAtStart) {
         return;
       }
-      setBaselineContent(draftContent);
+      setBaselineContent(content);
+      baselineContentRef.current = content;
     } catch (error) {
       if (loadKeyRef.current === keyAtStart) {
         setSaveError(error instanceof ApiError ? error.message : "Save failed.");
@@ -355,18 +634,84 @@ export function SettingsSkillsPageClient({
     } finally {
       setSaving(false);
     }
-  }
+  }, []);
+
+  flushSkillsAutosaveRef.current = flushSkillsAutosave;
+
+  useEffect(() => {
+    if (!companyId || !loadKey || !editorReady || readOnly || open?.kind !== "company") {
+      if (autosaveDebounceRef.current) {
+        clearTimeout(autosaveDebounceRef.current);
+        autosaveDebounceRef.current = null;
+      }
+      return;
+    }
+    if (draftContent === baselineContent) {
+      if (autosaveDebounceRef.current) {
+        clearTimeout(autosaveDebounceRef.current);
+        autosaveDebounceRef.current = null;
+      }
+      return;
+    }
+    if (autosaveDebounceRef.current) {
+      clearTimeout(autosaveDebounceRef.current);
+    }
+    autosaveDebounceRef.current = setTimeout(() => {
+      autosaveDebounceRef.current = null;
+      void flushSkillsAutosave();
+    }, 900);
+    return () => {
+      if (autosaveDebounceRef.current) {
+        clearTimeout(autosaveDebounceRef.current);
+        autosaveDebounceRef.current = null;
+      }
+    };
+  }, [companyId, loadKey, editorReady, readOnly, open?.kind, draftContent, baselineContent, flushSkillsAutosave]);
+
+  useEffect(() => {
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (!dirtyRef.current) {
+        return;
+      }
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, []);
+
+  useEffect(() => {
+    const onPopState = () => {
+      void (async () => {
+        await flushSkillsAutosaveRef.current();
+        const params = new URLSearchParams(window.location.search);
+        const k = params.get("kind") as DocKind | null;
+        const sid = params.get("skillId") ?? "";
+        const p = params.get("path") ?? "";
+        const { builtinIds: bi, companyItems: ci } = syncDataRef.current;
+        setOpen(parseOpenFromUrl(k, sid, p, bi, ci));
+      })();
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
 
   function selectBuiltin(skillId: string) {
-    const next = { kind: "builtin" as const, skillId, relativePath: "" };
-    setOpen(next);
-    syncSelectionToUrl(next);
+    void (async () => {
+      await flushSkillsAutosave();
+      const next = { kind: "builtin" as const, skillId, relativePath: "" };
+      setOpen(next);
+      syncSelectionToUrl(next);
+    })();
   }
 
   function selectCompanyFile(skillId: string, relativePath: string) {
-    const next = { kind: "company" as const, skillId, relativePath };
-    setOpen(next);
-    syncSelectionToUrl(next);
+    void (async () => {
+      await flushSkillsAutosave();
+      const next = { kind: "company" as const, skillId, relativePath };
+      setOpen(next);
+      syncSelectionToUrl(next);
+    })();
   }
 
   async function submitCreate() {
@@ -475,6 +820,7 @@ export function SettingsSkillsPageClient({
     setDeleteDialogError(null);
     setDeleteBusy(true);
     try {
+      await flushSkillsAutosave();
       await apiDelete(`/observability/company-skills?skillId=${encodeURIComponent(skillId)}`, companyId);
       setDeleteDialogOpen(false);
       setPendingDeleteSkillId(null);
@@ -495,92 +841,31 @@ export function SettingsSkillsPageClient({
         </Alert>
       ) : (
         <div className="run-sidebar-list">
-          <div className="ui-agent-docs-sidebar-section-label">Defaults</div>
-          {builtinSkills.map((b) => {
-            const active = open?.kind === "builtin" && open.skillId === b.id;
-            return (
-              <button
-                key={`bi-${b.id}`}
-                type="button"
-                className={cn(
-                  "run-sidebar-item",
-                  "ui-agent-docs-sidebar-item",
-                  active && "run-sidebar-item--active"
-                )}
-                onClick={() => selectBuiltin(b.id)}
-              >
-                <div className="run-sidebar-item-header">
-                  <span className="run-sidebar-item-id" title={b.id}>
-                    {b.id}
-                  </span>
-                </div>
-              </button>
-            );
-          })}
-          <div className="ui-agent-docs-sidebar-section-label ui-agent-docs-sidebar-section-label--spaced">
-            Custom
-          </div>
-          {companyItems.length === 0 ? (
-            <p className="ui-agent-docs-sidebar-empty">No company skills yet.</p>
-          ) : (
-            companyItems.map((pack) => (
-              <div key={pack.skillId}>
-                {pack.files.map((f) => {
-                  const active =
-                    open?.kind === "company" && open.skillId === pack.skillId && open.relativePath === f.relativePath;
-                  const multiFile = pack.files.length > 1;
-                  return (
-                    <button
-                      key={`${pack.skillId}-${f.relativePath}`}
-                      type="button"
-                      className={cn(
-                        "run-sidebar-item",
-                        "ui-agent-docs-sidebar-item",
-                        active && "run-sidebar-item--active"
-                      )}
-                      onClick={() => selectCompanyFile(pack.skillId, f.relativePath)}
-                    >
-                      <div className="run-sidebar-item-header">
-                        <span className="run-sidebar-item-id" title={`${pack.skillId} · ${f.relativePath}`}>
-                          {pack.skillId}
-                        </span>
-                        {pack.linkedUrl ? (
-                          <span
-                            className="ui-settings-skills-linked-pill"
-                            title={
-                              pack.linkLastFetchedAt
-                                ? `Linked · last fetched ${pack.linkLastFetchedAt}`
-                                : "Linked from URL"
-                            }
-                          >
-                            Linked
-                          </span>
-                        ) : null}
-                      </div>
-                      {multiFile ? (
-                        <p className="run-sidebar-item-message">{f.relativePath}</p>
-                      ) : null}
-                    </button>
-                  );
-                })}
-              </div>
-            ))
-          )}
-          <div className="ui-settings-skills-sidebar-actions">
-            <Button
+          <div className="ui-knowledge-files-header">
+            <div className="ui-agent-docs-sidebar-section-label ui-knowledge-files-header-label">Files</div>
+            <button
               type="button"
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                setSkillAddStep("intro");
-                setCreateError(null);
-                setLinkError(null);
-                setAddSkillOpen(true);
-              }}
+              className="ui-knowledge-files-header-add-folder"
+              aria-label="Add skill"
+              title="Add skill"
               disabled={!companyId}
+              onClick={() => openAddSkillDialog()}
             >
-              Add skill
-            </Button>
+              <Plus className="ui-icon-sm" aria-hidden />
+            </button>
+          </div>
+          <div className="ui-knowledge-tree">
+            <SkillsTreeNav
+              nodes={skillsSidebarTree}
+              depth={0}
+              dirPrefix=""
+              expandedDirs={skillsExpandedDirs}
+              toggleDir={toggleSkillsDir}
+              open={open}
+              onSelectBuiltin={selectBuiltin}
+              onSelectCompanyFile={selectCompanyFile}
+              onAddSkillInCustom={openAddSkillDialog}
+            />
           </div>
         </div>
       )}
@@ -607,18 +892,23 @@ export function SettingsSkillsPageClient({
         leftPaneScrollable={false}
         secondaryPane={companyId ? secondaryPane : null}
         leftPane={
-          <div className="run-detail-pane" ref={setEditorOverlayRoot}>
+          <div className="run-detail-pane">
             <SectionHeading
               title="Skills"
               description={headerDescription}
               actions={
                 <div className="ui-agent-docs-header-actions">
+                  {companyId && open && editorReady ? (
+                    <span className="ui-knowledge-autosave-status">
+                      {readOnly ? "Read-only" : saving ? "Saving…" : dirty ? null : "Saved"}
+                    </span>
+                  ) : null}
                   {companyId && open?.kind === "company" && skillIsUrlLinkedOnly ? (
                     <Button
                       size="sm"
-                      variant="outline"
+                      variant="ghost"
                       onClick={() => void forkLinkedSkillToWorkspace()}
-                      disabled={forkBusy || !editorReady}
+                      disabled={forkBusy || !editorReady || saving}
                     >
                       {forkBusy ? "Saving copy…" : "Save copy"}
                     </Button>
@@ -628,7 +918,7 @@ export function SettingsSkillsPageClient({
                       size="sm"
                       variant="ghost"
                       onClick={() => void refreshLinkedSkillFromUrl()}
-                      disabled={refreshBusy || !editorReady}
+                      disabled={refreshBusy || !editorReady || saving}
                     >
                       {refreshBusy ? "Refreshing…" : "Refresh"}
                     </Button>
@@ -645,18 +935,11 @@ export function SettingsSkillsPageClient({
                         setPendingDeleteSkillId(open.skillId);
                         setDeleteDialogOpen(true);
                       }}
-                      disabled={deleteBusy}
+                      disabled={deleteBusy || saving}
                     >
                       Delete
                     </Button>
                   ) : null}
-                  <Button
-                    size="sm"
-                    onClick={() => void save()}
-                    disabled={readOnly || !dirty || saving || !editorReady || !open}
-                  >
-                    {readOnly ? "Read-only" : saving ? "Saving…" : dirty ? "Save" : "Saved"}
-                  </Button>
                 </div>
               }
             />
@@ -682,24 +965,34 @@ export function SettingsSkillsPageClient({
             ) : null}
 
             {companyId && open ? (
-              <div className="ui-agent-docs-editor-shell">
-                {editorLoading ? (
+              isSkillMarkdown ? (
+                <div className="ui-agent-docs-editor-shell">
+                  {editorLoading ? (
+                    <div className="ui-agent-docs-editor-loading">Loading…</div>
+                  ) : editorReady ? (
+                    <KnowledgeTiptapEditor
+                      hydrateVersion={hydrateVersion}
+                      markdown={draftContent}
+                      onMarkdownChange={setDraftContent}
+                      placeholder="Write skill markdown…"
+                      readOnly={readOnly}
+                    />
+                  ) : fileError ? (
+                    <div className="ui-agent-docs-editor-loading">Could not load this file.</div>
+                  ) : null}
+                </div>
+              ) : editorLoading ? (
+                <div className="ui-agent-docs-editor-shell">
                   <div className="ui-agent-docs-editor-loading">Loading…</div>
-                ) : editorReady ? (
-                  <LazyMarkdownMdxEditor
-                    key={loadKey}
-                    editorKey={loadKey}
-                    markdown={draftContent}
-                    onChange={onEditorMarkdownChange}
-                    compact={false}
-                    className="ui-agent-docs-editor"
-                    overlayContainer={editorOverlayRoot ?? undefined}
-                    readOnly={readOnly}
-                  />
-                ) : fileError ? (
-                  <div className="ui-agent-docs-editor-loading">Could not load this file.</div>
-                ) : null}
-              </div>
+                </div>
+              ) : (
+                <Textarea
+                  className="ui-knowledge-plain-editor"
+                  value={draftContent}
+                  readOnly={readOnly}
+                  onChange={(e) => setDraftContent(e.target.value)}
+                />
+              )
             ) : null}
           </div>
         }
