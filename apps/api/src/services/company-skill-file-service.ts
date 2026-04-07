@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import TurndownService from "turndown";
@@ -261,6 +261,89 @@ export async function writeCompanySkillFile(input: {
     relativePath: rel,
     sizeBytes: info.size
   };
+}
+
+/** Rename/move a text file within one skill package directory. */
+export async function renameCompanySkillFile(input: {
+  companyId: string;
+  skillId: string;
+  fromRelativePath: string;
+  toRelativePath: string;
+}) {
+  const { root } = await skillRoot(input.companyId, input.skillId);
+  const fromRel = assertSkillRelativePath(input.fromRelativePath.trim());
+  const toRel = assertSkillRelativePath(input.toRelativePath.trim());
+  if (fromRel === toRel) {
+    return { skillId: input.skillId, relativePath: toRel };
+  }
+  const fromAbs = resolve(root, fromRel);
+  const toAbs = resolve(root, toRel);
+  if (!isInsidePath(root, fromAbs) || !isInsidePath(root, toAbs)) {
+    throw new Error("Requested path is outside of skill directory.");
+  }
+  const hasMd = await skillDirHasSkillMd(root);
+  const linkedUrl = await readOptionalSkillLinkUrl(root);
+  if (linkedUrl && !hasMd && fromRel === SKILL_MD) {
+    throw new Error("This skill is loaded from a URL only; save a local copy before renaming.");
+  }
+  const fromInfo = await stat(fromAbs);
+  if (!fromInfo.isFile()) {
+    throw new Error("Source path is not a file.");
+  }
+  try {
+    await stat(toAbs);
+    throw new Error("A file already exists at the destination path.");
+  } catch (error) {
+    if (error instanceof Error && error.message === "A file already exists at the destination path.") {
+      throw error;
+    }
+    const code = error && typeof error === "object" && "code" in error ? (error as NodeJS.ErrnoException).code : undefined;
+    if (code !== "ENOENT") {
+      throw error;
+    }
+  }
+  const parent = dirname(toAbs);
+  if (!isInsidePath(root, parent)) {
+    throw new Error("Invalid parent directory.");
+  }
+  await mkdir(parent, { recursive: true });
+  await rename(fromAbs, toAbs);
+  return { skillId: input.skillId, relativePath: toRel };
+}
+
+/** Delete one text file from a skill package. Removing sole local SKILL.md with no URL link deletes the package folder. */
+export async function deleteCompanySkillFile(input: {
+  companyId: string;
+  skillId: string;
+  relativePath: string;
+}) {
+  const { root } = await skillRoot(input.companyId, input.skillId);
+  const rel = assertSkillRelativePath(input.relativePath.trim());
+  const candidate = resolve(root, rel);
+  if (!isInsidePath(root, candidate)) {
+    throw new Error("Requested path is outside of skill directory.");
+  }
+  const hasMd = await skillDirHasSkillMd(root);
+  const linkedUrl = await readOptionalSkillLinkUrl(root);
+  if (rel === SKILL_MD && linkedUrl && !hasMd) {
+    throw new Error("This skill is loaded from a URL only; delete the whole skill or refresh from URL.");
+  }
+  const allFiles = await walkSkillTextFiles(root, MAX_OBSERVABILITY_FILES);
+  if (rel === SKILL_MD && allFiles.length > 1) {
+    throw new Error("Remove other files in this skill before deleting SKILL.md.");
+  }
+  const info = await stat(candidate);
+  if (!info.isFile()) {
+    throw new Error("Requested path is not a file.");
+  }
+  await rm(candidate, { force: true });
+  if (rel === SKILL_MD && allFiles.length === 1) {
+    const stillLinked = await readOptionalSkillLinkUrl(root);
+    if (!stillLinked) {
+      await rm(root, { recursive: true, force: true });
+    }
+  }
+  return { skillId: input.skillId, relativePath: rel };
 }
 
 /** Remove `skills/<id>/` entirely (local files and linked-skill pointer). */

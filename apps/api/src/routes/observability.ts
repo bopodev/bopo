@@ -36,12 +36,14 @@ import {
 } from "../services/company-knowledge-file-service";
 import {
   createCompanySkillPackage,
+  deleteCompanySkillFile,
   deleteCompanySkillPackage,
   linkCompanySkillFromUrl,
   listCompanySkillFiles,
   listCompanySkillPackages,
   refreshCompanySkillFromUrl,
   readCompanySkillFile,
+  renameCompanySkillFile,
   writeCompanySkillFile
 } from "../services/company-skill-file-service";
 import {
@@ -605,6 +607,53 @@ export function createObservabilityRouter(ctx: AppContext) {
         relativePath,
         content: body.content
       });
+      return sendOk(res, result);
+    } catch (error) {
+      return sendError(res, String(error), 422);
+    }
+  });
+
+  router.patch("/company-skills/file", async (req, res) => {
+    if (!enforcePermission(req, res, "agents:write")) {
+      return;
+    }
+    const companyId = req.companyId!;
+    const skillId = typeof req.query.skillId === "string" ? req.query.skillId.trim() : "";
+    if (!skillId) {
+      return sendError(res, "Query parameter 'skillId' is required.", 422);
+    }
+    const body = req.body as { from?: unknown; to?: unknown };
+    if (typeof body?.from !== "string" || !body.from.trim()) {
+      return sendError(res, "Expected JSON body with string 'from' (current path).", 422);
+    }
+    if (typeof body?.to !== "string" || !body.to.trim()) {
+      return sendError(res, "Expected JSON body with string 'to' (new path).", 422);
+    }
+    try {
+      const result = await renameCompanySkillFile({
+        companyId,
+        skillId,
+        fromRelativePath: body.from.trim(),
+        toRelativePath: body.to.trim()
+      });
+      return sendOk(res, result);
+    } catch (error) {
+      return sendError(res, String(error), 422);
+    }
+  });
+
+  router.delete("/company-skills/file", async (req, res) => {
+    if (!enforcePermission(req, res, "agents:write")) {
+      return;
+    }
+    const companyId = req.companyId!;
+    const skillId = typeof req.query.skillId === "string" ? req.query.skillId.trim() : "";
+    const relativePath = typeof req.query.path === "string" ? req.query.path.trim() : "";
+    if (!skillId || !relativePath) {
+      return sendError(res, "Query parameters 'skillId' and 'path' are required.", 422);
+    }
+    try {
+      const result = await deleteCompanySkillFile({ companyId, skillId, relativePath });
       return sendOk(res, result);
     } catch (error) {
       return sendError(res, String(error), 422);

@@ -20,7 +20,7 @@ import {
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { ApiError, apiDelete, apiGet, apiPost, apiPut } from "@/lib/api";
+import { ApiError, apiDelete, apiGet, apiPatch, apiPost, apiPut } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { SectionHeading } from "@/components/workspace/shared";
 
@@ -94,6 +94,94 @@ function skillSidebarFileDisplayName(relativePath: string): string {
     }
   }
   return base;
+}
+
+const SKILL_PACK_MAX_SEGMENTS = 32;
+const SKILL_PACK_EXT_STRIP_ORDER = [".yaml", ".yml", ".json", ".txt", ".md"] as const;
+
+function parseSkillPackRelativePathInput(
+  input: string
+): { ok: true; path: string } | { ok: false; message: string } {
+  const normalized = input.trim().replace(/\\/g, "/");
+  if (!normalized) {
+    return { ok: false, message: "Enter a path." };
+  }
+  if (normalized.startsWith("/") || normalized.includes("..")) {
+    return { ok: false, message: "Invalid path." };
+  }
+  const parts = normalized.split("/").filter(Boolean);
+  if (parts.length === 0 || parts.length > SKILL_PACK_MAX_SEGMENTS) {
+    return { ok: false, message: "Too many path segments." };
+  }
+  for (const p of parts) {
+    if (p === "." || p === ".." || p.startsWith(".")) {
+      return { ok: false, message: "Path segments cannot start with a dot." };
+    }
+  }
+  const base = parts[parts.length - 1]!;
+  const lower = base.toLowerCase();
+  const ext = lower.includes(".") ? lower.slice(lower.lastIndexOf(".")) : "";
+  if (!SKILL_SIDEBAR_FILE_EXTS.has(ext)) {
+    return { ok: false, message: "Allowed extensions: .md, .yaml, .yml, .txt, .json." };
+  }
+  return { ok: true, path: normalized };
+}
+
+function skillPackBasenameFromRelativePath(relativePath: string): string {
+  const i = relativePath.lastIndexOf("/");
+  return i === -1 ? relativePath : relativePath.slice(i + 1);
+}
+
+function skillPackStemAndExtFromBasename(basename: string): { stem: string; ext: string } {
+  const lower = basename.toLowerCase();
+  const dot = basename.lastIndexOf(".");
+  if (dot > 0) {
+    const ext = lower.slice(dot);
+    if (SKILL_SIDEBAR_FILE_EXTS.has(ext)) {
+      return { stem: basename.slice(0, dot), ext };
+    }
+  }
+  return { stem: basename, ext: ".md" };
+}
+
+function parseSkillPackTitleStemInput(
+  input: string
+): { ok: true; stem: string } | { ok: false; message: string } {
+  let s = input.trim().replace(/\\/g, "/");
+  if (!s) {
+    return { ok: false, message: "Enter a title." };
+  }
+  if (s.includes("/") || s.includes("..")) {
+    return { ok: false, message: "Enter a title only (no path separators or ..)." };
+  }
+  if (s.startsWith(".")) {
+    return { ok: false, message: "Title cannot start with a dot." };
+  }
+  const lower = s.toLowerCase();
+  for (const ext of SKILL_PACK_EXT_STRIP_ORDER) {
+    if (lower.endsWith(ext)) {
+      s = s.slice(0, -ext.length);
+      break;
+    }
+  }
+  s = s.trim();
+  if (!s) {
+    return { ok: false, message: "Enter a title." };
+  }
+  if (s.startsWith(".")) {
+    return { ok: false, message: "Title cannot start with a dot." };
+  }
+  return { ok: true, stem: s };
+}
+
+function skillPackParentPrefixFromRelativePath(relativePath: string): string {
+  const i = relativePath.lastIndexOf("/");
+  return i === -1 ? "" : relativePath.slice(0, i);
+}
+
+function skillPackPathFromParentAndFilename(parentPrefix: string, filename: string): string {
+  const p = parentPrefix.trim();
+  return p ? `${p}/${filename}` : filename;
 }
 
 type SkillsTreeNavNode =
@@ -299,6 +387,11 @@ export function SettingsSkillsPageClient({
   const [saving, setSaving] = useState(false);
   const [settledKey, setSettledKey] = useState("");
   const [hydrateVersion, setHydrateVersion] = useState(0);
+  const [editSkillFileDialogOpen, setEditSkillFileDialogOpen] = useState(false);
+  const [editTitleDraft, setEditTitleDraft] = useState("");
+  const [editSkillDialogError, setEditSkillDialogError] = useState<string | null>(null);
+  const [skillFileRenameBusy, setSkillFileRenameBusy] = useState(false);
+  const [skillFileDeleteBusy, setSkillFileDeleteBusy] = useState(false);
 
   type SkillAddStep = "intro" | "create" | "link";
   const [addSkillOpen, setAddSkillOpen] = useState(false);
@@ -376,12 +469,13 @@ export function SettingsSkillsPageClient({
     router.replace(`${pathname}?${next.toString()}` as Route);
   }, [companyId, pathname, router]);
 
-  const refreshCompanySkills = useCallback(async () => {
+  const refreshCompanySkills = useCallback(async (): Promise<CompanySkillsListResponse["items"] | undefined> => {
     if (!companyId) {
-      return;
+      return undefined;
     }
     const res = await apiGet<CompanySkillsListResponse>("/observability/company-skills", companyId);
     setCompanyItems(res.data.items);
+    return res.data.items;
   }, [companyId]);
 
   useEffect(() => {
@@ -601,6 +695,20 @@ export function SettingsSkillsPageClient({
   const isSkillMarkdown =
     open != null && (open.kind === "builtin" || open.relativePath.toLowerCase().endsWith(".md"));
 
+  useEffect(() => {
+    if (editSkillFileDialogOpen && (!open || open.kind !== "company" || !open.relativePath)) {
+      setEditSkillFileDialogOpen(false);
+    }
+  }, [editSkillFileDialogOpen, open]);
+
+  useEffect(() => {
+    if (editSkillFileDialogOpen && open?.kind === "company" && open.relativePath) {
+      const { stem } = skillPackStemAndExtFromBasename(skillPackBasenameFromRelativePath(open.relativePath));
+      setEditTitleDraft(stem);
+      setEditSkillDialogError(null);
+    }
+  }, [editSkillFileDialogOpen, open]);
+
   const flushSkillsAutosave = useCallback(async () => {
     if (autosaveDebounceRef.current) {
       clearTimeout(autosaveDebounceRef.current);
@@ -712,6 +820,110 @@ export function SettingsSkillsPageClient({
       setOpen(next);
       syncSelectionToUrl(next);
     })();
+  }
+
+  const handleEditSkillFileDialogOpenChange = useCallback((isOpen: boolean) => {
+    setEditSkillFileDialogOpen(isOpen);
+    if (!isOpen) {
+      setEditSkillDialogError(null);
+    }
+  }, []);
+
+  async function applyEditSkillFileDialogSave() {
+    if (!companyId || open?.kind !== "company" || !open.relativePath) {
+      return;
+    }
+    const parsedStem = parseSkillPackTitleStemInput(editTitleDraft);
+    if (!parsedStem.ok) {
+      setEditSkillDialogError(parsedStem.message);
+      return;
+    }
+    const { ext } = skillPackStemAndExtFromBasename(skillPackBasenameFromRelativePath(open.relativePath));
+    const filename = `${parsedStem.stem}${ext}`;
+    const parent = skillPackParentPrefixFromRelativePath(open.relativePath);
+    const nextPath = skillPackPathFromParentAndFilename(parent, filename);
+    if (nextPath.split("/").filter(Boolean).length > SKILL_PACK_MAX_SEGMENTS) {
+      setEditSkillDialogError("Too many path segments.");
+      return;
+    }
+    const fullParse = parseSkillPackRelativePathInput(nextPath);
+    if (!fullParse.ok) {
+      setEditSkillDialogError(fullParse.message);
+      return;
+    }
+    setEditSkillDialogError(null);
+    if (fullParse.path === open.relativePath) {
+      setEditSkillFileDialogOpen(false);
+      return;
+    }
+    setSkillFileRenameBusy(true);
+    try {
+      await flushSkillsAutosave();
+      if (draftContentRef.current !== baselineContentRef.current) {
+        setEditSkillDialogError("Finish saving before renaming.");
+        return;
+      }
+      await apiPatch(`/observability/company-skills/file?skillId=${encodeURIComponent(open.skillId)}`, companyId, {
+        from: open.relativePath,
+        to: fullParse.path
+      });
+      const next = fullParse.path;
+      const sid = open.skillId;
+      setEditSkillFileDialogOpen(false);
+      setSkillsExpandedDirs((prev) => {
+        const nextSet = new Set(prev);
+        nextSet.add("custom");
+        nextSet.add(`custom/${sid}`);
+        return nextSet;
+      });
+      setOpen({ kind: "company", skillId: sid, relativePath: next });
+      syncSelectionToUrl({ kind: "company", skillId: sid, relativePath: next });
+      await refreshCompanySkills();
+      setHydrateVersion((v) => v + 1);
+    } catch (e) {
+      setEditSkillDialogError(e instanceof ApiError ? e.message : "Rename failed.");
+    } finally {
+      setSkillFileRenameBusy(false);
+    }
+  }
+
+  async function performDeleteOpenSkillFile() {
+    if (!companyId || open?.kind !== "company" || !open.relativePath) {
+      return;
+    }
+    const skillId = open.skillId;
+    const path = open.relativePath;
+    setEditSkillDialogError(null);
+    setSkillFileDeleteBusy(true);
+    try {
+      await flushSkillsAutosave();
+      if (draftContentRef.current !== baselineContentRef.current) {
+        setEditSkillDialogError("Finish saving before deleting.");
+        return;
+      }
+      await apiDelete(
+        `/observability/company-skills/file?skillId=${encodeURIComponent(skillId)}&path=${encodeURIComponent(path)}`,
+        companyId
+      );
+      setEditSkillFileDialogOpen(false);
+      const items = await refreshCompanySkills();
+      const pack = items?.find((p) => p.skillId === skillId);
+      if (!pack || pack.files.length === 0) {
+        clearSkillSelectionFromUrl();
+        setBaselineContent("");
+        setDraftContent("");
+        setSettledKey("");
+      } else {
+        const nextPath = pack.files[0]!.relativePath;
+        setOpen({ kind: "company", skillId, relativePath: nextPath });
+        syncSelectionToUrl({ kind: "company", skillId, relativePath: nextPath });
+        setHydrateVersion((v) => v + 1);
+      }
+    } catch (e) {
+      setEditSkillDialogError(e instanceof ApiError ? e.message : "Delete failed.");
+    } finally {
+      setSkillFileDeleteBusy(false);
+    }
   }
 
   async function submitCreate() {
@@ -833,6 +1045,23 @@ export function SettingsSkillsPageClient({
     }
   }
 
+  const editStemParsed = parseSkillPackTitleStemInput(editTitleDraft);
+  const editSkillTitleUnchanged =
+    open?.kind === "company" &&
+    Boolean(open.relativePath) &&
+    editStemParsed.ok &&
+    skillPackPathFromParentAndFilename(
+      skillPackParentPrefixFromRelativePath(open.relativePath),
+      `${editStemParsed.stem}${skillPackStemAndExtFromBasename(skillPackBasenameFromRelativePath(open.relativePath)).ext}`
+    ) === open.relativePath;
+  const editSkillSaveDisabled =
+    !companyId ||
+    open?.kind !== "company" ||
+    !open.relativePath ||
+    skillFileRenameBusy ||
+    skillFileDeleteBusy ||
+    (!editSkillTitleUnchanged && saving);
+
   const secondaryPane = (
     <div className="run-sidebar-pane">
       {listsLoading ? null : listsError ? (
@@ -903,6 +1132,21 @@ export function SettingsSkillsPageClient({
                       {readOnly ? "Read-only" : saving ? "Saving…" : dirty ? null : "Saved"}
                     </span>
                   ) : null}
+                  {companyId &&
+                  open?.kind === "company" &&
+                  !skillHasLinkedUrl &&
+                  open.relativePath &&
+                  editorReady ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      type="button"
+                      onClick={() => setEditSkillFileDialogOpen(true)}
+                      disabled={saving}
+                    >
+                      Edit
+                    </Button>
+                  ) : null}
                   {companyId && open?.kind === "company" && skillIsUrlLinkedOnly ? (
                     <Button
                       size="sm"
@@ -916,7 +1160,7 @@ export function SettingsSkillsPageClient({
                   {companyId && open?.kind === "company" && skillHasLinkedUrl ? (
                     <Button
                       size="sm"
-                      variant="ghost"
+                      variant="outline"
                       onClick={() => void refreshLinkedSkillFromUrl()}
                       disabled={refreshBusy || !editorReady || saving}
                     >
@@ -997,6 +1241,64 @@ export function SettingsSkillsPageClient({
           </div>
         }
       />
+
+      <Dialog open={editSkillFileDialogOpen} onOpenChange={handleEditSkillFileDialogOpenChange}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit skill file</DialogTitle>
+            <DialogDescription>
+              Change the title to rename the file under this skill. Document edits still save automatically.
+            </DialogDescription>
+          </DialogHeader>
+          {open?.kind === "company" && open.relativePath ? (
+            <>
+              <Field>
+                <FieldLabel>Title</FieldLabel>
+                <Input
+                  value={editTitleDraft}
+                  onChange={(e) => setEditTitleDraft(e.target.value)}
+                  placeholder={
+                    skillPackStemAndExtFromBasename(skillPackBasenameFromRelativePath(open.relativePath)).stem ||
+                    "Untitled"
+                  }
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+              </Field>
+              {open.relativePath.includes("/") ? (
+                <p className="ui-issue-muted-text ui-knowledge-edit-folder-hint">
+                  Folder:{" "}
+                  <code className="ui-dialog-description-inline-code">
+                    {skillPackParentPrefixFromRelativePath(open.relativePath)}/
+                  </code>
+                </p>
+              ) : null}
+            </>
+          ) : null}
+          {editSkillDialogError ? (
+            <Alert variant="destructive">
+              <AlertDescription>{editSkillDialogError}</AlertDescription>
+            </Alert>
+          ) : null}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => void performDeleteOpenSkillFile()}
+              disabled={skillFileDeleteBusy || skillFileRenameBusy || saving || !open?.relativePath}
+            >
+              {skillFileDeleteBusy ? "Deleting…" : "Delete"}
+            </Button>
+            <Button
+              type="button"
+              onClick={() => void applyEditSkillFileDialogSave()}
+              disabled={editSkillSaveDisabled}
+            >
+              {skillFileRenameBusy ? "Saving…" : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={addSkillOpen}
