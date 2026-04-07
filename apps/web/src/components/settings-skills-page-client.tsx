@@ -719,7 +719,7 @@ export function SettingsSkillsPageClient({
   loadKeyRef.current = loadKey;
 
   const dirtyRef = useRef(false);
-  const readOnly = open?.kind === "builtin" || skillIsUrlLinkedOnly;
+  const readOnly = open?.kind === "builtin" || skillHasLinkedUrl;
   dirtyRef.current = open !== null && !readOnly && draftContent !== baselineContent;
 
   const draftContentRef = useRef(draftContent);

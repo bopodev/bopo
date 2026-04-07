@@ -2763,6 +2763,18 @@ body {
   @apply flex min-h-[calc(100dvh-7.5rem)] flex-1 flex-col rounded-md border border-border bg-muted/25 px-12 py-10;
 }
 
+.ui-knowledge-tiptap-bubble-menu {
+  @apply z-50 flex items-center gap-0.5 rounded-md border border-border bg-popover p-1 shadow-md;
+}
+
+.ui-knowledge-tiptap-bubble-menu-btn {
+  @apply flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border-0 bg-transparent text-muted-foreground transition-colors hover:bg-muted hover:text-foreground;
+}
+
+.ui-knowledge-tiptap-bubble-menu-btn--active {
+  @apply bg-muted text-foreground;
+}
+
 .ui-knowledge-tiptap-editor-root {
   @apply flex flex-1 flex-col overflow-hidden;
 }
