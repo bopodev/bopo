@@ -1,42 +1,55 @@
 "use client";
 
 import type { Editor } from "@tiptap/core";
+import { isTextSelection } from "@tiptap/core";
+import type { Transaction } from "@tiptap/pm/state";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import { BubbleMenu } from "@tiptap/react/menus";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import { Bold, Code, Italic, Link2, Strikethrough } from "lucide-react";
+import { Bold, Code, Heading1, Heading2, Heading3, Italic, Link2, Strikethrough } from "lucide-react";
 import MarkdownIt from "markdown-it";
 import TurndownService from "turndown";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from "@/components/ui/dialog";
+import { Field, FieldError, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 
 const markdownIt = new MarkdownIt({ html: false, linkify: true, breaks: true });
 
-function KnowledgeTiptapBubbleToolbar({ editor }: { editor: Editor }) {
+function KnowledgeTiptapBubbleToolbar({
+  editor,
+  linkModalOpen,
+  onOpenLinkModal
+}: {
+  editor: Editor;
+  linkModalOpen: boolean;
+  onOpenLinkModal: () => void;
+}) {
   const [, setUpdate] = useState(0);
+
   useEffect(() => {
     const bump = () => setUpdate((n) => n + 1);
-    editor.on("selectionUpdate", bump);
-    editor.on("transaction", bump);
+    const onTransaction = ({ transaction }: { transaction: Transaction }) => {
+      if (transaction.docChanged || transaction.selectionSet) {
+        bump();
+      }
+    };
+    editor.on("transaction", onTransaction);
     return () => {
-      editor.off("selectionUpdate", bump);
-      editor.off("transaction", bump);
+      editor.off("transaction", onTransaction);
     };
   }, [editor]);
-
-  function toggleLink() {
-    if (editor.isActive("link")) {
-      editor.chain().focus().unsetLink().run();
-      return;
-    }
-    const prev = editor.getAttributes("link").href as string | undefined;
-    const href = window.prompt("Link URL", prev?.trim() ? prev : "https://");
-    if (href == null || href.trim() === "") {
-      return;
-    }
-    editor.chain().focus().extendMarkRange("link").setLink({ href: href.trim() }).run();
-  }
 
   return (
     <BubbleMenu
@@ -48,6 +61,20 @@ function KnowledgeTiptapBubbleToolbar({ editor }: { editor: Editor }) {
         flip: true,
         shift: true,
         inline: true
+      }}
+      shouldShow={({ editor: ed, state, from, to, element, view }) => {
+        if (linkModalOpen) {
+          return false;
+        }
+        const { doc, selection } = state;
+        const { empty } = selection;
+        const isEmptyTextBlock = !doc.textBetween(from, to).length && isTextSelection(selection);
+        const isChildOfMenu = element.contains(document.activeElement);
+        const hasEditorFocus = view.hasFocus() || isChildOfMenu;
+        if (!hasEditorFocus || empty || isEmptyTextBlock || !ed.isEditable) {
+          return false;
+        }
+        return true;
       }}
     >
       <button
@@ -92,6 +119,45 @@ function KnowledgeTiptapBubbleToolbar({ editor }: { editor: Editor }) {
       <button
         type="button"
         className={
+          editor.isActive("heading", { level: 1 })
+            ? "ui-knowledge-tiptap-bubble-menu-btn ui-knowledge-tiptap-bubble-menu-btn--active"
+            : "ui-knowledge-tiptap-bubble-menu-btn"
+        }
+        onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
+        aria-label="Heading 1"
+        aria-pressed={editor.isActive("heading", { level: 1 })}
+      >
+        <Heading1 className="ui-icon-sm" aria-hidden />
+      </button>
+      <button
+        type="button"
+        className={
+          editor.isActive("heading", { level: 2 })
+            ? "ui-knowledge-tiptap-bubble-menu-btn ui-knowledge-tiptap-bubble-menu-btn--active"
+            : "ui-knowledge-tiptap-bubble-menu-btn"
+        }
+        onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+        aria-label="Heading 2"
+        aria-pressed={editor.isActive("heading", { level: 2 })}
+      >
+        <Heading2 className="ui-icon-sm" aria-hidden />
+      </button>
+      <button
+        type="button"
+        className={
+          editor.isActive("heading", { level: 3 })
+            ? "ui-knowledge-tiptap-bubble-menu-btn ui-knowledge-tiptap-bubble-menu-btn--active"
+            : "ui-knowledge-tiptap-bubble-menu-btn"
+        }
+        onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
+        aria-label="Heading 3"
+        aria-pressed={editor.isActive("heading", { level: 3 })}
+      >
+        <Heading3 className="ui-icon-sm" aria-hidden />
+      </button>
+      <button
+        type="button"
+        className={
           editor.isActive("code")
             ? "ui-knowledge-tiptap-bubble-menu-btn ui-knowledge-tiptap-bubble-menu-btn--active"
             : "ui-knowledge-tiptap-bubble-menu-btn"
@@ -109,8 +175,8 @@ function KnowledgeTiptapBubbleToolbar({ editor }: { editor: Editor }) {
             ? "ui-knowledge-tiptap-bubble-menu-btn ui-knowledge-tiptap-bubble-menu-btn--active"
             : "ui-knowledge-tiptap-bubble-menu-btn"
         }
-        onClick={() => toggleLink()}
-        aria-label={editor.isActive("link") ? "Remove link" : "Add link"}
+        onClick={() => onOpenLinkModal()}
+        aria-label={editor.isActive("link") ? "Edit link" : "Add link"}
         aria-pressed={editor.isActive("link")}
       >
         <Link2 className="ui-icon-sm" aria-hidden />
@@ -133,6 +199,32 @@ export function KnowledgeTiptapEditor({
   placeholder?: string;
   readOnly?: boolean;
 }) {
+  const linkUrlInputId = useId();
+  const [linkModalOpen, setLinkModalOpen] = useState(false);
+  const [linkUrlDraft, setLinkUrlDraft] = useState("");
+  const [linkModalHadLink, setLinkModalHadLink] = useState(false);
+  const [linkUrlError, setLinkUrlError] = useState<string | null>(null);
+
+  const editorRef = useRef<Editor | null>(null);
+  const readOnlyRef = useRef(readOnly);
+  readOnlyRef.current = readOnly;
+
+  const openLinkModal = useCallback(() => {
+    const ed = editorRef.current;
+    if (!ed) {
+      return;
+    }
+    const had = ed.isActive("link");
+    const prev = (ed.getAttributes("link").href as string | undefined) ?? "";
+    setLinkModalHadLink(had);
+    setLinkUrlDraft(prev.trim() ? prev : "https://");
+    setLinkUrlError(null);
+    setLinkModalOpen(true);
+  }, []);
+
+  const openLinkModalRef = useRef(openLinkModal);
+  openLinkModalRef.current = openLinkModal;
+
   const turndown = useMemo(
     () =>
       new TurndownService({
@@ -154,8 +246,13 @@ export function KnowledgeTiptapEditor({
       }),
       Link.configure({
         openOnClick: false,
+        enableClickSelection: false,
         autolink: true,
-        HTMLAttributes: { class: "ui-knowledge-tiptap-link" }
+        HTMLAttributes: {
+          class: "ui-knowledge-tiptap-link",
+          rel: "noopener noreferrer",
+          target: null
+        }
       }),
       Placeholder.configure({ placeholder })
     ],
@@ -164,6 +261,53 @@ export function KnowledgeTiptapEditor({
       attributes: {
         class: "ui-knowledge-tiptap-prosemirror",
         spellCheck: "true"
+      },
+      handleClick(_view, _pos, event) {
+        if (readOnlyRef.current) {
+          return false;
+        }
+        if (event.button !== 0) {
+          return false;
+        }
+        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+          return false;
+        }
+        const t = event.target;
+        if (!(t instanceof Node) || !_view.dom.contains(t)) {
+          return false;
+        }
+        const el = t instanceof Element ? t : t.parentElement;
+        const anchor = el?.closest?.("a[href]");
+        if (!anchor || !_view.dom.contains(anchor)) {
+          return false;
+        }
+        const ed = editorRef.current;
+        if (!ed?.isEditable) {
+          return false;
+        }
+        ed.chain().focus().extendMarkRange("link").run();
+        openLinkModalRef.current();
+        return true;
+      },
+      handleDOMEvents: {
+        click(view, event) {
+          if (!view.editable || readOnlyRef.current) {
+            return false;
+          }
+          const t = event.target;
+          if (!(t instanceof Node) || !view.dom.contains(t)) {
+            return false;
+          }
+          const el = t instanceof Element ? t : t.parentElement;
+          const link = el?.closest?.("a[href]");
+          if (link && view.dom.contains(link)) {
+            if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+              return false;
+            }
+            event.preventDefault();
+          }
+          return false;
+        }
       }
     },
     onUpdate: ({ editor: ed }) => {
@@ -171,6 +315,13 @@ export function KnowledgeTiptapEditor({
       onMarkdownChange(raw);
     }
   });
+
+  useEffect(() => {
+    editorRef.current = editor;
+    return () => {
+      editorRef.current = null;
+    };
+  }, [editor]);
 
   useEffect(() => {
     if (!editor) {
@@ -188,10 +339,102 @@ export function KnowledgeTiptapEditor({
     editor.setEditable(!readOnly);
   }, [editor, readOnly]);
 
+  function applyLink() {
+    const ed = editorRef.current;
+    if (!ed) {
+      return;
+    }
+    const trimmed = linkUrlDraft.trim();
+    if (!trimmed) {
+      setLinkUrlError("Enter a URL.");
+      return;
+    }
+    ed.chain().focus().extendMarkRange("link").setLink({ href: trimmed }).run();
+    setLinkModalOpen(false);
+  }
+
+  function removeLink() {
+    const ed = editorRef.current;
+    if (!ed) {
+      return;
+    }
+    ed.chain().focus().extendMarkRange("link").unsetLink().run();
+    setLinkModalOpen(false);
+  }
+
   return (
     <div className="ui-knowledge-tiptap-shell">
-      {editor && !readOnly ? <KnowledgeTiptapBubbleToolbar editor={editor} /> : null}
+      {editor && !readOnly ? (
+        <KnowledgeTiptapBubbleToolbar
+          editor={editor}
+          linkModalOpen={linkModalOpen}
+          onOpenLinkModal={openLinkModal}
+        />
+      ) : null}
       <EditorContent editor={editor} className="ui-knowledge-tiptap-editor-root" />
+
+      {!readOnly ? (
+        <Dialog
+          open={linkModalOpen}
+          onOpenChange={(open) => {
+            setLinkModalOpen(open);
+            if (!open) {
+              setLinkUrlError(null);
+            }
+          }}
+        >
+          <DialogContent
+            size="sm"
+            showCloseButton
+            onOpenAutoFocus={(e) => {
+              e.preventDefault();
+              requestAnimationFrame(() => {
+                const el = document.getElementById(linkUrlInputId) as HTMLInputElement | null;
+                el?.focus();
+                el?.select();
+              });
+            }}
+          >
+            <DialogHeader>
+              <DialogTitle>{linkModalHadLink ? "Edit link" : "Add link"}</DialogTitle>
+              <DialogDescription>Set the URL for the selected text. Markdown will store a standard link.</DialogDescription>
+            </DialogHeader>
+            <Field>
+              <FieldLabel htmlFor={linkUrlInputId}>URL</FieldLabel>
+              <Input
+                id={linkUrlInputId}
+                value={linkUrlDraft}
+                onChange={(ev) => {
+                  setLinkUrlDraft(ev.target.value);
+                  if (linkUrlError) {
+                    setLinkUrlError(null);
+                  }
+                }}
+                placeholder="https://"
+                autoComplete="off"
+                spellCheck={false}
+                onKeyDown={(ev) => {
+                  if (ev.key === "Enter") {
+                    ev.preventDefault();
+                    applyLink();
+                  }
+                }}
+              />
+              {linkUrlError ? <FieldError>{linkUrlError}</FieldError> : null}
+            </Field>
+            <DialogFooter>
+              {linkModalHadLink ? (
+                <Button type="button" variant="outline" onClick={() => removeLink()}>
+                  Remove link
+                </Button>
+              ) : null}
+              <Button type="button" onClick={() => applyLink()}>
+                Save
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      ) : null}
     </div>
   );
 }
