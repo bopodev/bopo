@@ -281,18 +281,21 @@ function SkillsTreeNav({
                 "ui-knowledge-tree-row--file",
                 active && "ui-knowledge-tree-row--active"
               )}
-              style={{ paddingLeft: `calc(0.25rem + ${depth} * 0.75rem)` }}
+              style={{
+                paddingLeft: `calc(0.25rem + ${Math.max(0, depth - 1)} * 0.75rem + 2.25rem)`
+              }}
             >
-              <span className="ui-knowledge-tree-chevron-spacer" aria-hidden />
               <FileText className="ui-knowledge-tree-icon" aria-hidden />
-              <button
-                type="button"
-                className={cn("ui-knowledge-tree-label", active && "font-medium")}
-                title={node.skillId}
-                onClick={() => onSelectBuiltin(node.skillId)}
-              >
-                {node.label}
-              </button>
+              <div className="ui-knowledge-tree-file-main">
+                <button
+                  type="button"
+                  className={cn("ui-knowledge-tree-label", active && "font-medium")}
+                  title={node.skillId}
+                  onClick={() => onSelectBuiltin(node.skillId)}
+                >
+                  {node.label}
+                </button>
+              </div>
             </div>
           );
         }
@@ -309,31 +312,34 @@ function SkillsTreeNav({
                 "ui-knowledge-tree-row--file",
                 active && "ui-knowledge-tree-row--active"
               )}
-              style={{ paddingLeft: `calc(0.25rem + ${depth} * 0.75rem)` }}
+              style={{
+                paddingLeft: `calc(0.25rem + ${Math.max(0, depth - 1)} * 0.75rem + 2.25rem)`
+              }}
             >
-              <span className="ui-knowledge-tree-chevron-spacer" aria-hidden />
               <FileText className="ui-knowledge-tree-icon" aria-hidden />
-              <button
-                type="button"
-                className={cn("ui-knowledge-tree-label", active && "font-medium")}
-                title={
-                  node.doubleClickTarget === "renameFile"
-                    ? `${node.skillId} · ${node.relativePath} · double-click to rename file`
-                    : `${node.skillId} · ${node.relativePath} · double-click to edit sidebar title`
-                }
-                onClick={() => onSelectCompanyFile(node.skillId, node.relativePath)}
-                onDoubleClick={(e) => {
-                  e.preventDefault();
-                  onCompanyFileDoubleClick?.(node.skillId, node.relativePath, node.doubleClickTarget);
-                }}
-              >
-                {node.label}
-              </button>
-              {node.linked ? (
-                <span className="ui-settings-skills-linked-pill" title={node.linkTitle ?? "Linked from URL"}>
-                  Linked
-                </span>
-              ) : null}
+              <div className="ui-knowledge-tree-file-main">
+                <button
+                  type="button"
+                  className={cn("ui-knowledge-tree-label", active && "font-medium")}
+                  title={
+                    node.doubleClickTarget === "renameFile"
+                      ? `${node.skillId} · ${node.relativePath} · double-click to rename file`
+                      : `${node.skillId} · ${node.relativePath} · double-click to edit sidebar title`
+                  }
+                  onClick={() => onSelectCompanyFile(node.skillId, node.relativePath)}
+                  onDoubleClick={(e) => {
+                    e.preventDefault();
+                    onCompanyFileDoubleClick?.(node.skillId, node.relativePath, node.doubleClickTarget);
+                  }}
+                >
+                  {node.label}
+                </button>
+                {node.linked ? (
+                  <span className="ui-settings-skills-linked-pill" title={node.linkTitle ?? "Linked from URL"}>
+                    Linked
+                  </span>
+                ) : null}
+              </div>
             </div>
           );
         }
@@ -356,6 +362,21 @@ function SkillsTreeNav({
               >
                 {expanded ? <ChevronDown className="ui-icon-sm" /> : <ChevronRight className="ui-icon-sm" />}
               </button>
+              {chevronOnlyExpand ? (
+                <Folder
+                  className="ui-knowledge-tree-icon ui-knowledge-tree-row-leading-icon"
+                  aria-hidden
+                />
+              ) : (
+                <button
+                  type="button"
+                  className="ui-knowledge-tree-row-leading-toggle"
+                  aria-label={`Expand or collapse ${node.name}`}
+                  onClick={() => toggleDir(dirKey)}
+                >
+                  <Folder className="ui-knowledge-tree-icon" aria-hidden />
+                </button>
+              )}
               <div className="ui-knowledge-tree-dir-row-body">
                 <button
                   type="button"
@@ -375,7 +396,6 @@ function SkillsTreeNav({
                       : undefined
                   }
                 >
-                  <Folder className="ui-knowledge-tree-icon" aria-hidden />
                   <span className="ui-knowledge-tree-dir-name">{node.name}</span>
                 </button>
                 {node.linked ? (

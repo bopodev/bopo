@@ -221,22 +221,25 @@ function KnowledgeTreeNav({
                 "ui-knowledge-tree-row--file",
                 active && "ui-knowledge-tree-row--active"
               )}
-              style={{ paddingLeft: `calc(0.25rem + ${depth} * 0.75rem)` }}
+              style={{
+                paddingLeft: `calc(0.25rem + ${Math.max(0, depth - 1)} * 0.75rem + 2.25rem)`
+              }}
             >
-              <span className="ui-knowledge-tree-chevron-spacer" aria-hidden />
               <FileText className="ui-knowledge-tree-icon" aria-hidden />
-              <button
-                type="button"
-                className={cn("ui-knowledge-tree-label", active && "font-medium")}
-                title={`${node.relativePath} · double-click to rename file`}
-                onClick={() => onSelectFile(node.relativePath)}
-                onDoubleClick={(e) => {
-                  e.preventDefault();
-                  onFileDoubleClick?.(node.relativePath);
-                }}
-              >
-                {node.name}
-              </button>
+              <div className="ui-knowledge-tree-file-main">
+                <button
+                  type="button"
+                  className={cn("ui-knowledge-tree-label", active && "font-medium")}
+                  title={`${node.relativePath} · double-click to rename file`}
+                  onClick={() => onSelectFile(node.relativePath)}
+                  onDoubleClick={(e) => {
+                    e.preventDefault();
+                    onFileDoubleClick?.(node.relativePath);
+                  }}
+                >
+                  {node.name}
+                </button>
+              </div>
             </div>
           );
         }
@@ -257,6 +260,10 @@ function KnowledgeTreeNav({
               >
                 {expanded ? <ChevronDown className="ui-icon-sm" /> : <ChevronRight className="ui-icon-sm" />}
               </button>
+              <Folder
+                className="ui-knowledge-tree-icon ui-knowledge-tree-row-leading-icon"
+                aria-hidden
+              />
               <div className="ui-knowledge-tree-dir-row-body">
                 <button
                   type="button"
@@ -267,7 +274,6 @@ function KnowledgeTreeNav({
                     onFolderDoubleClick?.(dirKey);
                   }}
                 >
-                  <Folder className="ui-knowledge-tree-icon" aria-hidden />
                   <span className="ui-knowledge-tree-dir-name">{node.name}</span>
                 </button>
                 <button

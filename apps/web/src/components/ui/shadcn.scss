@@ -2689,19 +2689,20 @@ body {
 }
 
 .ui-knowledge-tree-children {
-  @apply flex flex-col;
+  @apply flex flex-col first:gap-2;
 }
 
+/* Folders: chevron | icon | label. Files: no chevron column — padding aligns icon with parent folder icon (depth bump is not double-counted). */
 .ui-knowledge-tree-row {
-  @apply flex min-h-8 w-full items-center gap-2 rounded-xl pr-1 py-0.5 text-left;
+  @apply min-h-8 w-full rounded-xl py-0.5 text-left;
 }
 
 .ui-knowledge-tree-row--dir {
-  @apply text-foreground;
+  @apply grid grid-cols-[1.75rem_auto_minmax(0,1fr)] items-center gap-2 text-foreground;
 }
 
 .ui-knowledge-tree-row--file {
-  @apply border-0 bg-transparent text-foreground;
+  @apply flex items-center gap-3 border-0 bg-transparent text-foreground;
 }
 
 .ui-knowledge-tree-row--active {
@@ -2709,15 +2710,24 @@ body {
 }
 
 .ui-knowledge-tree-chevron {
-  @apply flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border-0 bg-transparent text-muted-foreground hover:bg-muted/80;
+  @apply col-start-1 flex h-7 w-7 shrink-0 items-center justify-center justify-self-start rounded-sm border-0 bg-transparent text-muted-foreground hover:bg-muted/80;
 }
 
-.ui-knowledge-tree-chevron-spacer {
-  @apply inline-block h-7 w-7 shrink-0;
+.ui-knowledge-tree-row-leading-icon {
+  @apply col-start-2 row-start-1 size-4 shrink-0 self-center text-muted-foreground;
+}
+
+/* Skills tree: folder icon remains a toggle target when row click expands (not chevron-only). */
+.ui-knowledge-tree-row-leading-toggle {
+  @apply col-start-2 row-start-1 flex size-4 shrink-0 items-center justify-center justify-self-center rounded-sm border-0 bg-transparent p-0 text-muted-foreground hover:bg-muted/80;
+}
+
+.ui-knowledge-tree-file-main {
+  @apply flex min-w-0 min-h-0 flex-1 items-center gap-2;
 }
 
 .ui-knowledge-tree-icon {
-  @apply h-4 w-4 shrink-0 text-muted-foreground mr-2;
+  @apply h-4 w-4 shrink-0 text-muted-foreground;
 }
 
 .ui-knowledge-tree-label {
@@ -2725,11 +2735,11 @@ body {
 }
 
 .ui-knowledge-tree-dir-name {
-  @apply min-w-0 flex-1 truncate text-left font-medium capitalize;
+  @apply min-w-0 flex-1 truncate text-left pl-1 font-semibold capitalize;
 }
 
 .ui-knowledge-tree-dir-toggle {
-  @apply flex min-w-0 flex-1 items-center gap-1.5 rounded-md py-1 pr-2 text-left;
+  @apply flex min-w-0 flex-1 items-center rounded-md py-1 pr-2 text-left;
 }
 
 .ui-knowledge-plain-editor {
@@ -2745,7 +2755,7 @@ body {
 }
 
 .ui-knowledge-tree-dir-row-body {
-  @apply flex min-w-0 flex-1 items-center gap-0;
+  @apply col-start-3 flex min-w-0 flex-1 items-center gap-0;
 }
 
 /* Knowledge Tiptap editor */
