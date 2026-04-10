@@ -35,6 +35,7 @@ The dev script uses `scripts/dev-runner.mjs` (see [`docs/getting-started-and-dev
 ## Layout
 
 - `apps/web` — Next.js client
+- **Marketing site (bopo.dev, Astro, separate repo)** — `https://bopo.dev/install.sh` must live in that site’s **`public/install.sh`**. Astro serves everything under `public/` at the domain root. When you change the bootstrap script here, copy [`scripts/install.sh`](./scripts/install.sh) into the Astro repo’s `public/install.sh` and deploy; this monorepo does not host that URL.
 - `apps/api` — Express API, realtime, scheduler
 - `packages/contracts` — Shared Zod schemas
 - `packages/db` — Drizzle schema and migrations

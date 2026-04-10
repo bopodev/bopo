@@ -91,9 +91,25 @@ Supported
 
 ## Quickstart
 
+**If you already have Node.js 20+ and `npx`:**
+
 ```bash
 npx bopodev onboard
 ```
+
+**If you do not have Node / npm / `npx` yet (macOS or Linux):** the bootstrap script only downloads a pinned official Node.js build into `~/.bopodev` when your system does not already have **Node 20+** and **`npx`** on `PATH`. It verifies the tarball with Node’s `SHASUMS256.txt`, then runs the published CLI via `npx` (which may fetch `bopodev` into the npm cache the first time).
+
+```bash
+curl -fsSL https://bopo.dev/install.sh | bash -s -- onboard
+```
+
+The script reattaches the terminal for interactive prompts (plain `curl | bash` used to leave stdin unusable for `onboard`). For **non-interactive** runs (CI, scripts), use `onboard --yes` or save the file and run `bash install.sh onboard`.
+
+That URL is served from the **Astro marketing site** for bopo.dev: add [`scripts/install.sh`](./scripts/install.sh) as **`public/install.sh`** in that repo (static files in `public/` map to `/install.sh` on the domain).
+
+Pass any `bopodev` subcommand and flags after `bash -s --` (for example `onboard --yes`). Optional environment variables are documented in [`scripts/install.sh`](./scripts/install.sh) (`BOPO_NODE_VERSION`, `BOPO_CLI_VERSION`, `BOPO_MODIFY_PATH`, …).
+
+Local onboarding still needs **git** and **pnpm** in your environment after the repo is cloned; use Corepack (`corepack enable` then `corepack prepare pnpm@9 --activate`) if you need a quick `pnpm` install.
 
 Then open `http://localhost:4010`, create a project, assign an issue, and run your first heartbeat.
 
