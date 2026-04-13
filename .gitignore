@@ -23,3 +23,6 @@ agents.md
 # PGlite can create this literal directory name if :memory: is resolved as a relative path (e.g. wrong cwd).
 packages/db/:memory:/
 .tmp/*
+
+# Generated from repo root README before `npm pack` / `npm publish` (packages/cli).
+packages/cli/README.md
