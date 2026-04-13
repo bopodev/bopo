@@ -72,11 +72,14 @@ Supported
 | Company onboarding | Seeded CEO, starter project, and first issue. |
 | Agent lifecycle | Create, configure, pause, resume, terminate. |
 | Agent documents | In-app editor for operating markdown and memory `.md` per agent (`/agents/:id/docs`). |
+| Verified memory | Durable facts support `candidate`, `verified`, and `expired` trust states with source metadata and expiry. |
 | Routines | Scheduled recurring work that creates issues and wakes the assignee; list and detail under **Routines**. |
 | Projects and issues | Assign work, comments, attachments; optional external (e.g. PR) link. |
+| Queue intelligence | Policy-aware claim limits and queue health signals (SLA risk, blocked, aged) surfaced in existing Issues/Inbox views. |
 | Heartbeats | Manual or sweep runs with stop/resume; compact prompt mode for large issues. |
-| Governance | Approvals for high-impact actions. |
+| Governance | Approvals for high-impact actions, including memory verification and manager reassignment. |
 | Observability | Runs, trace logs, cost signals. |
+| Org learning | Suggestion-first org/workflow recommendations and weekly learning summaries, gated behind feature flags. |
 | Realtime | Governance, office-space, heartbeat status streams. |
 | Plugins | Extend heartbeats with capability-governed plugins. |
 | Local-first | Embedded Postgres and instance-local workspaces by default. |

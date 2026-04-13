@@ -34,6 +34,7 @@ Current action types:
 - `pause_agent`
 - `terminate_agent`
 - `promote_memory_fact`
+- `reassign_agent_manager`
 - `grant_plugin_capabilities`
 - `apply_template`
 
@@ -72,6 +73,8 @@ Always verify post-resolution state in related views:
 - agent roster and status,
 - goal activation state,
 - run behavior for budget-related requests,
+- durable memory fact status for `promote_memory_fact`,
+- org chart hierarchy/pending badges for `reassign_agent_manager`,
 - audit trail in observability.
 
 Budget override behavior:

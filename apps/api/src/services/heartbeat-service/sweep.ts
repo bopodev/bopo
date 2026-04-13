@@ -2,6 +2,11 @@ import { appendAuditEvent } from "bopodev-db";
 import { agents, eq, heartbeatRuns, max } from "bopodev-db";
 import type { BopoDb } from "bopodev-db";
 import type { RealtimeHub } from "../../realtime/hub";
+import {
+  isOrgLearningEnabled,
+  isQueueIntelligenceEnabled,
+  isVerifiedMemoryEnabled
+} from "../../lib/roadmap-feature-flags";
 import { findPendingProjectBudgetOverrideBlocksForAgent } from "./budget-override";
 import { isHeartbeatDue } from "./cron";
 
@@ -75,6 +80,11 @@ export async function runHeartbeatSweep(
       skippedBudgetBlocked,
       concurrency: sweepConcurrency,
       elapsedMs: Date.now() - sweepStartedAt,
+      featureFlags: {
+        verifiedMemory: isVerifiedMemoryEnabled(),
+        queueIntelligence: isQueueIntelligenceEnabled(),
+        orgLearning: isOrgLearningEnabled()
+      },
       requestId: options?.requestId ?? null
     }
   });

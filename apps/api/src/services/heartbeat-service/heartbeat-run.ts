@@ -41,6 +41,7 @@ import {
 } from "bopodev-db";
 import { appendAuditEvent, appendCost, listAgents } from "bopodev-db";
 import { parseRuntimeConfigFromAgentRow } from "../../lib/agent-config";
+import { isVerifiedMemoryEnabled } from "../../lib/roadmap-feature-flags";
 import { bootstrapRepositoryWorkspace, ensureIsolatedGitWorktree, GitRuntimeError } from "../../lib/git-runtime";
 import {
   isInsidePath,
@@ -676,7 +677,13 @@ export async function runHeartbeatForAgent(
       options?.wakeContext?.reason === "issue_comment_recipient" ||
       options?.wakeContext?.reason === "loop_execution";
     const heartbeatIdlePolicy = resolveHeartbeatIdlePolicy();
-    const workItems = isCommentOrderWake ? [] : await claimIssuesForAgent(db, companyId, agentId, runId);
+    const workItems = isCommentOrderWake
+      ? []
+      : await claimIssuesForAgent(db, companyId, agentId, runId, {
+          maxItems: persistedRuntime.runPolicy.maxConcurrentItems,
+          slaHours: persistedRuntime.runPolicy.slaHours,
+          agingBoost: persistedRuntime.runPolicy.agingBoost
+        });
     const wakeWorkItems = await loadWakeContextWorkItems(db, companyId, options?.wakeContext?.issueIds);
     const contextWorkItems = await hydrateIssueWorkItemsWithGoalIds(
       db,
@@ -1117,13 +1124,15 @@ export async function runHeartbeatForAgent(
         candidateFacts: persistedMemory.candidateFacts
       }
     });
-    if (execution.status === "ok" && !usageLimitHint) {
+    if (isVerifiedMemoryEnabled() && execution.status === "ok" && !usageLimitHint) {
       for (const fact of persistedMemory.candidateFacts) {
         const targetFile = await appendDurableFact({
           companyId,
           agentId,
           fact,
-          sourceRunId: runId
+          sourceRunId: runId,
+          status: "candidate",
+          expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
         });
         await appendAuditEvent(db, {
           companyId,

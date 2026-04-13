@@ -19,6 +19,10 @@ export type LegacyRuntimeFields = {
   runPolicy?: {
     sandboxMode?: "workspace_write" | "full_access";
     allowWebSearch?: boolean;
+    maxConcurrentItems?: number;
+    slaHours?: number;
+    agingBoost?: boolean;
+    blockedEscalationHours?: number;
   };
   runtimeEnv?: Record<string, string>;
   /** Company skill ids only (bundled ids are stripped on normalize). */
@@ -40,6 +44,10 @@ export type NormalizedRuntimeConfig = {
   runPolicy: {
     sandboxMode: "workspace_write" | "full_access";
     allowWebSearch: boolean;
+    maxConcurrentItems: number;
+    slaHours: number;
+    agingBoost: boolean;
+    blockedEscalationHours: number;
   };
 };
 
@@ -142,7 +150,11 @@ export function normalizeRuntimeConfig(input: {
     interruptGraceSec: Math.max(0, parsed.interruptGraceSec ?? 15),
     runPolicy: {
       sandboxMode: parsed.runPolicy?.sandboxMode ?? "workspace_write",
-      allowWebSearch: parsed.runPolicy?.allowWebSearch ?? false
+      allowWebSearch: parsed.runPolicy?.allowWebSearch ?? false,
+      maxConcurrentItems: parsed.runPolicy?.maxConcurrentItems ?? 5,
+      slaHours: parsed.runPolicy?.slaHours ?? 72,
+      agingBoost: parsed.runPolicy?.agingBoost ?? true,
+      blockedEscalationHours: parsed.runPolicy?.blockedEscalationHours ?? 12
     },
     enabledSkillIds:
       parsed.enabledSkillIds === null || parsed.enabledSkillIds === undefined
@@ -307,10 +319,35 @@ function parseStringRecord(raw: unknown) {
 }
 
 function parseRunPolicy(raw: unknown) {
-  const parsed = parseStringRecord(raw) as { sandboxMode?: unknown; allowWebSearch?: unknown } | null;
+  type RunPolicyRecord = {
+    sandboxMode?: unknown;
+    allowWebSearch?: unknown;
+    maxConcurrentItems?: unknown;
+    slaHours?: unknown;
+    agingBoost?: unknown;
+    blockedEscalationHours?: unknown;
+  };
+  let parsed: RunPolicyRecord | null = null;
+  if (typeof raw === "string" && raw.trim()) {
+    try {
+      const value = JSON.parse(raw);
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        parsed = value as RunPolicyRecord;
+      }
+    } catch {
+      parsed = null;
+    }
+  }
+  const maxConcurrentItems = Math.min(20, Math.max(1, Number(parsed?.maxConcurrentItems ?? 5) || 5));
+  const slaHours = Math.min(720, Math.max(1, Number(parsed?.slaHours ?? 72) || 72));
+  const blockedEscalationHours = Math.min(720, Math.max(1, Number(parsed?.blockedEscalationHours ?? 12) || 12));
   return {
     sandboxMode: parsed?.sandboxMode === "full_access" ? "full_access" : "workspace_write",
-    allowWebSearch: Boolean(parsed?.allowWebSearch)
+    allowWebSearch: Boolean(parsed?.allowWebSearch),
+    maxConcurrentItems,
+    slaHours,
+    agingBoost: parsed?.agingBoost === undefined ? true : Boolean(parsed.agingBoost),
+    blockedEscalationHours
   } as const;
 }
 

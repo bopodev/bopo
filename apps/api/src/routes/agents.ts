@@ -60,7 +60,11 @@ const legacyRuntimeConfigSchema = z.object({
   runPolicy: z
     .object({
       sandboxMode: z.enum(["workspace_write", "full_access"]).optional(),
-      allowWebSearch: z.boolean().optional()
+      allowWebSearch: z.boolean().optional(),
+      maxConcurrentItems: z.number().int().min(1).max(20).optional(),
+      slaHours: z.number().int().min(1).max(720).optional(),
+      agingBoost: z.boolean().optional(),
+      blockedEscalationHours: z.number().int().min(1).max(720).optional()
     })
     .optional(),
   enabledSkillIds: z.array(z.string().min(1)).max(64).nullable().optional()

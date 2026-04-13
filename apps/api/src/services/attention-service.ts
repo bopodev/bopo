@@ -1,5 +1,6 @@
 import {
   and,
+  agents,
   issueComments,
   issues,
   desc,
@@ -17,6 +18,7 @@ import {
   type BopoDb
 } from "bopodev-db";
 import type { BoardAttentionItem } from "bopodev-contracts";
+import { isOrgLearningEnabled, isQueueIntelligenceEnabled } from "../lib/roadmap-feature-flags";
 
 type AttentionStateRow = Awaited<ReturnType<typeof listAttentionInboxStates>>[number];
 
@@ -55,7 +57,7 @@ function finalizeApprovalAttentionItem(item: BoardAttentionItem, approval: Pick<
 }
 
 export async function listBoardAttentionItems(db: BopoDb, companyId: string, actorId: string): Promise<BoardAttentionItem[]> {
-  const [approvals, blockedIssues, heartbeatRuns, stateRows, boardComments] = await Promise.all([
+  const [approvals, blockedIssues, heartbeatRuns, stateRows, boardComments, companyAgents] = await Promise.all([
     listApprovalRequests(db, companyId),
     listIssues(db, companyId),
     listHeartbeatRuns(db, companyId, 300),
@@ -72,7 +74,16 @@ export async function listBoardAttentionItems(db: BopoDb, companyId: string, act
       .innerJoin(issues, and(eq(issues.id, issueComments.issueId), eq(issues.companyId, issueComments.companyId)))
       .where(and(eq(issueComments.companyId, companyId), like(issueComments.recipientsJson, '%"recipientType":"board"%')))
       .orderBy(desc(issueComments.createdAt))
-      .limit(40)
+      .limit(40),
+    db
+      .select({
+        id: agents.id,
+        managerAgentId: agents.managerAgentId,
+        name: agents.name,
+        runPolicyJson: agents.runPolicyJson
+      })
+      .from(agents)
+      .where(eq(agents.companyId, companyId))
   ]);
 
   const stateByKey = new Map(stateRows.map((row) => [row.itemKey, row]));
@@ -164,9 +175,13 @@ export async function listBoardAttentionItems(db: BopoDb, companyId: string, act
 
   const openIssues = blockedIssues.filter((issue) => issue.status !== "done" && issue.status !== "canceled");
   const blockedOpenIssues = openIssues.filter((issue) => issue.status === "blocked");
+  const queuePolicyByAgentId = new Map(
+    companyAgents.map((agent) => [agent.id, parseQueuePolicy(agent.runPolicyJson)])
+  );
   for (const issue of blockedOpenIssues) {
     const blockedHours = ageHoursFromDate(issue.updatedAt);
-    if (blockedHours < 2) {
+    const blockedEscalationHours = queuePolicyByAgentId.get(issue.assigneeAgentId ?? "")?.blockedEscalationHours ?? 12;
+    if (blockedHours < blockedEscalationHours) {
       continue;
     }
     const key = `issue_blocked:${issue.id}`;
@@ -196,6 +211,48 @@ export async function listBoardAttentionItems(db: BopoDb, companyId: string, act
         stateByKey.get(key)
       )
     );
+  }
+
+  if (isQueueIntelligenceEnabled()) {
+    for (const issue of openIssues) {
+      if (!issue.assigneeAgentId) {
+        continue;
+      }
+      const policy = queuePolicyByAgentId.get(issue.assigneeAgentId);
+      const slaHours = policy?.slaHours ?? 72;
+      const ageHours = ageHoursFromDate(issue.createdAt);
+      if (ageHours < slaHours) {
+        continue;
+      }
+      const key = `queue_sla_risk:${issue.id}`;
+      items.push(
+        withState(
+          {
+            key,
+            category: "queue_sla_risk",
+            severity: ageHours >= slaHours * 1.5 ? "critical" : "warning",
+            requiredActor: "board",
+            title: "Queue SLA risk detected",
+            contextSummary: `${issue.title} exceeded queue SLA (${Math.floor(ageHours)}h vs ${slaHours}h).`,
+            actionLabel: "Open issue",
+            actionHref: `/issues/${issue.id}`,
+            impactSummary: "Aging queue items reduce throughput and increase delivery uncertainty.",
+            evidence: {
+              issueId: issue.id,
+              projectId: issue.projectId,
+              agentId: issue.assigneeAgentId
+            },
+            sourceTimestamp: issue.createdAt.toISOString(),
+            state: "open",
+            seenAt: null,
+            acknowledgedAt: null,
+            dismissedAt: null,
+            resolvedAt: null
+          },
+          stateByKey.get(key)
+        )
+      );
+    }
   }
 
   const staleOpenIssues = openIssues.filter((issue) => ageHoursFromDate(issue.updatedAt) >= 7 * 24);
@@ -256,6 +313,75 @@ export async function listBoardAttentionItems(db: BopoDb, companyId: string, act
         stateByKey.get(key)
       )
     );
+  }
+
+  if (isOrgLearningEnabled()) {
+    const directReportCountByManager = new Map<string, number>();
+    for (const agent of companyAgents) {
+      if (!agent.managerAgentId) {
+        continue;
+      }
+      directReportCountByManager.set(agent.managerAgentId, (directReportCountByManager.get(agent.managerAgentId) ?? 0) + 1);
+    }
+    for (const manager of companyAgents) {
+      const reportCount = directReportCountByManager.get(manager.id) ?? 0;
+      if (reportCount < 8) {
+        continue;
+      }
+      const key = `org_suggestion:manager_load:${manager.id}`;
+      items.push(
+        withState(
+          {
+            key,
+            category: "org_suggestion",
+            severity: reportCount >= 12 ? "critical" : "warning",
+            requiredActor: "board",
+            title: "Manager span-of-control suggestion",
+            contextSummary: `${manager.name} currently has ${reportCount} direct reports. Consider introducing a team lead.`,
+            actionLabel: "Review organization",
+            actionHref: "/org-chart",
+            impactSummary: "High management load can slow decision speed and increase coordination overhead.",
+            evidence: {
+              agentId: manager.id
+            },
+            sourceTimestamp: new Date().toISOString(),
+            state: "open",
+            seenAt: null,
+            acknowledgedAt: null,
+            dismissedAt: null,
+            resolvedAt: null
+          },
+          stateByKey.get(key)
+        )
+      );
+    }
+
+    if (failed24h >= 3) {
+      const key = "learning_suggestion:weekly-postmortem";
+      items.push(
+        withState(
+          {
+            key,
+            category: "learning_suggestion",
+            severity: failed24h >= 6 ? "critical" : "warning",
+            requiredActor: "board",
+            title: "Learning loop recommendation",
+            contextSummary: `${failed24h} failed runs in 24h. Trigger a weekly postmortem synthesis for recurring root causes.`,
+            actionLabel: "Open runs",
+            actionHref: "/runs",
+            impactSummary: "Converting repeated failures into shared playbooks improves long-term execution quality.",
+            evidence: {},
+            sourceTimestamp: new Date().toISOString(),
+            state: "open",
+            seenAt: null,
+            acknowledgedAt: null,
+            dismissedAt: null,
+            resolvedAt: null
+          },
+          stateByKey.get(key)
+        )
+      );
+    }
   }
 
   for (const comment of boardComments) {
@@ -452,4 +578,25 @@ function formatAgeHours(hours: number) {
     return `${hours.toFixed(1)}h`;
   }
   return `${(hours / 24).toFixed(1)}d`;
+}
+
+function parseQueuePolicy(rawJson: string | null) {
+  if (!rawJson) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(rawJson) as {
+      blockedEscalationHours?: unknown;
+      slaHours?: unknown;
+    };
+    const blockedEscalationHours = Number(parsed.blockedEscalationHours);
+    const slaHours = Number(parsed.slaHours);
+    return {
+      blockedEscalationHours:
+        Number.isFinite(blockedEscalationHours) && blockedEscalationHours > 0 ? blockedEscalationHours : 12,
+      slaHours: Number.isFinite(slaHours) && slaHours > 0 ? slaHours : 72
+    };
+  } catch {
+    return null;
+  }
 }

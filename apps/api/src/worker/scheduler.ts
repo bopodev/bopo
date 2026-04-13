@@ -5,6 +5,7 @@ import { runHeartbeatQueueSweep } from "../services/heartbeat-queue-service";
 import { runIssueCommentDispatchSweep } from "../services/comment-recipient-dispatch-service";
 import { runLoopSweep } from "../services/work-loop-service";
 import { runPluginJobSweep } from "../services/plugin-jobs-service";
+import { runOrgLearningSweep } from "../services/org-learning-service";
 
 export type HeartbeatSchedulerHandle = {
   stop: () => Promise<void>;
@@ -16,17 +17,20 @@ export function createHeartbeatScheduler(db: BopoDb, companyId: string, realtime
   const commentDispatchIntervalMs = Number(process.env.BOPO_COMMENT_DISPATCH_SWEEP_MS ?? 3_000);
   const loopSweepIntervalMs = Number(process.env.BOPO_LOOP_SWEEP_MS ?? 60_000);
   const pluginJobSweepIntervalMs = Number(process.env.BOPO_PLUGIN_JOB_SWEEP_MS ?? 60_000);
+  const orgLearningIntervalMs = Number(process.env.BOPO_ORG_LEARNING_SWEEP_MS ?? 60_000);
   const loopSweepEnabled = (process.env.BOPO_LOOP_SWEEP_ENABLED ?? "1").trim() !== "0";
   let heartbeatRunning = false;
   let queueRunning = false;
   let commentDispatchRunning = false;
   let loopSweepRunning = false;
   let pluginJobSweepRunning = false;
+  let orgLearningRunning = false;
   let heartbeatPromise: Promise<unknown> | null = null;
   let queuePromise: Promise<unknown> | null = null;
   let commentDispatchPromise: Promise<unknown> | null = null;
   let loopSweepPromise: Promise<unknown> | null = null;
   let pluginJobSweepPromise: Promise<unknown> | null = null;
+  let orgLearningPromise: Promise<unknown> | null = null;
   const heartbeatTimer = setInterval(() => {
     if (heartbeatRunning) {
       return;
@@ -104,6 +108,21 @@ export function createHeartbeatScheduler(db: BopoDb, companyId: string, realtime
         pluginJobSweepPromise = null;
       });
   }, pluginJobSweepIntervalMs);
+  const orgLearningTimer = setInterval(() => {
+    if (orgLearningRunning) {
+      return;
+    }
+    orgLearningRunning = true;
+    orgLearningPromise = runOrgLearningSweep(db, companyId)
+      .catch((error) => {
+        // eslint-disable-next-line no-console
+        console.error("[scheduler] org learning sweep failed", error);
+      })
+      .finally(() => {
+        orgLearningRunning = false;
+        orgLearningPromise = null;
+      });
+  }, orgLearningIntervalMs);
   const stop = async () => {
     clearInterval(heartbeatTimer);
     clearInterval(queueTimer);
@@ -112,8 +131,9 @@ export function createHeartbeatScheduler(db: BopoDb, companyId: string, realtime
       clearInterval(loopSweepTimer);
     }
     clearInterval(pluginJobTimer);
+    clearInterval(orgLearningTimer);
     await Promise.allSettled(
-      [heartbeatPromise, queuePromise, commentDispatchPromise, loopSweepPromise, pluginJobSweepPromise].filter(
+      [heartbeatPromise, queuePromise, commentDispatchPromise, loopSweepPromise, pluginJobSweepPromise, orgLearningPromise].filter(
         (promise): promise is Promise<unknown> => promise !== null
       )
     );

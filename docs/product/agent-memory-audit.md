@@ -24,7 +24,7 @@ This audit captures current memory behavior in production code before introducin
 4. After adapter execution:
    - daily episodic note is appended
    - candidate fact(s) are derived from run summary
-   - successful runs promote candidate facts to durable memory
+   - successful runs promote candidate facts to durable memory as `candidate` records
 5. Governance approvals can separately promote durable facts via `promote_memory_fact`.
 
 ## Guardrails And Limits
@@ -54,3 +54,9 @@ This audit captures current memory behavior in production code before introducin
 - Audit events include memory lifecycle events such as:
   - `heartbeat.memory_updated`
   - `heartbeat.memory_fact_promoted`
+
+## Verified Memory Additions
+
+- Durable facts now support lifecycle status (`candidate`, `verified`, `expired`, `superseded`).
+- Optional metadata includes `sourceArtifact`, `verifiedAt`, and `expiresAt`.
+- Recall prefers verified facts and filters superseded/expired records.

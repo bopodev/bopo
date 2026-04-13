@@ -48,6 +48,9 @@ Provide an end-to-end operating sequence for projects, issues, and goals.
    - Confirm side effects were applied (or intentionally blocked).
 9. **Clear attention queue**
    - Review `inbox` attention items, acknowledge what is understood, dismiss intentional deferrals, and resolve completed board actions.
+   - Pay special attention to **Queue health** signals (`queue_sla_risk`, blocker escalations) and **Suggested improvements** (`org_suggestion`, `learning_suggestion`).
+
+10. **Close the learning loop**: Review weekly learning recommendations and promote durable, verified lessons into memory/governance when appropriate.
 
 ## Recommended Project Structure
 
@@ -77,4 +80,4 @@ Provide an end-to-end operating sequence for projects, issues, and goals.
 - Agents, runs, and **Documents**: [`agents-and-runs.md`](./agents-and-runs.md)
 - Routines: [`routines.md`](./routines.md)
 - Governance: [`governance-and-approvals.md`](./governance-and-approvals.md)
-
+- Org learning loop: [`org-learning-loop.md`](./org-learning-loop.md)

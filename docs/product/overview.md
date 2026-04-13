@@ -17,7 +17,9 @@ Provide one place to define goals, organize work, run agents, manage approvals, 
 - **Planning**: companies, projects, issues (each can link to multiple goals), and goals.
 - **Recurring work**: **routines**—scheduled jobs that create issues and wake an assignee’s heartbeat (see [`routines.md`](./routines.md)); distinct from an agent’s standing **heartbeat** cadence.
 - **Execution**: agent lifecycle, runtime configuration, heartbeat runs, and **agent Documents** (operating + memory markdown edited in the UI at `/agents/:agentId/docs`).
-- **Governance**: explicit approvals for sensitive actions.
+- **Governance**: explicit approvals for sensitive actions, including memory verification and manager reassignment.
+- **Queue intelligence**: policy-backed queue behavior with SLA/blocking signals surfaced in existing `issues` and `inbox`.
+- **Org learning**: suggestion-first improvement loop and weekly learning synthesis.
 - **Observability**: run diagnostics, logs, and cost signals.
 - **Templates and plugins**: reusable operating patterns and extensibility.
 - **Realtime coordination**: governance, office-space, heartbeat-runs, and attention state streamed to clients.
@@ -59,6 +61,7 @@ Primary sections in the app:
 6. Run heartbeats manually or via sweeps.
 7. Resolve approvals and inspect outcomes in logs/runs/costs.
 8. Promote reusable patterns through templates/plugins and monitor attention cues in inbox flows.
+9. Review suggested org and learning improvements in Inbox/Org Chart and approve only the structural actions you want applied.
 
 ## Related Pages
 
@@ -68,4 +71,3 @@ Primary sections in the app:
 - Governance model: [`governance-and-approvals.md`](./governance-and-approvals.md)
 - Realtime model: [`office-space-and-realtime.md`](./office-space-and-realtime.md)
 - Canonical terms: [`../glossary.md`](../glossary.md)
-

@@ -16,11 +16,12 @@ const MAX_TACIT_NOTES_CHARS = 1_500;
 const MAX_OBSERVABILITY_FILES = 200;
 const MAX_OBSERVABILITY_FILE_BYTES = 512 * 1024;
 const MAX_CANDIDATE_FACTS = 3;
+const MAX_EPISODIC_NOTE_FILE_BYTES = Math.floor(MAX_OBSERVABILITY_FILE_BYTES * 0.8);
 
 export type PersistedHeartbeatMemory = {
   memoryRoot: string;
-  dailyNotePath: string;
-  dailyEntry: string;
+  dailyNotePath: string | null;
+  dailyEntry: string | null;
   candidateFacts: MemoryCandidateFact[];
 };
 
@@ -36,11 +37,14 @@ export type MemoryCandidateFact = {
 type DurableFactRecord = {
   fact: string;
   sourceRunId: string | null;
+  sourceArtifact: string | null;
   scope: MemoryScope;
   confidence: number | null;
   createdAt: string | null;
+  verifiedAt: string | null;
+  expiresAt: string | null;
   supersedes: string | null;
-  status: "active" | "superseded";
+  status: "candidate" | "verified" | "expired" | "superseded";
   impactTags: string[];
 };
 
@@ -114,23 +118,34 @@ export async function persistHeartbeatMemory(input: {
   const dailyRoot = resolveAgentDailyMemoryPath(input.companyId, input.agentId);
   await ensureMemoryDirs(memoryRoot, durableRoot, dailyRoot);
   const now = new Date();
-  const dailyFileName = `${now.toISOString().slice(0, 10)}.md`;
-  const dailyNotePath = join(dailyRoot, dailyFileName);
+  const monthKey = now.toISOString().slice(0, 7);
   const summary = collapseWhitespace(input.summary);
-  const dailyEntry = [
-    `## ${now.toISOString()}`,
-    `- run: ${input.runId}`,
-    `- status: ${input.status}`,
-    `- outcome: ${input.outcomeKind ?? "unknown"}`,
-    `- missionAlignment: ${computeMissionAlignmentScore(input.summary, input.mission ?? null, input.goalContext).toFixed(2)}`,
-    `- summary: ${summary || "No summary provided."}`,
-    ""
-  ].join("\n");
-  await writeFile(dailyNotePath, dailyEntry, { encoding: "utf8", flag: "a" });
-  const candidateFacts = deriveCandidateFacts(summary, {
-    mission: input.mission ?? null,
-    goalContext: input.goalContext
+  const shouldPersist = shouldPersistEpisodicEntry({
+    status: input.status,
+    outcomeKind: input.outcomeKind ?? null,
+    summary
   });
+  let dailyEntry: string | null = null;
+  let dailyNotePath: string | null = null;
+  if (shouldPersist) {
+    dailyEntry = [
+      `## ${now.toISOString()}`,
+      `- run: ${input.runId}`,
+      `- status: ${input.status}`,
+      `- outcome: ${input.outcomeKind ?? "unknown"}`,
+      `- missionAlignment: ${computeMissionAlignmentScore(input.summary, input.mission ?? null, input.goalContext).toFixed(2)}`,
+      `- summary: ${summary || "No summary provided."}`,
+      ""
+    ].join("\n");
+    dailyNotePath = await resolveWritableEpisodicNotePath(dailyRoot, monthKey, Buffer.byteLength(dailyEntry, "utf8"));
+    await writeFile(dailyNotePath, dailyEntry, { encoding: "utf8", flag: "a" });
+  }
+  const candidateFacts = shouldPersist
+    ? deriveCandidateFacts(summary, {
+        mission: input.mission ?? null,
+        goalContext: input.goalContext
+      })
+    : [];
   return {
     memoryRoot,
     dailyNotePath,
@@ -139,16 +154,87 @@ export async function persistHeartbeatMemory(input: {
   };
 }
 
+function shouldPersistEpisodicEntry(input: { status: string; outcomeKind: string | null; summary: string }) {
+  const summary = collapseWhitespace(input.summary).toLowerCase();
+  if (!summary || summary.length < 24) {
+    return false;
+  }
+  const outcome = (input.outcomeKind ?? "").trim().toLowerCase();
+  if (outcome === "no_assigned_work" || outcome === "budget_skip" || outcome === "overlap_skip" || outcome === "other_skip") {
+    return false;
+  }
+  if (
+    summary.includes("no assigned work found") ||
+    summary.includes("no assigned work was available") ||
+    summary.includes("no assigned work") ||
+    summary.includes("nothing to do")
+  ) {
+    return false;
+  }
+  if (
+    input.status.toLowerCase() === "failed" &&
+    (summary.includes("outcome: skipped") || summary.includes("heartbeat skipped"))
+  ) {
+    return false;
+  }
+  return true;
+}
+
+async function resolveWritableEpisodicNotePath(dailyRoot: string, monthKey: string, incomingBytes: number) {
+  const baseName = `${monthKey}.md`;
+  const monthPattern = new RegExp(`^${monthKey}(?:-(\\d{2}))?\\.md$`);
+  let entries: string[] = [];
+  try {
+    entries = await readdir(dailyRoot);
+  } catch {
+    return join(dailyRoot, baseName);
+  }
+  const matching = entries
+    .map((name) => {
+      const match = name.match(monthPattern);
+      if (!match) {
+        return null;
+      }
+      const part = match[1] ? Number.parseInt(match[1], 10) : 1;
+      if (!Number.isFinite(part) || part <= 0) {
+        return null;
+      }
+      return { name, part };
+    })
+    .filter((entry): entry is { name: string; part: number } => Boolean(entry))
+    .sort((left, right) => left.part - right.part);
+  if (matching.length === 0) {
+    return join(dailyRoot, baseName);
+  }
+  const current = matching[matching.length - 1]!;
+  const currentPath = join(dailyRoot, current.name);
+  let currentSize = 0;
+  try {
+    const info = await stat(currentPath);
+    currentSize = info.isFile() ? info.size : 0;
+  } catch {
+    currentSize = 0;
+  }
+  if (currentSize + incomingBytes <= MAX_EPISODIC_NOTE_FILE_BYTES) {
+    return currentPath;
+  }
+  const nextPart = String(current.part + 1).padStart(2, "0");
+  return join(dailyRoot, `${monthKey}-${nextPart}.md`);
+}
+
 export async function appendDurableFact(input: {
   companyId: string;
   agentId: string;
   fact: string | MemoryCandidateFact;
   sourceRunId?: string | null;
+  sourceArtifact?: string | null;
   scope?: MemoryScope;
   confidence?: number | null;
   impactTags?: string[];
   supersedes?: string | null;
-  status?: "active" | "superseded";
+  status?: "candidate" | "verified" | "expired" | "superseded";
+  verifiedAt?: string | null;
+  expiresAt?: string | null;
 }) {
   const durableRoot = resolveAgentDurableMemoryPath(input.companyId, input.agentId);
   await mkdir(durableRoot, { recursive: true });
@@ -168,13 +254,18 @@ export async function appendDurableFact(input: {
   const impactTags = dedupeStrings(typedFact?.impactTags ?? input.impactTags ?? []);
   const scope = typedFact?.scope ?? input.scope ?? "agent";
   const createdAt = new Date().toISOString();
-  const status = input.status ?? "active";
+  const status = input.status ?? "candidate";
+  const verifiedAt = status === "verified" ? input.verifiedAt ?? createdAt : input.verifiedAt ?? null;
+  const expiresAt = input.expiresAt ?? null;
   const row = [
     `- fact: "${escapeYamlString(normalizedFact)}"`,
     `  sourceRunId: "${escapeYamlString(input.sourceRunId ?? "")}"`,
+    `  sourceArtifact: "${escapeYamlString(input.sourceArtifact ?? "")}"`,
     `  scope: "${escapeYamlString(scope)}"`,
     `  confidence: "${confidence !== null ? confidence.toFixed(2) : ""}"`,
     `  createdAt: "${escapeYamlString(createdAt)}"`,
+    `  verifiedAt: "${escapeYamlString(verifiedAt ?? "")}"`,
+    `  expiresAt: "${escapeYamlString(expiresAt ?? "")}"`,
     `  supersedes: "${escapeYamlString(input.supersedes ?? "")}"`,
     `  status: "${escapeYamlString(status)}"`,
     `  impactTags: "${escapeYamlString(impactTags.join(","))}"`,
@@ -333,6 +424,15 @@ export async function writeAgentMemoryFile(input: {
 
 function collapseWhitespace(value: string) {
   return value.replace(/\s+/g, " ").trim();
+}
+
+export async function listAgentDurableFacts(input: { companyId: string; agentId: string }) {
+  const durableRoot = resolveAgentDurableMemoryPath(input.companyId, input.agentId);
+  const records = await readDurableFactRecords(durableRoot);
+  return records.map((record) => ({
+    ...record,
+    isExpired: record.expiresAt ? Date.parse(record.expiresAt) <= Date.now() : false
+  }));
 }
 
 function deriveCandidateFacts(
@@ -517,11 +617,14 @@ async function readDurableFactRecords(durableRoot: string): Promise<DurableFactR
       records.push({
         fact: line.slice(0, 400),
         sourceRunId: null,
+        sourceArtifact: null,
         scope: "agent",
         confidence: null,
         createdAt: null,
+        verifiedAt: null,
+        expiresAt: null,
         supersedes: null,
-        status: "active",
+        status: "verified",
         impactTags: []
       });
     }
@@ -578,18 +681,24 @@ function parseItemsYamlRecords(content: string): DurableFactRecord[] {
       continue;
     }
     const sourceRunId = normalizeNullableString(unquoteYamlString(row.sourceRunId ?? ""));
+    const sourceArtifact = normalizeNullableString(unquoteYamlString(row.sourceArtifact ?? ""));
     const scope = parseScope(unquoteYamlString(row.scope ?? ""));
     const confidence = parseConfidence(unquoteYamlString(row.confidence ?? ""));
     const createdAt = normalizeNullableString(unquoteYamlString(row.createdAt ?? ""));
+    const verifiedAt = normalizeNullableString(unquoteYamlString(row.verifiedAt ?? ""));
+    const expiresAt = normalizeNullableString(unquoteYamlString(row.expiresAt ?? ""));
     const supersedes = normalizeNullableString(unquoteYamlString(row.supersedes ?? ""));
     const status = parseStatus(unquoteYamlString(row.status ?? ""));
     const impactTags = splitCsv(unquoteYamlString(row.impactTags ?? ""));
     mapped.push({
       fact,
       sourceRunId,
+      sourceArtifact,
       scope,
       confidence,
       createdAt,
+      verifiedAt,
+      expiresAt,
       supersedes,
       status,
       impactTags
@@ -624,8 +733,14 @@ function parseScope(value: string): MemoryScope {
   return "agent";
 }
 
-function parseStatus(value: string): "active" | "superseded" {
-  return value === "superseded" ? "superseded" : "active";
+function parseStatus(value: string): "candidate" | "verified" | "expired" | "superseded" {
+  if (value === "superseded" || value === "verified" || value === "expired" || value === "candidate") {
+    return value;
+  }
+  if (value === "active") {
+    return "verified";
+  }
+  return "candidate";
 }
 
 function parseConfidence(value: string) {
@@ -670,9 +785,18 @@ function filterSupersededFacts<T extends DurableFactRecord>(records: T[]) {
       .filter((record) => record.supersedes && record.supersedes.trim().length > 0)
       .map((record) => canonicalizeFact(record.supersedes!))
   );
-  return records.filter(
-    (record) => record.status !== "superseded" && !supersededFacts.has(canonicalizeFact(record.fact))
-  );
+  return records.filter((record) => {
+    if (record.status === "superseded") {
+      return false;
+    }
+    if (record.status === "expired") {
+      return false;
+    }
+    if (record.expiresAt && Date.parse(record.expiresAt) <= Date.now()) {
+      return false;
+    }
+    return !supersededFacts.has(canonicalizeFact(record.fact));
+  });
 }
 
 function deriveImpactTags(
@@ -733,8 +857,9 @@ function scoreFact(record: DurableFactRecord, queryTokens: string[]) {
   const textMatch = scoreTextMatch(record.fact, queryTokens);
   const scopeBoost = record.scope === "agent" ? 0.2 : record.scope === "project" ? 0.14 : 0.08;
   const confidenceBoost = (record.confidence ?? 0.5) * 0.2;
-  const recencyBoost = scoreRecency(record.createdAt) * 0.2;
-  return textMatch * 0.4 + scopeBoost + confidenceBoost + recencyBoost;
+  const recencyBoost = scoreRecency(record.createdAt) * 0.18;
+  const verificationBoost = record.status === "verified" ? 0.18 : record.status === "candidate" ? -0.08 : 0;
+  return textMatch * 0.4 + scopeBoost + confidenceBoost + recencyBoost + verificationBoost;
 }
 
 function scoreRecency(iso: string | null) {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import type { Route } from "next";
@@ -54,6 +54,7 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Cell,
   Line,
   LineChart,
   PolarAngleAxis,
@@ -263,7 +264,16 @@ interface GovernanceInboxRow {
 
 interface AttentionRow {
   key: string;
-  category: "approval_required" | "blocker_escalation" | "budget_hard_stop" | "stalled_work" | "run_failure_spike" | "board_mentioned_comment";
+  category:
+    | "approval_required"
+    | "blocker_escalation"
+    | "queue_sla_risk"
+    | "budget_hard_stop"
+    | "stalled_work"
+    | "run_failure_spike"
+    | "board_mentioned_comment"
+    | "org_suggestion"
+    | "learning_suggestion";
   severity: "info" | "warning" | "critical";
   requiredActor: "board" | "member" | "agent" | "system";
   title: string;
@@ -981,6 +991,10 @@ export function WorkspaceClient({
   const [attentionCategoryFilter, setAttentionCategoryFilter] = useState<"all" | AttentionRow["category"]>("all");
   const [attentionActorFilter, setAttentionActorFilter] = useState<"all" | AttentionRow["requiredActor"]>("all");
   const [attentionOverdueFilter, setAttentionOverdueFilter] = useState<"all" | "overdue" | "on_track">("all");
+  const [suggestedQuery, setSuggestedQuery] = useState("");
+  const [suggestedStateFilter, setSuggestedStateFilter] = useState<"all" | "open" | "acknowledged" | "dismissed" | "resolved">("open");
+  const [suggestedSeverityFilter, setSuggestedSeverityFilter] = useState<"all" | "critical" | "warning" | "info">("all");
+  const [suggestedCategoryFilter, setSuggestedCategoryFilter] = useState<"all" | "org_suggestion" | "learning_suggestion">("all");
   const [selectedAttentionItem, setSelectedAttentionItem] = useState<AttentionRow | null>(null);
   const [attentionDetailsOpen, setAttentionDetailsOpen] = useState(false);
   const [attentionPayloadExpanded, setAttentionPayloadExpanded] = useState(false);
@@ -1005,6 +1019,7 @@ export function WorkspaceClient({
     inputUsdPer1M: string;
     outputUsdPer1M: string;
   } | null>(null);
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const appliedInboxPresetRef = useRef<string>("");
   const ceoAgent = useMemo(
@@ -1132,7 +1147,17 @@ export function WorkspaceClient({
     }
 
     const category = searchParams.get("category");
-    if (category === "approval_required" || category === "blocker_escalation" || category === "budget_hard_stop" || category === "stalled_work" || category === "run_failure_spike" || category === "board_mentioned_comment") {
+    if (
+      category === "approval_required" ||
+      category === "blocker_escalation" ||
+      category === "queue_sla_risk" ||
+      category === "budget_hard_stop" ||
+      category === "stalled_work" ||
+      category === "run_failure_spike" ||
+      category === "board_mentioned_comment" ||
+      category === "org_suggestion" ||
+      category === "learning_suggestion"
+    ) {
       setAttentionCategoryFilter(category);
     } else if (category === "all") {
       setAttentionCategoryFilter("all");
@@ -1433,6 +1458,22 @@ export function WorkspaceClient({
     () => (isDashboardNav ? approvals.filter((approval) => approval.status === "pending") : []),
     [approvals, isDashboardNav]
   );
+  const pendingManagerReassignments = useMemo(() => {
+    const next: Record<string, string | null> = {};
+    for (const approval of approvals) {
+      if (approval.status !== "pending" || approval.action !== "reassign_agent_manager") {
+        continue;
+      }
+      const agentId = typeof approval.payload?.agentId === "string" ? approval.payload.agentId : null;
+      if (!agentId) {
+        continue;
+      }
+      const managerId =
+        typeof approval.payload?.newManagerAgentId === "string" ? approval.payload.newManagerAgentId : null;
+      next[agentId] = managerId;
+    }
+    return next;
+  }, [approvals]);
   const approvalById = useMemo(() => new Map(approvals.map((approval) => [approval.id, approval])), [approvals]);
   const selectedAttentionApproval = useMemo(() => {
     const approvalId = selectedAttentionItem?.evidence.approvalId;
@@ -1602,6 +1643,40 @@ export function WorkspaceClient({
     isAttentionOverdue,
     isInboxNav,
     sortedAttentionItems
+  ]);
+  const suggestedImprovementItems = useMemo(() => {
+    if (!isInboxNav) {
+      return [];
+    }
+    const normalizedQuery = suggestedQuery.trim().toLowerCase();
+    return sortedAttentionItems
+      .filter((item) => item.category === "org_suggestion" || item.category === "learning_suggestion")
+      .filter((item) => {
+        if (suggestedStateFilter !== "all" && item.state !== suggestedStateFilter) {
+          return false;
+        }
+        if (suggestedSeverityFilter !== "all" && item.severity !== suggestedSeverityFilter) {
+          return false;
+        }
+        if (suggestedCategoryFilter !== "all" && item.category !== suggestedCategoryFilter) {
+          return false;
+        }
+        if (!normalizedQuery) {
+          return true;
+        }
+        return (
+          item.title.toLowerCase().includes(normalizedQuery) ||
+          item.contextSummary.toLowerCase().includes(normalizedQuery) ||
+          item.actionLabel.toLowerCase().includes(normalizedQuery)
+        );
+      });
+  }, [
+    isInboxNav,
+    sortedAttentionItems,
+    suggestedCategoryFilter,
+    suggestedQuery,
+    suggestedSeverityFilter,
+    suggestedStateFilter
   ]);
   const attentionSummary = useMemo(() => {
     const total = attentionItems.length;
@@ -3138,6 +3213,41 @@ export function WorkspaceClient({
     () => (isDashboardNav ? issues.filter((issue) => issue.status !== "done" && issue.status !== "canceled") : []),
     [issues, isDashboardNav]
   );
+  const queueInsights = useMemo(() => {
+    const now = Date.now();
+    const openIssues = issues.filter((issue) => issue.status !== "done" && issue.status !== "canceled");
+    const blocked = openIssues.filter((issue) => issue.status === "blocked").length;
+    const slaRisk = openIssues.filter((issue) => now - new Date(issue.updatedAt).getTime() >= 72 * 60 * 60 * 1000).length;
+    const aged = openIssues.filter((issue) => now - new Date(issue.updatedAt).getTime() >= 7 * 24 * 60 * 60 * 1000).length;
+    const byStatus = {
+      todo: openIssues.filter((issue) => issue.status === "todo").length,
+      inProgress: openIssues.filter((issue) => issue.status === "in_progress").length,
+      blocked: openIssues.filter((issue) => issue.status === "blocked").length,
+      inReview: openIssues.filter((issue) => issue.status === "in_review").length
+    };
+    return {
+      open: openIssues.length,
+      blocked,
+      slaRisk,
+      aged,
+      signalRows: [
+        { key: "open", label: "Open", value: openIssues.length, fill: "var(--chart-1)" },
+        { key: "slaRisk", label: "SLA risk", value: slaRisk, fill: "var(--chart-3)" },
+        { key: "blocked", label: "Blocked", value: blocked, fill: "var(--chart-5)" },
+        { key: "aged", label: "Aged >7d", value: aged, fill: "var(--chart-2)" }
+      ],
+      statusRows: [
+        { key: "todo", label: "Todo", value: byStatus.todo, fill: "var(--chart-1)" },
+        { key: "inProgress", label: "In progress", value: byStatus.inProgress, fill: "var(--chart-4)" },
+        { key: "inReview", label: "In review", value: byStatus.inReview, fill: "var(--chart-2)" },
+        { key: "blocked", label: "Blocked", value: byStatus.blocked, fill: "var(--chart-5)" }
+      ]
+    };
+  }, [issues]);
+  const queueInsightsChartConfig = {
+    value: { label: "Issues", color: "var(--chart-1)" }
+  } satisfies ChartConfig;
+  const isQueueInsightsSettingsPage = pathname.startsWith("/settings/queue-insights");
   const staleIssueCount = useMemo(() => {
     if (!isDashboardNav) {
       return 0;
@@ -5039,6 +5149,7 @@ export function WorkspaceClient({
                       <OrgChart
                         agents={filteredAgents}
                         embedded
+                        pendingManagerReassignments={pendingManagerReassignments}
                         onAgentSelect={(agentId) => router.push(`/agents/${agentId}?companyId=${companyId || ""}` as Route)}
                       />
                     </>
@@ -5057,6 +5168,7 @@ export function WorkspaceClient({
             />
             <OrgChart
               agents={agents}
+              pendingManagerReassignments={pendingManagerReassignments}
               onAgentSelect={(agentId) => router.push(`/agents/${agentId}?companyId=${companyId || ""}` as Route)}
             />
           </>
@@ -5127,7 +5239,17 @@ export function WorkspaceClient({
                     value={attentionCategoryFilter}
                     onValueChange={(value) =>
                       setAttentionCategoryFilter(
-                        value as "all" | "approval_required" | "blocker_escalation" | "budget_hard_stop" | "stalled_work" | "run_failure_spike" | "board_mentioned_comment"
+                        value as
+                          | "all"
+                          | "approval_required"
+                          | "blocker_escalation"
+                          | "queue_sla_risk"
+                          | "budget_hard_stop"
+                          | "stalled_work"
+                          | "run_failure_spike"
+                          | "board_mentioned_comment"
+                          | "org_suggestion"
+                          | "learning_suggestion"
                       )
                     }
                   >
@@ -5138,10 +5260,13 @@ export function WorkspaceClient({
                       <SelectItem value="all">All categories</SelectItem>
                       <SelectItem value="approval_required">Approval required</SelectItem>
                       <SelectItem value="blocker_escalation">Blocker escalation</SelectItem>
+                      <SelectItem value="queue_sla_risk">Queue SLA risk</SelectItem>
                       <SelectItem value="budget_hard_stop">Budget hard stop</SelectItem>
                       <SelectItem value="stalled_work">Stalled work</SelectItem>
                       <SelectItem value="run_failure_spike">Run failure spike</SelectItem>
                       <SelectItem value="board_mentioned_comment">Board mention</SelectItem>
+                      <SelectItem value="org_suggestion">Org suggestion</SelectItem>
+                      <SelectItem value="learning_suggestion">Learning suggestion</SelectItem>
                     </SelectContent>
                   </Select>
                   <Select
@@ -5157,6 +5282,76 @@ export function WorkspaceClient({
                       <SelectItem value="member">Member</SelectItem>
                       <SelectItem value="agent">Agent</SelectItem>
                       <SelectItem value="system">System</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              }
+            />
+            <SectionHeading
+              title="Suggested improvements"
+              description="Policy-bounded organization and learning recommendations generated from operating signals."
+            />
+            <DataTable
+              columns={attentionColumns}
+              data={suggestedImprovementItems}
+              emptyMessage="No suggested improvements right now."
+              onRowClick={(item) => {
+                setSelectedAttentionItem(item);
+                setAttentionPayloadExpanded(false);
+                setAttentionDetailsOpen(true);
+              }}
+              toolbarActions={
+                <div className={styles.governanceFiltersCardContent}>
+                  <Input
+                    value={suggestedQuery}
+                    onChange={(event) => setSuggestedQuery(event.target.value)}
+                    placeholder="Search suggested improvements..."
+                    className={styles.governanceFiltersInput}
+                  />
+                  <Select
+                    value={suggestedStateFilter}
+                    onValueChange={(value) =>
+                      setSuggestedStateFilter(value as "all" | "open" | "acknowledged" | "dismissed" | "resolved")
+                    }
+                  >
+                    <SelectTrigger className={styles.governanceFiltersSelect}>
+                      <SelectValue placeholder="State" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All states</SelectItem>
+                      <SelectItem value="open">Open</SelectItem>
+                      <SelectItem value="acknowledged">Acknowledged</SelectItem>
+                      <SelectItem value="dismissed">Dismissed</SelectItem>
+                      <SelectItem value="resolved">Resolved</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select
+                    value={suggestedSeverityFilter}
+                    onValueChange={(value) => setSuggestedSeverityFilter(value as "all" | "critical" | "warning" | "info")}
+                  >
+                    <SelectTrigger className={styles.governanceFiltersSelect}>
+                      <SelectValue placeholder="Severity" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All severities</SelectItem>
+                      <SelectItem value="critical">Critical</SelectItem>
+                      <SelectItem value="warning">Warning</SelectItem>
+                      <SelectItem value="info">Info</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select
+                    value={suggestedCategoryFilter}
+                    onValueChange={(value) =>
+                      setSuggestedCategoryFilter(value as "all" | "org_suggestion" | "learning_suggestion")
+                    }
+                  >
+                    <SelectTrigger className={styles.governanceFiltersSelect}>
+                      <SelectValue placeholder="Category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All categories</SelectItem>
+                      <SelectItem value="org_suggestion">Org suggestion</SelectItem>
+                      <SelectItem value="learning_suggestion">Learning suggestion</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -5970,68 +6165,155 @@ export function WorkspaceClient({
         return (
           <>
             <SectionHeading
-              title="Settings"
-              description="Update the company name and mission."
+              title={isQueueInsightsSettingsPage ? "Queue Insights" : "Settings"}
+              description={
+                isQueueInsightsSettingsPage
+                  ? "Queue analytics and delivery-risk signals."
+                  : "Update the company name and mission."
+              }
             />
-            <Card>
-              <CardHeader>
-                <CardTitle>Company Context</CardTitle>
-                <CardDescription>Update the shared identity and mission agents should inherit.</CardDescription>
-              </CardHeader>
-              <CardContent className={styles.renderSectionActionsCardContent3}>
-                <div className={styles.renderSectionActionsContainer3}>
-                  <div className={styles.renderSectionActionsContainer4}>{activeCompany.name}</div>
-                  <div className={styles.renderSectionActionsContainer5}>
-                    {activeCompany.mission ?? "No mission configured yet. Edit the company mission to anchor goal-aware execution."}
+            {!isQueueInsightsSettingsPage ? (
+              <>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Company Context</CardTitle>
+                    <CardDescription>Update the shared identity and mission agents should inherit.</CardDescription>
+                  </CardHeader>
+                  <CardContent className={styles.renderSectionActionsCardContent3}>
+                    <div className={styles.renderSectionActionsContainer3}>
+                      <div className={styles.renderSectionActionsContainer4}>{activeCompany.name}</div>
+                      <div className={styles.renderSectionActionsContainer5}>
+                        {activeCompany.mission ?? "No mission configured yet. Edit the company mission to anchor goal-aware execution."}
+                      </div>
+                    </div>
+                    <div className={styles.renderSectionActionsContainer6}>
+                      <TextActionModal
+                        triggerLabel="Rename Company"
+                        triggerVariant="outline"
+                        title="Rename company"
+                        description="Update the company name used across the workspace."
+                        submitLabel="Save"
+                        initialValue={activeCompany.name}
+                        placeholder="Company name"
+                        onSubmit={(nextName) =>
+                          runCrudAction(
+                            async () => {
+                              await apiPut(`/companies/${activeCompany.id}`, companyId!, { name: nextName });
+                            },
+                            "Failed to update company."
+                          )
+                        }
+                      />
+                      <TextActionModal
+                        triggerLabel="Edit Mission"
+                        triggerVariant="outline"
+                        title="Edit mission"
+                        description="Define the mission that should be visible to your agent runtime context."
+                        submitLabel="Save"
+                        initialValue={activeCompany.mission ?? ""}
+                        placeholder="Mission"
+                        onSubmit={(mission) =>
+                          runCrudAction(
+                            async () => {
+                              await apiPut(`/companies/${activeCompany.id}`, companyId!, { mission });
+                            },
+                            "Failed to update mission."
+                          )
+                        }
+                        multiline
+                      />
+                    </div>
+                  </CardContent>
+                </Card>
+                <AgentRuntimeDefaultsCard
+                  companyId={companyId}
+                  fallbackDefaults={onboardingRuntimeFallback}
+                  activeCompanyName={activeCompany.name}
+                  deleteCompanyDetails={deleteCompanyDetails}
+                  onDeleteCompany={removeActiveCompanyFromSettings}
+                  deleteActionPending={isActionPending(`company:${activeCompany.id}:delete:active`)}
+                />
+              </>
+            ) : (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Queue Insights</CardTitle>
+                  <CardDescription>
+                    Delivery-risk analytics moved out of the Issues table so day-to-day triage stays focused.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className={styles.settingsQueueInsightsContent}>
+                  <div className={styles.settingsQueueInsightsMetrics}>
+                    <MetricCard label="Open issues" value={queueInsights.open} hint="Active queue size" />
+                    <MetricCard label="SLA risk" value={queueInsights.slaRisk} hint="Updated 72h+ ago" />
+                    <MetricCard label="Blocked" value={queueInsights.blocked} hint="Needs unblock decisions" />
+                    <MetricCard label="Aged 7d+" value={queueInsights.aged} hint="Stale execution risk" />
                   </div>
-                </div>
-                <div className={styles.renderSectionActionsContainer6}>
-                  <TextActionModal
-                    triggerLabel="Rename Company"
-                    triggerVariant="outline"
-                    title="Rename company"
-                    description="Update the company name used across the workspace."
-                    submitLabel="Save"
-                    initialValue={activeCompany.name}
-                    placeholder="Company name"
-                    onSubmit={(nextName) =>
-                      runCrudAction(
-                        async () => {
-                          await apiPut(`/companies/${activeCompany.id}`, companyId!, { name: nextName });
-                        },
-                        "Failed to update company."
-                      )
-                    }
-                  />
-                  <TextActionModal
-                    triggerLabel="Edit Mission"
-                    triggerVariant="outline"
-                    title="Edit mission"
-                    description="Define the mission that should be visible to your agent runtime context."
-                    submitLabel="Save"
-                    initialValue={activeCompany.mission ?? ""}
-                    placeholder="Mission"
-                    onSubmit={(mission) =>
-                      runCrudAction(
-                        async () => {
-                          await apiPut(`/companies/${activeCompany.id}`, companyId!, { mission });
-                        },
-                        "Failed to update mission."
-                      )
-                    }
-                    multiline
-                  />
-                </div>
-              </CardContent>
-            </Card>
-            <AgentRuntimeDefaultsCard
-              companyId={companyId}
-              fallbackDefaults={onboardingRuntimeFallback}
-              activeCompanyName={activeCompany.name}
-              deleteCompanyDetails={deleteCompanyDetails}
-              onDeleteCompany={removeActiveCompanyFromSettings}
-              deleteActionPending={isActionPending(`company:${activeCompany.id}:delete:active`)}
-            />
+                  <div className={styles.settingsQueueInsightsCharts}>
+                    <Card className={styles.settingsQueueInsightsChartCard}>
+                      <CardHeader className={styles.settingsQueueInsightsChartHeader}>
+                        <CardTitle className={styles.settingsQueueInsightsChartTitle}>Queue risk signals</CardTitle>
+                        <CardDescription className={styles.settingsQueueInsightsChartDescription}>
+                          Compare volume vs. risk on one timeline-free view.
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent className={styles.settingsQueueInsightsChartContent}>
+                        {queueInsights.signalRows.some((row) => row.value > 0) ? (
+                          <ChartContainer config={queueInsightsChartConfig} className={styles.settingsQueueInsightsChartContainer}>
+                            <BarChart accessibilityLayer data={queueInsights.signalRows} margin={{ top: 8, left: -12, right: 8, bottom: 4 }}>
+                              <CartesianGrid vertical={false} strokeDasharray="4 4" strokeOpacity={0.3} />
+                              <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} />
+                              <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={26} />
+                              <ChartTooltip
+                                cursor={{ fill: "var(--muted)", opacity: 0.2 }}
+                                content={<ChartTooltipContent label="Signal" hideIndicator />}
+                              />
+                              <Bar dataKey="value" radius={[6, 6, 0, 0]} maxBarSize={36}>
+                                {queueInsights.signalRows.map((row) => (
+                                  <Cell key={row.key} fill={row.fill} />
+                                ))}
+                              </Bar>
+                            </BarChart>
+                          </ChartContainer>
+                        ) : (
+                          <EmptyState>No active queue signals yet.</EmptyState>
+                        )}
+                      </CardContent>
+                    </Card>
+                    <Card className={styles.settingsQueueInsightsChartCard}>
+                      <CardHeader className={styles.settingsQueueInsightsChartHeader}>
+                        <CardTitle className={styles.settingsQueueInsightsChartTitle}>Open issues by status</CardTitle>
+                        <CardDescription className={styles.settingsQueueInsightsChartDescription}>
+                          Distribution of active work across execution stages.
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent className={styles.settingsQueueInsightsChartContent}>
+                        {queueInsights.statusRows.some((row) => row.value > 0) ? (
+                          <ChartContainer config={queueInsightsChartConfig} className={styles.settingsQueueInsightsChartContainer}>
+                            <BarChart accessibilityLayer data={queueInsights.statusRows} margin={{ top: 8, left: -12, right: 8, bottom: 4 }}>
+                              <CartesianGrid vertical={false} strokeDasharray="4 4" strokeOpacity={0.3} />
+                              <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} />
+                              <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={26} />
+                              <ChartTooltip
+                                cursor={{ fill: "var(--muted)", opacity: 0.2 }}
+                                content={<ChartTooltipContent label="Status" hideIndicator />}
+                              />
+                              <Bar dataKey="value" radius={[6, 6, 0, 0]} maxBarSize={36}>
+                                {queueInsights.statusRows.map((row) => (
+                                  <Cell key={row.key} fill={row.fill} />
+                                ))}
+                              </Bar>
+                            </BarChart>
+                          </ChartContainer>
+                        ) : (
+                          <EmptyState>No open issues right now.</EmptyState>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </>
         );
       case "Plugins": {
@@ -6053,7 +6335,7 @@ export function WorkspaceClient({
             {pluginActionNotice ? (
               <Alert variant={pluginActionNotice.kind === "error" ? "destructive" : "default"} className="ui-alert--mb-section">
                 <AlertTitle>{pluginActionNotice.kind === "error" ? "Plugin action failed" : "Plugin health"}</AlertTitle>
-                <AlertDescription className="whitespace-pre-wrap break-words">{pluginActionNotice.message}</AlertDescription>
+                <AlertDescription className="whitespace-pre-wrap wrap-break-word">{pluginActionNotice.message}</AlertDescription>
               </Alert>
             ) : null}
             <DataTable

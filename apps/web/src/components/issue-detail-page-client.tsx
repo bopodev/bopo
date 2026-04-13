@@ -155,6 +155,13 @@ interface IssueRoutineRow {
   updatedAt: string;
 }
 
+interface KnowledgeTrustResponse {
+  items: Array<{
+    relativePath: string;
+    status: "verified" | "candidate" | "expired" | "missing";
+  }>;
+}
+
 const issueStatusOptions = [
   { value: "todo", label: "Todo" },
   { value: "in_progress", label: "In progress" },
@@ -499,6 +506,7 @@ export function IssueDetailPageClient({
   const [issueDocumentDialogOpen, setIssueDocumentDialogOpen] = useState(false);
   const [issueDocumentEditTarget, setIssueDocumentEditTarget] = useState<IssueDocumentEditTarget | null>(null);
   const [knowledgeFileOptions, setKnowledgeFileOptions] = useState<string[]>([]);
+  const [knowledgeTrustByPath, setKnowledgeTrustByPath] = useState<Record<string, "verified" | "candidate" | "expired" | "missing">>({});
   const visibleComments = useMemo(() => collapseRunComments(comments), [comments]);
   const linkedKnowledgePaths = issue.knowledgePaths ?? [];
 
@@ -613,6 +621,38 @@ export function IssueDetailPageClient({
       cancelled = true;
     };
   }, [companyId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (linkedKnowledgePaths.length === 0) {
+      setKnowledgeTrustByPath({});
+      return;
+    }
+    const encodedPaths = linkedKnowledgePaths.map((path) => encodeURIComponent(path)).join(",");
+    void (async () => {
+      try {
+        const result = await apiGet<KnowledgeTrustResponse>(
+          `/observability/company-knowledge/trust?paths=${encodedPaths}`,
+          companyId
+        );
+        if (cancelled) {
+          return;
+        }
+        const next: Record<string, "verified" | "candidate" | "expired" | "missing"> = {};
+        for (const row of result.data.items) {
+          next[row.relativePath] = row.status;
+        }
+        setKnowledgeTrustByPath(next);
+      } catch {
+        if (!cancelled) {
+          setKnowledgeTrustByPath({});
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId, linkedKnowledgePaths]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1587,6 +1627,9 @@ export function IssueDetailPageClient({
                     >
                       {p}
                     </Link>
+                    <Badge variant="outline" className="ml-2">
+                      {knowledgeTrustByPath[p] ?? "candidate"}
+                    </Badge>
                   </li>
                 ))}
               </ul>

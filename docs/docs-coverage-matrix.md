@@ -16,8 +16,11 @@ Status values:
 | Company, project, and issue planning | `dashboard`, `projects`, `issues` | `README.md`, `docs/product/overview.md`, `docs/product/daily-workflows.md` | covered | Keep route map aligned with app sections; issue **Routines** tab ties issues to routines. |
 | Goal alignment | `goals` | `docs/product/daily-workflows.md`, `docs/developer/domain-model.md` | covered | Product + data model coverage exists. |
 | Agent lifecycle, documents, and runs | `agents`, `/agents/:id/docs`, `runs`, `settings` | `docs/product/agents-and-runs.md`, `docs/guides/agent-heartbeat-protocol.md`, `docs/developer/configuration-reference.md` | covered | **Documents** = operating + memory markdown editor; runtime/provider details; lean prompt + hydration guide. |
+| Verified memory and knowledge trust | `agents` docs, `issues`, `inbox` | `docs/product/agent-memory-workflow.md`, `docs/product/agent-memory-audit.md`, `docs/developer/api-reference.md` | covered | Includes trust lifecycle (`candidate`/`verified`/`expired`), durable fact metadata, and knowledge trust APIs/UI badges. |
 | Routines (scheduled recurring issues) | `routines` | `docs/product/routines.md`, `docs/developer/api-reference.md` | covered | Distinct from per-agent heartbeat cron; `/routines` permissions in API reference. |
+| Queue intelligence and queue health | `issues`, `inbox` | `docs/product/daily-workflows.md`, `docs/product/agents-and-runs.md`, `docs/developer/configuration-reference.md` | covered | Documents WIP/SLA/aging/block escalation policy and queue health inbox/escalation behavior. |
 | Governance and inbox operations | `governance`, `inbox` | `docs/product/governance-and-approvals.md`, `docs/developer/api-reference.md` | covered | Includes approval action catalog and outcomes. |
+| Self-organization and learning loop | `inbox`, `org-chart` | `docs/product/org-learning-loop.md`, `docs/product/governance-and-approvals.md`, `docs/developer/configuration-reference.md` | covered | Suggestion-first recommendations and governance-gated structural changes. |
 | Office-space and realtime behavior | `office-space`, `inbox` | `docs/product/office-space-and-realtime.md` | needs-refresh | Realtime channel list changed recently; keep synced with server bootstrap channels. |
 | Observability, logs, costs, and artifacts | `runs`, `trace-logs`, `costs` | `docs/product/agents-and-runs.md`, `docs/developer/api-reference.md`, `docs/operations/troubleshooting.md` | needs-refresh | Ensure artifact download and memory endpoints stay current. |
 | Templates and plugin workflows | `templates`, `plugins`, `settings/templates`, `settings/plugins` | `docs/product/plugins-and-integrations.md`, `docs/developer/plugin-system.md`, `docs/developer/plugin-authoring.md` | partial | Product-level template workflow depth is still light. |
@@ -48,4 +51,3 @@ Status values:
 | Codex-specific runtime debugging | `docs/codex-connection-debugging.md` | covered | Narrow, intentionally specific runbook. |
 | Release workflow and gates | `docs/release-process.md`, `docs/release-gate-checklist.md`, `docs/release/versioning-and-changelog.md` | covered | Keep changelog entries synchronized with releases. |
 | Release notes/changelog completeness | `CHANGELOG.md` | needs-refresh | Verify latest release entries are represented consistently. |
-

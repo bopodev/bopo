@@ -128,10 +128,13 @@ export interface WorkspaceData {
     category:
       | "approval_required"
       | "blocker_escalation"
+      | "queue_sla_risk"
       | "budget_hard_stop"
       | "stalled_work"
       | "run_failure_spike"
-      | "board_mentioned_comment";
+      | "board_mentioned_comment"
+      | "org_suggestion"
+      | "learning_suggestion";
     severity: "info" | "warning" | "critical";
     requiredActor: "board" | "member" | "agent" | "system";
     title: string;

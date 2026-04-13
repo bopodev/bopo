@@ -37,6 +37,7 @@ From `agents` and related modals, you can:
 - configure runtime command/args/model/cwd/env,
 - edit **capabilities** with the Markdown editor (hire, edit, and delegation flows; stored as text for org chart and routing),
 - set run policy (`workspace_write` or `full_access`, optional web search),
+- tune queue policy (`maxConcurrentItems`, `slaHours`, `agingBoost`, `blockedEscalationHours`) inside run policy,
 - pause, resume, or terminate agents.
 
 Budget scope:
@@ -95,6 +96,12 @@ Runtime permission model:
 Agents use file-backed memory that is loaded before each heartbeat and updated after execution.
 
 This includes tacit notes, daily episodic notes, and promoted durable facts.
+
+Durable facts now support trust lifecycle states:
+
+- `candidate`: auto-promoted from run outcomes,
+- `verified`: human/governance-promoted trusted memory,
+- `expired`: ignored by prompt recall.
 
 For the full lifecycle, file layout, and observability flow, see
 [`agent-memory-workflow.md`](./agent-memory-workflow.md).

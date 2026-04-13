@@ -22,6 +22,7 @@ Treat [`docs-coverage-matrix.md`](./docs-coverage-matrix.md) as the canonical so
 - [`product/routines.md`](./product/routines.md)
 - [`product/plugins-and-integrations.md`](./product/plugins-and-integrations.md)
 - [`product/agent-memory-workflow.md`](./product/agent-memory-workflow.md)
+- [`product/org-learning-loop.md`](./product/org-learning-loop.md)
 - [`product/governance-and-approvals.md`](./product/governance-and-approvals.md)
 - [`product/office-space-and-realtime.md`](./product/office-space-and-realtime.md)
 

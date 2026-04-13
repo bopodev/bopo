@@ -755,7 +755,15 @@ export const SandboxModeSchema = z.enum(["workspace_write", "full_access"]);
 export type SandboxMode = z.infer<typeof SandboxModeSchema>;
 export const RunPolicySchema = z.object({
   sandboxMode: SandboxModeSchema.default("workspace_write"),
-  allowWebSearch: z.boolean().default(false)
+  allowWebSearch: z.boolean().default(false),
+  /** Max claimed issues per heartbeat run for this agent. */
+  maxConcurrentItems: z.number().int().min(1).max(20).default(5),
+  /** Queue health SLA threshold for open issues assigned to this agent. */
+  slaHours: z.number().int().min(1).max(720).default(72),
+  /** Prioritize overdue work ahead of same-priority fresh issues. */
+  agingBoost: z.boolean().default(true),
+  /** Attention escalation threshold for blocked issues. */
+  blockedEscalationHours: z.number().int().min(1).max(720).default(12)
 });
 export type RunPolicy = z.infer<typeof RunPolicySchema>;
 
@@ -812,7 +820,11 @@ export const AgentRuntimeConfigSchema = z.object({
   interruptGraceSec: z.number().int().nonnegative().default(15),
   runPolicy: RunPolicySchema.default({
     sandboxMode: "workspace_write",
-    allowWebSearch: false
+    allowWebSearch: false,
+    maxConcurrentItems: 5,
+    slaHours: 72,
+    agingBoost: true,
+    blockedEscalationHours: 12
   })
 });
 export type AgentRuntimeConfig = z.infer<typeof AgentRuntimeConfigSchema>;
@@ -1145,6 +1157,7 @@ export const ApprovalActionSchema = z.enum([
   "pause_agent",
   "terminate_agent",
   "promote_memory_fact",
+  "reassign_agent_manager",
   "grant_plugin_capabilities",
   "apply_template"
 ]);
@@ -1195,10 +1208,13 @@ export type GovernanceInboxResponse = z.infer<typeof GovernanceInboxResponseSche
 export const BoardAttentionCategorySchema = z.enum([
   "approval_required",
   "blocker_escalation",
+  "queue_sla_risk",
   "budget_hard_stop",
   "stalled_work",
   "run_failure_spike",
-  "board_mentioned_comment"
+  "board_mentioned_comment",
+  "org_suggestion",
+  "learning_suggestion"
 ]);
 export type BoardAttentionCategory = z.infer<typeof BoardAttentionCategorySchema>;
 

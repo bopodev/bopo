@@ -150,12 +150,14 @@ function formatRole(agent: Pick<AgentNode, "role" | "roleKey" | "title">) {
 export function OrgChart({
   agents,
   onAgentSelect,
-  embedded = false
+  embedded = false,
+  pendingManagerReassignments = {}
 }: {
   agents: AgentNode[];
   onAgentSelect?: (agentId: string) => void;
   /** Agents page: viewport sized for shell + heading + filter toolbar (Organization nav uses full-page height). */
   embedded?: boolean;
+  pendingManagerReassignments?: Record<string, string | null>;
 }) {
   const { roots, orphanCount, cycleCount } = useMemo(() => buildOrgForest(agents), [agents]);
   const [zoom, setZoom] = useState(1);
@@ -184,6 +186,9 @@ export function OrgChart({
           <div className={styles.orgCardText}>
             <div className={styles.orgCardName}>{agent.name}</div>
             <div className={styles.orgCardMeta}>{formatRole(agent)}</div>
+            {Object.prototype.hasOwnProperty.call(pendingManagerReassignments, agent.id) ? (
+              <Badge variant="outline">Pending manager change</Badge>
+            ) : null}
             {agent.capabilities?.trim() ? (
               <div className={styles.orgCardCapabilities}>{truncateOrgCapabilities(agent.capabilities)}</div>
             ) : null}
@@ -243,6 +248,9 @@ export function OrgChart({
               <Badge variant="outline">{formatRole(node.agent)}</Badge>
               <Badge variant="outline">{node.agent.providerType}</Badge>
               <Badge variant="outline">{node.agent.status}</Badge>
+              {Object.prototype.hasOwnProperty.call(pendingManagerReassignments, node.agent.id) ? (
+                <Badge variant="outline">Pending manager change</Badge>
+              ) : null}
             </div>
             {node.agent.capabilities?.trim() ? (
               <p className="text-xs text-muted-foreground">{truncateOrgCapabilities(node.agent.capabilities)}</p>

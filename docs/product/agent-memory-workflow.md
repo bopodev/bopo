@@ -61,11 +61,11 @@ After the run, the system appends a daily entry to `memory/YYYY-MM-DD.md` with r
 
 ### 3) Candidate fact promotion
 
-When a run completes successfully, candidate facts can be promoted into `life/items.yaml`. Promotion now records metadata such as confidence, scope, impact tags, and supersession references to keep durable memory cleaner over time.
+When a run completes successfully, candidate facts can be promoted into `life/items.yaml`. Promotion records metadata such as confidence, scope, impact tags, source references, verification status, and expiry fields to keep durable memory cleaner over time.
 
 ### 4) Governance-driven promotion
 
-Approvals can also promote facts by resolving an approval that carries the `promote_memory_fact` action. Approved actions append the target fact into durable memory.
+Approvals can also promote facts by resolving an approval that carries the `promote_memory_fact` action. Approved actions can mark records as `verified` and optionally set `verifiedAt` / `expiresAt`.
 
 ## Observability and Debugging
 
@@ -73,6 +73,7 @@ Use observability memory routes to inspect generated files without shell access:
 
 - `GET /observability/memory`
 - `GET /observability/memory/:agentId/file?path=...`
+- `GET /observability/memory/:agentId/durable-facts`
 - `GET /observability/memory/:agentId/context-preview?projectIds=...&query=...`
 
 Recommended debugging flow:

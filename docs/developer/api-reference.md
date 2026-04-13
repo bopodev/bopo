@@ -193,6 +193,8 @@ Hiring request lineage:
 - `POST /governance/inbox/:approvalId/undismiss`
 - `POST /governance/resolve`
 
+Notable approval actions include `promote_memory_fact` and `reassign_agent_manager` for governance-gated trust/org mutations.
+
 ## Heartbeats
 
 - `POST /heartbeats/run-agent`
@@ -216,12 +218,14 @@ Queue route supports filters: `status`, `agentId`, `jobType`, `limit`.
 - `GET /observability/memory` (supports `agentId` and `limit`)
 - `GET /observability/memory/:agentId/file?path=...`
 - `PUT /observability/memory/:agentId/file?path=...` — JSON body `{ "content": "<utf-8 string>" }`; requires `agents:write`
+- `GET /observability/memory/:agentId/durable-facts` — durable facts with trust metadata (`status`, `confidence`, `sourceArtifact`, `verifiedAt`, `expiresAt`)
 - `GET /observability/memory/:agentId/context-preview` (supports `projectIds`, `query`)
 - `GET /observability/assistant-chat-threads` (supports `from` + `toExclusive` or `monthKey`; assistant thread stats for costs)
 - `GET /observability/agent-operating/:agentId/files` (supports `limit`; lists `*.md` under the agent operating directory)
 - `GET /observability/agent-operating/:agentId/file?path=...`
 - `PUT /observability/agent-operating/:agentId/file?path=...` — JSON body `{ "content": "<utf-8 string>" }`; requires `agents:write` (only `.md` paths)
 - `GET /observability/company-knowledge` — `{ items: { relativePath }[], tree }` for files under the company `knowledge/` directory (`.md`, `.yaml`, `.yml`, `.txt`, `.json`).
+- `GET /observability/company-knowledge/trust?paths=...` — trust status summary for one or more knowledge paths (for issue/link trust badges).
 - `GET /observability/company-knowledge/file?path=...` — `{ content }` (UTF-8 text).
 - `PUT /observability/company-knowledge/file?path=...` — JSON body `{ "content": "<utf-8 string>" }`; requires `agents:write`.
 - `POST /observability/company-knowledge/file` — JSON body `{ "path": "<relative path>", "content"?: "<utf-8 string>" }`; creates a new file (empty body for markdown/text/yaml if `content` omitted, `{}` for `.json`); requires `agents:write`.

@@ -77,6 +77,42 @@
   @apply text-base text-muted-foreground;
 }
 
+.settingsQueueInsightsContent {
+  @apply space-y-5;
+}
+
+.settingsQueueInsightsMetrics {
+  @apply grid gap-4 sm:grid-cols-2 xl:grid-cols-4;
+}
+
+.settingsQueueInsightsCharts {
+  @apply grid gap-4 lg:grid-cols-2;
+}
+
+.settingsQueueInsightsChartCard {
+  @apply w-full min-w-0 max-w-none;
+}
+
+.settingsQueueInsightsChartHeader {
+  @apply border-b pb-4;
+}
+
+.settingsQueueInsightsChartTitle {
+  @apply text-base font-semibold leading-none;
+}
+
+.settingsQueueInsightsChartDescription {
+  @apply text-base text-sidebar-foreground/50;
+}
+
+.settingsQueueInsightsChartContent {
+  @apply pt-4;
+}
+
+.settingsQueueInsightsChartContainer {
+  @apply h-60 w-full min-w-0 max-w-full;
+}
+
 .renderSectionActionsAlert {
   @apply mb-4;
 }

@@ -6,8 +6,15 @@ export async function claimIssuesForAgent(
   companyId: string,
   agentId: string,
   heartbeatRunId: string,
-  maxItems = 5
+  options?: {
+    maxItems?: number;
+    slaHours?: number;
+    agingBoost?: boolean;
+  }
 ) {
+  const maxItems = Math.min(20, Math.max(1, options?.maxItems ?? 5));
+  const slaHours = Math.min(720, Math.max(1, options?.slaHours ?? 72));
+  const agingBoost = options?.agingBoost ?? true;
   const result = await db.execute(sql`
     WITH candidate AS (
       SELECT id
@@ -17,6 +24,12 @@ export async function claimIssuesForAgent(
         AND status IN ('todo', 'in_progress')
         AND is_claimed = false
       ORDER BY
+        CASE
+          WHEN ${agingBoost} = true
+            AND created_at <= (CURRENT_TIMESTAMP - (${slaHours} * INTERVAL '1 hour'))
+          THEN 0
+          ELSE 1
+        END ASC,
         CASE priority
           WHEN 'urgent' THEN 0
           WHEN 'high' THEN 1

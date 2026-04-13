@@ -79,6 +79,13 @@ The API process runs periodic sweeps when `BOPO_SCHEDULER_ROLE` is `auto` or `le
 
 - `BOPO_LOOP_SWEEP_MS` — interval for **work loop** trigger processing (default `60000`). Set to `0` is invalid; use `BOPO_LOOP_SWEEP_ENABLED=0` to disable.
 - `BOPO_LOOP_SWEEP_ENABLED` — set to `0` to turn off work loop sweeps on this instance.
+- `BOPO_ORG_LEARNING_SWEEP_MS` — interval for org learning synthesis recommendations.
+
+Roadmap feature flags (see full details in [`docs/developer/configuration-reference.md`](./docs/developer/configuration-reference.md)):
+
+- `BOPO_FEATURE_VERIFIED_MEMORY`
+- `BOPO_FEATURE_QUEUE_INTELLIGENCE`
+- `BOPO_FEATURE_ORG_LEARNING`
 
 ## Further reading
 

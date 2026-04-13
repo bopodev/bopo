@@ -97,12 +97,18 @@ const navGroups: Array<{
 
 const settingsNavItems: Array<{
   href: string;
-  label: SectionLabel;
+  label: string;
   icon: React.ComponentType<{ className?: string }>;
   isActive: (pathname: string) => boolean;
 }> = [
   { href: "/settings/templates", label: "Templates", icon: LayoutTemplate, isActive: (pathname) => pathname.startsWith("/settings/templates") },
   { href: "/settings/plugins", label: "Plugins", icon: Puzzle, isActive: (pathname) => pathname.startsWith("/settings/plugins") },
+  {
+    href: "/settings/queue-insights",
+    label: "Queue Insights",
+    icon: BarChart3,
+    isActive: (pathname) => pathname.startsWith("/settings/queue-insights")
+  },
   {
     href: "/settings",
     label: "Settings",

@@ -59,6 +59,7 @@ const approvalGatedActions = new Set([
   "pause_agent",
   "terminate_agent",
   "promote_memory_fact",
+  "reassign_agent_manager",
   "grant_plugin_capabilities",
   "apply_template"
 ]);
@@ -79,7 +80,11 @@ const hireAgentPayloadSchema = AgentCreateRequestSchema.extend({
   runPolicy: z
     .object({
       sandboxMode: z.enum(["workspace_write", "full_access"]).optional(),
-      allowWebSearch: z.boolean().optional()
+      allowWebSearch: z.boolean().optional(),
+      maxConcurrentItems: z.number().int().min(1).max(20).optional(),
+      slaHours: z.number().int().min(1).max(720).optional(),
+      agingBoost: z.boolean().optional(),
+      blockedEscalationHours: z.number().int().min(1).max(720).optional()
     })
     .optional(),
   enabledSkillIds: z.array(z.string().min(1)).max(64).nullable().optional()
@@ -96,7 +101,11 @@ const activateGoalPayloadSchema = z.object({
 const promoteMemoryFactPayloadSchema = z.object({
   agentId: z.string().min(1),
   fact: z.string().min(1),
-  sourceRunId: z.string().optional()
+  sourceRunId: z.string().optional(),
+  sourceArtifact: z.string().optional(),
+  status: z.enum(["candidate", "verified", "expired"]).optional(),
+  verifiedAt: z.string().datetime().optional(),
+  expiresAt: z.string().datetime().optional()
 });
 const grantPluginCapabilitiesPayloadSchema = z.object({
   pluginId: z.string().min(1),
@@ -141,6 +150,11 @@ const overrideBudgetPayloadSchema = z
   );
 const pauseOrTerminateAgentPayloadSchema = z.object({
   agentId: z.string().min(1),
+  reason: z.string().optional()
+});
+const reassignAgentManagerPayloadSchema = z.object({
+  agentId: z.string().min(1),
+  newManagerAgentId: z.string().nullable().optional(),
   reason: z.string().optional()
 });
 const AGENT_STARTUP_PROJECT_NAME = "Agent Onboarding";
@@ -552,7 +566,11 @@ async function applyApprovalAction(db: BopoDb, companyId: string, action: string
       companyId,
       agentId: parsed.data.agentId,
       fact: parsed.data.fact,
-      sourceRunId: parsed.data.sourceRunId ?? null
+      sourceRunId: parsed.data.sourceRunId ?? null,
+      sourceArtifact: parsed.data.sourceArtifact ?? null,
+      status: parsed.data.status ?? "verified",
+      verifiedAt: parsed.data.verifiedAt ?? null,
+      expiresAt: parsed.data.expiresAt ?? null
     });
     return {
       applied: Boolean(targetFile),
@@ -561,8 +579,43 @@ async function applyApprovalAction(db: BopoDb, companyId: string, action: string
       entity: {
         agentId: parsed.data.agentId,
         sourceRunId: parsed.data.sourceRunId ?? null,
+        sourceArtifact: parsed.data.sourceArtifact ?? null,
+        status: parsed.data.status ?? "verified",
         fact: parsed.data.fact,
         targetFile
+      }
+    };
+  }
+  if (action === "reassign_agent_manager") {
+    const parsed = reassignAgentManagerPayloadSchema.safeParse(payload);
+    if (!parsed.success) {
+      throw new GovernanceError("Approval payload for manager reassignment is invalid.");
+    }
+    if (parsed.data.newManagerAgentId === parsed.data.agentId) {
+      throw new GovernanceError("Agent cannot report to itself.");
+    }
+    const [updated] = await db
+      .update(agents)
+      .set({
+        managerAgentId: parsed.data.newManagerAgentId ?? null,
+        updatedAt: new Date()
+      })
+      .where(and(eq(agents.companyId, companyId), eq(agents.id, parsed.data.agentId)))
+      .returning({
+        id: agents.id,
+        managerAgentId: agents.managerAgentId
+      });
+    if (!updated) {
+      throw new GovernanceError("Agent not found for manager reassignment.");
+    }
+    return {
+      applied: true,
+      entityType: "agent" as const,
+      entityId: updated.id,
+      entity: {
+        id: updated.id,
+        managerAgentId: updated.managerAgentId,
+        reason: parsed.data.reason ?? null
       }
     };
   }

@@ -91,6 +91,10 @@ Configure on the **agent** (runtime command + runtime environment), not as API p
 | `BOPO_HEARTBEAT_PROMPT_MODE` | `full` | Heartbeat prompt size: `full` (default; inline issue bodies) or `compact` (omit bodies; hydrate via `GET /issues/:id`). |
 | `BOPO_HEARTBEAT_PROMPT_MEMORY_MAX_CHARS` | unset (`8000` per section when mode is `compact`) | Max characters per memory block (tacit notes, durable facts, daily notes) before truncation with an explicit marker. |
 | `BOPO_HEARTBEAT_IDLE_POLICY` | `full` | When no work items are assigned (non–comment-order runs): `full` = normal adapter prompt; `micro_prompt` = minimal prompt; `skip_adapter` = do not invoke the LLM adapter. |
+| `BOPO_FEATURE_VERIFIED_MEMORY` | `1` | Enables verified-memory promotion flow (`candidate` → governance-reviewed `verified`) and related observability fields. |
+| `BOPO_FEATURE_QUEUE_INTELLIGENCE` | `1` | Enables queue intelligence signals (SLA risk, policy-aware queue ordering, queue-health attention categories). |
+| `BOPO_FEATURE_ORG_LEARNING` | `1` | Enables org-learning suggestions and scheduled weekly learning summary publication. |
+| `BOPO_ORG_LEARNING_SWEEP_MS` | `60000` | Interval for checking whether a weekly learning summary should be published. |
 | `BOPO_ENABLE_GIT_WORKTREE_ISOLATION` | `0` | Enables `isolated + git_worktree` runtime resolution in heartbeat service. |
 | `BOPO_GIT_WORKTREE_TTL_MINUTES` | `240` | TTL for stale isolated worktree cleanup under strategy root dir. |
 | `BOPO_SCHEDULER_ROLE` | `auto` | Scheduler ownership: `auto`, `leader`, `follower`, `off`. |

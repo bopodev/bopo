@@ -50,6 +50,7 @@ import {
 } from "../services/company-skill-file-service";
 import {
   listAgentMemoryFiles,
+  listAgentDurableFacts,
   listCompanyMemoryFiles,
   listProjectMemoryFiles,
   loadAgentMemoryContext,
@@ -425,6 +426,19 @@ export function createObservabilityRouter(ctx: AppContext) {
     }
   });
 
+  router.get("/memory/:agentId/durable-facts", async (req, res) => {
+    const companyId = req.companyId!;
+    const agentId = req.params.agentId;
+    try {
+      const items = await listAgentDurableFacts({ companyId, agentId });
+      return sendOk(res, {
+        items
+      });
+    } catch (error) {
+      return sendError(res, String(error), 422);
+    }
+  });
+
   router.put("/memory/:agentId/file", async (req, res) => {
     if (!enforcePermission(req, res, "agents:write")) {
       return;
@@ -789,6 +803,31 @@ export function createObservabilityRouter(ctx: AppContext) {
     }
   });
 
+  router.get("/company-knowledge/trust", async (req, res) => {
+    const companyId = req.companyId!;
+    const pathsRaw = typeof req.query.paths === "string" ? req.query.paths.trim() : "";
+    if (!pathsRaw) {
+      return sendOk(res, { items: [] });
+    }
+    const relativePaths = pathsRaw
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+      .slice(0, 100);
+    const items = await Promise.all(
+      relativePaths.map(async (relativePath) => {
+        try {
+          const file = await readKnowledgeFile({ companyId, relativePath });
+          const status = resolveKnowledgeTrustStatus(file.content);
+          return { relativePath, status };
+        } catch {
+          return { relativePath, status: "missing" as const };
+        }
+      })
+    );
+    return sendOk(res, { items });
+  });
+
   router.put("/company-knowledge/file", async (req, res) => {
     if (!enforcePermission(req, res, "agents:write")) {
       return;
@@ -995,6 +1034,19 @@ function parsePayload(payloadJson: string): Record<string, unknown> {
 
 function toRecord(value: unknown) {
   return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
+}
+
+function resolveKnowledgeTrustStatus(content: string): "verified" | "candidate" | "expired" {
+  const frontmatter = content.match(/^---\s*([\s\S]*?)\s*---/);
+  const block = frontmatter?.[1] ?? "";
+  const lowered = block.toLowerCase();
+  if (/(trust|status|verificationstatus)\s*:\s*(verified|trusted)/.test(lowered)) {
+    return "verified";
+  }
+  if (/(trust|status|verificationstatus)\s*:\s*expired/.test(lowered)) {
+    return "expired";
+  }
+  return "candidate";
 }
 
 function serializeRunRow(
